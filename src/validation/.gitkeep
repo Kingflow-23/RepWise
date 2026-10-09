@@ -1,0 +1,1 @@
+Enforces required fields, available days, equipment, experience level, time limits, predefined safety boundaries, evidence requirements, and feasibility. It estimates session duration from exercises, sets, execution time, rest, warm-up, and transitions. A plan that fails hard constraints cannot be delivered as valid.

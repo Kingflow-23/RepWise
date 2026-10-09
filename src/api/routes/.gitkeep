@@ -1,0 +1,1 @@
+Exposes endpoints for assessments, profiles, program generation, health checks, and evaluations. Routes validate incoming requests and delegate to application services; they do not implement business logic themselves.

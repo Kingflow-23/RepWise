@@ -1,0 +1,11 @@
+This folder will contain detailed explanation on architecture to allow externals to understand totaly the project. Files to be created are probably for example 
+
+architecture.md
+data_pipeline.md
+retrieval_strategy.md
+validation_rules.md
+evaluation_protocol.md
+safety_and_scope.md
+etc ...
+
+The goal is to not include the whole explanation in the same readme file

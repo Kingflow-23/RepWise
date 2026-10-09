@@ -1,0 +1,15 @@
+This folder should contain the jsonl files for the red teaming and test cases 
+
+EX
+
+│ ├── evals/ 
+│ ├── retrieval/ 
+│ │ └── retrieval_test_cases.jsonl
+│ ├── profiles/ 
+│ │ └── fixed_profiles.jsonl 
+│ ├── expected_evidence/ 
+│ │ └── relevance_judgments.jsonl 
+│ ├── scenarios/ 
+│ │ └── program_scenarios.jsonl 
+│ └── red_team/ 
+│ └── safety_cases.jsonl
