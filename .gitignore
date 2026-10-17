@@ -3,3 +3,11 @@ GenAI_project_starter
 
 # Environment files
 .env
+
+# Corpus
+/corpus/
+/raw_corpus/
+data/corpus/clean_txt/
+data/corpus/passages/
+data/corpus/chunks/
+data/corpus/coverage_hits.csv

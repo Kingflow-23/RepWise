@@ -1,0 +1,139 @@
+video_id,pattern,count
+XFsbtGB1TXQ,\bpush (?:pool|poule) legs?\b|\bpush pull leg\b,11
+XFsbtGB1TXQ,\bperlower\b|\bper lower\b,1
+XFsbtGB1TXQ,\baxquats?\b|\baxwats?\b,1
+XFsbtGB1TXQ,\baltères\b|\balters\b,7
+XFsbtGB1TXQ,\bsoulev(?:er|é)? (?:de )?terre\b,8
+XFsbtGB1TXQ,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,3
+XFsbtGB1TXQ,\bmolets\b,1
+XFsbtGB1TXQ,\bnubray\b,1
+XFsbtGB1TXQ,\blegl\b,3
+1OsDiVvQT7k,\bdilodes?\b|\bdiloads?\b|\bdilos?\b|\bdit laude\b|\bdodade\b,3
+1OsDiVvQT7k,\bmenzer\b,8
+1OsDiVvQT7k,\bnubray\b,1
+05WPpiDdC78,\bsoulev(?:er|é)? (?:de )?terre\b,2
+_-XnY-bwD4A,\bmasse? grass(?:ce|e)?\b,1
+_-XnY-bwD4A,\bdorseaux\b,24
+_-XnY-bwD4A,\bpration\b|\bprenation\b,5
+_-XnY-bwD4A,\bdeux?ème\b,1
+_-XnY-bwD4A,\baltères\b|\balters\b,1
+_-XnY-bwD4A,\bsoulev(?:er|é)? (?:de )?terre\b,9
+_-XnY-bwD4A,\bmolets\b,1
+cvfTTuOZKV8,\bmasse? grass(?:ce|e)?\b,3
+cvfTTuOZKV8,\bsoulev(?:er|é)? (?:de )?terre\b,1
+ZP0LLX_Srs8,\bmasse? grass(?:ce|e)?\b,34
+ZP0LLX_Srs8,\baltères\b|\balters\b,3
+ZP0LLX_Srs8,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,1
+A2DqNIw2VPU,\bmasse? grass(?:ce|e)?\b,7
+-yB8TWvU83g,\bdorseaux\b,1
+-yB8TWvU83g,\bdeux?ème\b,3
+-yB8TWvU83g,\btroisème\b,2
+-yB8TWvU83g,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,2
+OwPD4u0qOvs,\bmasse? grass(?:ce|e)?\b,2
+nKZjIVbRifU,\bpration\b|\bprenation\b,2
+nKZjIVbRifU,\baltères\b|\balters\b,8
+nKZjIVbRifU,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,1
+4Y6VKipZcyQ,\baltères\b|\balters\b,9
+4Y6VKipZcyQ,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,2
+4Y6VKipZcyQ,\bmolets\b,1
+-m8uXyMD0n4,\bisquots?\b,1
+-m8uXyMD0n4,\bmasse? grass(?:ce|e)?\b,4
+-m8uXyMD0n4,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,1
+-m8uXyMD0n4,\bmolets\b,1
+LWhrWQRzyos,\bface ?pool\b|\bfaceol\b,6
+LWhrWQRzyos,\brwing\b,1
+LWhrWQRzyos,\bpc deck\b,2
+LWhrWQRzyos,\baltères\b|\balters\b,1
+LWhrWQRzyos,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,5
+ld5_Z0ua278,\bmasse? grass(?:ce|e)?\b,8
+ld5_Z0ua278,\btroisème\b,1
+Jd6jgL2s2F4,\bisquots?\b,1
+Jd6jgL2s2F4,\bmasse? grass(?:ce|e)?\b,2
+Jd6jgL2s2F4,\btroisème\b,1
+Jd6jgL2s2F4,\brwing\b,1
+Jd6jgL2s2F4,\baltères\b|\balters\b,4
+Jd6jgL2s2F4,\bsoulev(?:er|é)? (?:de )?terre\b,1
+Jd6jgL2s2F4,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,1
+Jd6jgL2s2F4,\bmolets\b,1
+Jd6jgL2s2F4,\buberman\b,5
+LHGPAV6e9VI,\bmasse? grass(?:ce|e)?\b,4
+LHGPAV6e9VI,\bpalof\b,10
+LHGPAV6e9VI,\bsoulev(?:er|é)? (?:de )?terre\b,3
+BBzZktps5D4,\bsoulev(?:er|é)? (?:de )?terre\b,1
+DeHRm_3AcAI,\bséance pool\b,1
+DeHRm_3AcAI,\brac ?pool\b,3
+DeHRm_3AcAI,\bchromion\b,3
+DeHRm_3AcAI,\brwing\b,5
+DeHRm_3AcAI,\baltères\b|\balters\b,2
+DeHRm_3AcAI,\bsoulev(?:er|é)? (?:de )?terre\b,4
+qnF5AzNmGYQ,\btroisème\b,1
+qnF5AzNmGYQ,\bsoulev(?:er|é)? (?:de )?terre\b,1
+qnF5AzNmGYQ,\bmolets\b,1
+J_Zm4XvE__s,\baltères\b|\balters\b,1
+J_Zm4XvE__s,\bsoulev(?:er|é)? (?:de )?terre\b,1
+7--wCDtdGHM,\bséance pool\b,1
+7--wCDtdGHM,\bmasse? grass(?:ce|e)?\b,1
+7--wCDtdGHM,\bpration\b|\bprenation\b,2
+7--wCDtdGHM,\bdeux?ème\b,2
+7--wCDtdGHM,\btroisème\b,3
+7--wCDtdGHM,\baltères\b|\balters\b,5
+ucMKYB8XeRI,\bdeux?ème\b,1
+ucMKYB8XeRI,\btroisème\b,1
+ucMKYB8XeRI,\baltères\b|\balters\b,2
+ucMKYB8XeRI,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,4
+BuujftJEACA,\bisquots?\b,1
+BuujftJEACA,\bmasse? grass(?:ce|e)?\b,27
+BuujftJEACA,\baltères\b|\balters\b,1
+45l6bl8Uyr4,\bdilodes?\b|\bdiloads?\b|\bdilos?\b|\bdit laude\b|\bdodade\b,1
+45l6bl8Uyr4,\bisquots?\b,1
+45l6bl8Uyr4,\bdeux?ème\b,1
+45l6bl8Uyr4,\btroisème\b,1
+45l6bl8Uyr4,\bsoulev(?:er|é)? (?:de )?terre\b,2
+45l6bl8Uyr4,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,3
+45l6bl8Uyr4,\bover(?:i|a)ching\b,3
+pA-q30r2EzI,\bmasse? grass(?:ce|e)?\b,1
+pA-q30r2EzI,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,2
+pA-q30r2EzI,\btibodo\b,5
+TnKwgVrCtl8,\bisquots?\b,3
+TnKwgVrCtl8,\btroisème\b,1
+TnKwgVrCtl8,\baltères\b|\balters\b,7
+TnKwgVrCtl8,\bsoulev(?:er|é)? (?:de )?terre\b,1
+TnKwgVrCtl8,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,1
+IMkWQtWQfzs,\bpush (?:pool|poule) legs?\b|\bpush pull leg\b,1
+IMkWQtWQfzs,\bmasse? grass(?:ce|e)?\b,57
+yL9W6I8WBOA,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,5
+npDYdbjJTVI,\baxquats?\b|\baxwats?\b,4
+npDYdbjJTVI,\bsoulev(?:er|é)? (?:de )?terre\b,1
+t4XKBDDjLKE,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,3
+dctYv3j4o3U,\bface ?pool\b|\bfaceol\b,4
+pJ8YrURHCs0,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,1
+BksiVi6lTWI,\baltères\b|\balters\b,2
+BksiVi6lTWI,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,3
+gOViaSi6y38,\bsoulev(?:er|é)? (?:de )?terre\b,2
+WYMludGzu48,\baltères\b|\balters\b,2
+WYMludGzu48,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,2
+R4QqSvU5oB0,\bdilodes?\b|\bdiloads?\b|\bdilos?\b|\bdit laude\b|\bdodade\b,19
+R4QqSvU5oB0,\bface ?pool\b|\bfaceol\b,1
+R4QqSvU5oB0,\bsur compensation\b,1
+R4QqSvU5oB0,\bover(?:i|a)ching\b,1
+cXNeX_t08wQ,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,1
+di2pTqQKdss,\bdrakker\b,5
+KhpYqbZNW60,\bsoulev(?:er|é)? (?:de )?terre\b,1
+qq_bX5iw0HY,\baltères\b|\balters\b,1
+qq_bX5iw0HY,\bnubray\b,1
+uTOc6d4NoVE,\baxquats?\b|\baxwats?\b,6
+8Upe8QgpYps,\bsoulev(?:er|é)? (?:de )?terre\b,2
+qcs8utwv9WE,\bsoulev(?:er|é)? (?:de )?terre\b,1
+Ibr1O8UxU3E,\bmasse? grass(?:ce|e)?\b,2
+e2jbgVfqFEY,\baxquats?\b|\baxwats?\b,1
+e2jbgVfqFEY,\bsoulev(?:er|é)? (?:de )?terre\b,6
+nkyrc-iBXq8,\bmasse? grass(?:ce|e)?\b,1
+nkyrc-iBXq8,\bsoulev(?:er|é)? (?:de )?terre\b,1
+nkyrc-iBXq8,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,1
+Dx0O5iGNoAQ,\bsoulev(?:er|é)? (?:de )?terre\b,1
+kKr_d1duFHs,\btroisème\b,1
+kKr_d1duFHs,\baltères\b|\balters\b,1
+kKr_d1duFHs,\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\b,3
+drdNo6yfAUI,\bmasse? grass(?:ce|e)?\b,6
+NQWG3icC9Kk,\bmasse? grass(?:ce|e)?\b,1
+DJEi-FifTtg,\bmasse? grass(?:ce|e)?\b,2

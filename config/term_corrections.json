@@ -1,0 +1,179 @@
+{
+  "_doc": "ASR correction map applied to cleaned transcript passages (never to raw files). Patterns are case-insensitive regexes. status=confirmed: verified in context. status=needs_review: plausible, check the cited example before trusting it. Add entries as you find new errors; rerun scripts/build_corpus.py.",
+  "corrections": [
+    {
+      "pattern": "\\bdilodes?\\b|\\bdiloads?\\b|\\bdilos?\\b|\\bdit laude\\b|\\bdodade\\b",
+      "replacement": "deload",
+      "status": "confirmed",
+      "example": "c'est apres cette phase de dilode qu'intervient la surcompensation"
+    },
+    {
+      "pattern": "\\bpush (?:pool|poule) legs?\\b|\\bpush pull leg\\b",
+      "replacement": "push pull legs",
+      "status": "confirmed",
+      "example": "le push pool legs, le full body"
+    },
+    {
+      "pattern": "\\bséance pool\\b",
+      "replacement": "séance pull",
+      "status": "confirmed",
+      "example": "je la mettrai plus dans une séance pool"
+    },
+    {
+      "pattern": "\\bperlower\\b|\\bper lower\\b",
+      "replacement": "upper lower",
+      "status": "confirmed",
+      "example": "le full body, le perlower, le split"
+    },
+    {
+      "pattern": "\\bface ?pool\\b|\\bfaceol\\b",
+      "replacement": "face pull",
+      "status": "confirmed",
+      "example": "j'adore le facepool"
+    },
+    {
+      "pattern": "\\brac ?pool\\b",
+      "replacement": "rack pull",
+      "status": "confirmed",
+      "example": "le racpool c'est en fait un souleve de terre"
+    },
+    {
+      "pattern": "\\baxquats?\\b|\\baxwats?\\b",
+      "replacement": "hack squat",
+      "status": "confirmed",
+      "example": "le hack squat mais attention le axquat lineaire"
+    },
+    {
+      "pattern": "\\bisquots?\\b",
+      "replacement": "ischios",
+      "status": "confirmed",
+      "example": "equilibrees entre les isquot et les quadriceps"
+    },
+    {
+      "pattern": "\\bmasse? grass(?:ce|e)?\\b",
+      "replacement": "masse grasse",
+      "status": "confirmed",
+      "example": "25 % de mass grass"
+    },
+    {
+      "pattern": "\\bdorseaux\\b",
+      "replacement": "dorsaux",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bpration\\b|\\bprenation\\b",
+      "replacement": "pronation",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bdeux?ème\\b",
+      "replacement": "deuxième",
+      "status": "confirmed",
+      "example": "le deème jour d'entraînement"
+    },
+    {
+      "pattern": "\\btroisème\\b",
+      "replacement": "troisième",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bchromion\\b",
+      "replacement": "acromion",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\brwing\\b",
+      "replacement": "rowing",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bpalof\\b",
+      "replacement": "pallof",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bpc deck\\b",
+      "replacement": "pec deck",
+      "status": "confirmed",
+      "example": "j'aime bien le pc deck"
+    },
+    {
+      "pattern": "\\baltères\\b|\\balters\\b",
+      "replacement": "haltères",
+      "status": "confirmed",
+      "example": "en serrant les alters l'un contre l'autre"
+    },
+    {
+      "pattern": "\\bsoulev(?:er|é)? (?:de )?terre\\b",
+      "replacement": "soulevé de terre",
+      "status": "confirmed",
+      "example": "le soulever terre"
+    },
+    {
+      "pattern": "\\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\\b",
+      "replacement": "développé \\1",
+      "status": "confirmed",
+      "example": "du développer semi-incliné aux altères"
+    },
+    {
+      "pattern": "\\bmolets\\b",
+      "replacement": "mollets",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bsur compensation\\b",
+      "replacement": "surcompensation",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bover(?:i|a)ching\\b",
+      "replacement": "overreaching",
+      "status": "confirmed",
+      "example": "un cycle d'overiching"
+    },
+    {
+      "pattern": "\\btibodo\\b",
+      "replacement": "Thibaudeau",
+      "status": "confirmed",
+      "example": "christian tibodo"
+    },
+    {
+      "pattern": "\\buberman\\b",
+      "replacement": "Huberman",
+      "status": "confirmed",
+      "example": "andrew uberman"
+    },
+    {
+      "pattern": "\\bmenzer\\b",
+      "replacement": "Mentzer",
+      "status": "confirmed",
+      "example": "mike menzer ou dorian yates"
+    },
+    {
+      "pattern": "\\bnubray\\b",
+      "replacement": "Nubret",
+      "status": "confirmed",
+      "example": "serge nubray"
+    },
+    {
+      "pattern": "\\blegl\\b",
+      "replacement": "leg curl",
+      "status": "needs_review",
+      "example": "des séries de 15 sur le legl"
+    },
+    {
+      "pattern": "\\bdrakker\\b",
+      "replacement": "drag curl",
+      "status": "needs_review",
+      "example": "biceps ranking: on va commencer par le pire, le drakker"
+    }
+  ]
+}
