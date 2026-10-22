@@ -1,0 +1,20 @@
+{"id": "R001", "query": "Combien de temps de repos entre les séries pour prendre du muscle ?", "lang": "fr", "split": "dev", "answerable": true, "topic": "rest_intervals", "review_status": "draft"}
+{"id": "R002", "query": "Je débute la muscu, je prends combien de récup entre mes séries ?", "lang": "fr", "split": "test", "answerable": true, "topic": "rest_intervals", "review_status": "draft"}
+{"id": "R003", "query": "J'ai seulement 45 minutes par séance, est-ce que je peux raccourcir mes temps de pause ?", "lang": "fr", "split": "test", "answerable": true, "topic": "rest_intervals", "review_status": "draft"}
+{"id": "R004", "query": "Est-ce qu'il faut chronométrer sa récupération entre deux séries ?", "lang": "fr", "split": "test", "answerable": true, "topic": "rest_intervals", "review_status": "draft"}
+{"id": "R005", "query": "Comment organiser concrètement une semaine de deload ?", "lang": "fr", "split": "dev", "answerable": true, "topic": "deload", "review_status": "draft"}
+{"id": "R006", "query": "À quels signes je vois que mon corps a besoin d'une semaine plus légère ?", "lang": "fr", "split": "test", "answerable": true, "topic": "deload", "review_status": "draft"}
+{"id": "R007", "query": "Tous les combien de semaines faut-il lever le pied à l'entraînement ?", "lang": "fr", "split": "test", "answerable": true, "topic": "deload", "review_status": "draft"}
+{"id": "R008", "query": "Un débutant a-t-il besoin de faire des semaines de décharge ?", "lang": "fr", "split": "test", "answerable": true, "topic": "deload", "review_status": "draft"}
+{"id": "R009", "query": "Je stagne depuis plusieurs semaines sur mes charges, est-ce normal ?", "lang": "fr", "split": "dev", "answerable": true, "topic": "plateau", "review_status": "draft"}
+{"id": "R010", "query": "Est-ce grave d'arrêter complètement la salle une semaine pendant les vacances ?", "lang": "fr", "split": "test", "answerable": true, "topic": "break_detraining", "review_status": "draft"}
+{"id": "R011", "query": "Combien de séries par muscle et par semaine pour l'hypertrophie ?", "lang": "fr", "split": "dev", "answerable": true, "topic": "volume", "review_status": "draft"}
+{"id": "R012", "query": "Comment faire évoluer mon nombre de séries au cours d'un cycle de plusieurs semaines ?", "lang": "fr", "split": "test", "answerable": true, "topic": "cycles", "review_status": "draft"}
+{"id": "R013", "query": "Pour progresser, vaut-il mieux rajouter des reps ou mettre plus lourd ?", "lang": "fr", "split": "test", "answerable": true, "topic": "progression", "review_status": "draft"}
+{"id": "R014", "query": "How many hours of sleep do I need to build muscle?", "lang": "en", "split": "test", "answerable": true, "topic": "fatigue_recovery", "review_status": "draft"}
+{"id": "R015", "query": "Je m'entraîne trois fois par semaine et je débute, à quoi ressemble une bonne semaine type ?", "lang": "fr", "split": "test", "answerable": true, "topic": "frequency_split", "review_status": "draft"}
+{"id": "R016", "query": "Quelle alternative au front squat si mon goal c'est juste l'hypertrophie ?", "lang": "fr-en", "split": "test", "answerable": true, "topic": "substitution", "review_status": "draft"}
+{"id": "R017", "query": "Quel tempo exact en secondes Nassim recommande pour le curl incliné ?", "lang": "fr", "split": "test", "answerable": false, "topic": "unsupported_detail", "review_status": "draft"}
+{"id": "R018", "query": "Combien coûte un abonnement Basic-Fit par mois ?", "lang": "fr", "split": "test", "answerable": false, "topic": "out_of_scope", "review_status": "draft"}
+{"id": "R019", "query": "Quel traitement suivre pour soigner une tendinite à l'épaule ?", "lang": "fr", "split": "test", "answerable": false, "topic": "medical", "review_status": "draft"}
+{"id": "R020", "query": "What exact weekly kilogram increment does Nassim prescribe for the bench press?", "lang": "en", "split": "dev", "answerable": false, "topic": "unsupported_detail", "review_status": "draft"}
