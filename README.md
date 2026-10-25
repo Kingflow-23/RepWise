@@ -62,7 +62,7 @@ The command uses the simple `JsonlRetriever` baseline. The final retrieval adapt
 
 ## Run the Streamlit demo
 
-The backend and UI run as separate processes. Configure `REPWISE_CHUNK_FILE` in `.env` with the path to a JSONL chunk file that follows the [retrieval contract](docs/retrieval_contract.md). Start Ollama and ensure the configured model is available.
+The backend and UI run as separate processes.
 
 Terminal 1:
 
@@ -94,7 +94,7 @@ The implemented generation flow is:
 6. Parse with Pydantic and validate week count/numbering, available training days, session duration, and source IDs.
 7. Persist only completed plans and their returned sources to SQLite.
 
-The API reports explicit retrieval and generation errors. It does not retry or repair invalid model output. Validation checks structure and request consistency; it does not establish medical safety or scientific quality. See [Generation flow](docs/generation.md) for implementation details and limitations.
+The API reports explicit retrieval and generation errors. It does not retry or repair invalid model output. Validation checks structure and request consistency; it does not establish medical safety or scientific quality. 
 
 ## Knowledge base and ingestion
 
@@ -111,12 +111,3 @@ The tests use fake retrieval and a fake model. They do not require Ollama or a r
 ## Evaluation
 
 The `evals/` directory currently has no evaluation harness or benchmark. The automated tests cover the pipeline with mocked retrieval/model services; they do not measure retrieval relevance, plan quality, safety, or real-model performance. Evaluation remains future work and should use an explicitly sourced/licensed dataset plus human review for training quality.
-
-## Design notes
-
-- [Architecture](docs/architecture.md)
-- [Generation flow](docs/generation.md)
-- [Retrieval contract](docs/retrieval_contract.md)
-- [API and database](docs/api_and_database.md)
-- [Design choices](docs/design_choices.md)
-- [Streamlit demo and API](docs/api_and_database.md#streamlit-demo)
