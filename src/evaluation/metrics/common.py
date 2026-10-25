@@ -16,8 +16,6 @@ class Ratio:
     def value(self) -> float | None:
         return None if self.den == 0 else self.num / self.den
 
-    def __add__(self, other: "Ratio") -> "Ratio":
-        return Ratio(self.num + other.num, self.den + other.den)
 
     def fmt(self, digits: int = 3) -> str:
         if self.value is None:
@@ -35,8 +33,3 @@ def mean_ratio(values: list[float]) -> Ratio:
     return Ratio(sum(values), len(values))
 
 
-def pooled(ratios: list[Ratio]) -> Ratio:
-    total = Ratio(0, 0)
-    for r in ratios:
-        total = total + r
-    return total

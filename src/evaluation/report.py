@@ -1,29 +1,9 @@
 """Readable summaries of an evaluation run: a Markdown report and a short console view."""
-
 from collections import Counter
 
 # Direction of each metric: True = higher is better, False = lower is better.
 HIGHER_IS_BETTER = {
-    "unsupported_claim_rate": False,
     "false_abstention_rate": False,
-    "duration_overrun_mean": False,
-}
-
-# Course slide 36 (Barnett et al. 2024) plus project-specific categories.
-CATEGORY_HELP = {
-    "not_retrieved": "Missing content or retrieval miss: no labelled passage in the ranking",
-    "missed_top_ranked": "Relevant chunk exists but ranked below k",
-    "partial_recall": "Only part of the labelled evidence reached the top k",
-    "wrong_status": "Answered / abstained / asked when it should have done otherwise",
-    "unsafe_release": "Released a plan where a block, hold, clarification or abstention was required",
-    "schema_invalid": "Output does not follow the plan schema",
-    "constraint_violation": "A hard constraint (days, duration, equipment, exclusions, bounds) is broken",
-    "incomplete_parameters": "Required executable fields are empty or placeholders",
-    "unsupported_claim": "Evidence claim without a matching quote in a real chunk",
-    "fabricated_citation": "Citation to a chunk that does not exist",
-    "forbidden_output": "Output contains a forbidden statement",
-    "missing_required": "Output lacks a required statement",
-    "pipeline_error": "The system under test crashed",
 }
 
 
@@ -51,46 +31,31 @@ def render(meta: dict, results: dict, gates: list[dict]) -> str:
         "not a perfect score. ↑ higher is better, ↓ lower is better.",
         "",
     ]
+    for w in meta.get("warnings", []):
+        lines += [f"> **Warning:** {w}", ""]
 
     if gates:
         lines += ["## Release gates", "", "| Gate | Status | Value |", "|---|---|---|"]
         lines += [f"| {g['gate']} | **{g['status']}** | {g['value']} |" for g in gates]
         lines.append("")
 
-    for name, r in results.items():
-        lines += [f"## {name.capitalize()} suite", "",
-                  f"**Pass rate:** {r.pass_rate.fmt()}", "",
-                  "| Metric | Value |", "|---|---|", *_metric_rows(r.metrics), ""]
-        if r.breakdown:
-            metric_names = sorted({m for b in r.breakdown.values() for m in b})
-            lines += ["**By language**", "",
-                      "| Language | " + " | ".join(metric_names) + " |",
-                      "|---|" + "---|" * len(metric_names)]
-            for lang, b in sorted(r.breakdown.items()):
-                lines.append(f"| {lang} | " + " | ".join(b[m].fmt() if m in b else "–" for m in metric_names) + " |")
-            lines.append("")
-        extra = {k: v for k, v in r.extra.items() if v is not None}
-        if extra:
-            lines += ["**Details:** " + " · ".join(
-                f"{k} = {v:.1f}" if isinstance(v, float) else f"{k} = {v}" for k, v in extra.items()), ""]
-        if r.extra.get("n_draft_labels"):
-            lines += [f"> {r.extra['n_draft_labels']} retrieval case(s) still have draft labels: "
-                      "review them before freezing the test set.", ""]
 
-        if r.failures:
-            counts = Counter(f.category for f in r.failures)
-            lines += ["### Failures by category", "", "| Category | Count | Meaning |", "|---|---|---|"]
-            lines += [f"| {c} | {n} | {CATEGORY_HELP.get(c, '')} |" for c, n in counts.most_common()]
-            lines += ["", "### Failure details", "", "| Case | RT | Category | Detail |", "|---|---|---|---|"]
-            for f in r.failures:
-                detail = f.detail.replace("|", "\\|").replace("\n", " ")
-                lines.append(f"| {f.case_id} | {f.rt or ''} | {f.category} | {detail} |")
-            lines.append("")
+    for name, r in results.items():
+        lines += [f"## {name.capitalize()}", "",
+                "| Metric | Value |", "|---|---|",
+                f"| pass rate ↑ | {r.pass_rate.fmt()} |",
+                *_metric_rows(r.metrics)]
+        for key in ("latency_ms_median", "latency_ms_p95"):
+            if r.extra.get(key) is not None:
+                lines.append(f"| {key} ↓ | {r.extra[key]:.1f} |")
+        lines.append("")
         if r.not_run:
-            lines += ["### Not run", "", "| Case | RT | Reason |", "|---|---|---|"]
-            lines += [f"| {n['case_id']} | {n.get('rt') or ''} | {n['reason']} |" for n in r.not_run]
-            lines.append("")
+            lines += [f"{len(r.not_run)} adaptation case(s) not run (no adaptation engine yet).", ""]
+
+    lines += ["Failure details are in `results.json`.", ""]
     return "\n".join(lines)
+
+
 
 
 def render_console(results: dict, gates: list[dict]) -> str:

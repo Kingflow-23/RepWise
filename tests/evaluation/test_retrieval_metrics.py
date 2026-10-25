@@ -1,10 +1,8 @@
-import math
-
 import pytest
 
 from src.evaluation.metrics.common import Ratio, mean_ratio
 from src.evaluation.metrics.retrieval import (
-    Span, hit_at_k_ids, judge_ranking, ndcg_at_k_ids, precision_at_k_ids,
+    Span, hit_at_k_ids, judge_ranking, precision_at_k_ids,
     recall_at_k_ids, reciprocal_rank_ids,
 )
 
@@ -44,18 +42,6 @@ def test_recall_is_not_applicable_without_relevant_items():
     assert recall_at_k_ids(set(), RANKING, 5) is None
 
 
-def test_ndcg_perfect_and_graded():
-    grades = {"a": 3, "b": 1}
-    assert ndcg_at_k_ids(grades, ["a", "b", "c"], 3) == pytest.approx(1.0)
-    swapped = ndcg_at_k_ids(grades, ["b", "a", "c"], 3)
-    expected = (1 + 3 / math.log2(3)) / (3 + 1 / math.log2(3))
-    assert swapped == pytest.approx(expected)
-
-
-def test_ndcg_not_applicable_without_graded_items():
-    assert ndcg_at_k_ids({}, ["a"], 3) is None
-
-
 # ------------------------------------------------------------- span level
 
 def chunk(video, start, end):
@@ -63,7 +49,7 @@ def chunk(video, start, end):
 
 
 def test_span_overlap_marks_chunk_relevant():
-    spans = [Span("v1", 100, 130, 3)]
+    spans = [Span("v1", 100, 130)]
     j = judge_ranking(spans, [chunk("v2", 100, 130), chunk("v1", 90, 180)])
     assert j.recall_at_k(1) == 0
     assert j.recall_at_k(2) == 1
@@ -72,14 +58,11 @@ def test_span_overlap_marks_chunk_relevant():
 
 
 def test_same_span_in_two_overlapping_chunks_counts_once():
-    spans = [Span("v1", 100, 130, 2), Span("v1", 400, 420, 1)]
+    spans = [Span("v1", 100, 130), Span("v1", 400, 420)]
     ranking = [chunk("v1", 0, 120), chunk("v1", 110, 200)]  # both overlap the first span
     j = judge_ranking(spans, ranking)
     assert j.recall_at_k(2) == 0.5
     assert j.precision_at_k(2) == 1.0
-    # Second chunk earns no gain: the span was already credited at rank 1.
-    ideal = 2 + 1 / math.log2(3)
-    assert j.ndcg_at_k(2) == pytest.approx(2 / ideal)
 
 
 def test_touching_boundaries_is_not_an_overlap():
@@ -91,4 +74,3 @@ def test_ratio_reports_na_for_zero_denominator():
     assert Ratio(0, 0).value is None
     assert Ratio(0, 0).fmt() == "N/A (0/0)"
     assert mean_ratio([1.0, 0.5]).value == 0.75
-    assert (Ratio(1, 2) + Ratio(1, 2)).fmt() == "0.500 (2/4)"

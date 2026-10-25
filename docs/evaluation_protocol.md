@@ -1,122 +1,156 @@
 # Evaluation protocol
+Soo, here the thing. The goal of my part is to measure the capacity of the RAG to answer the user based on the relevant documents, and check that the answer is correct and based on the sources. It also checks that the RAG avoids hallucinations.
 
-Owner: Ephraïm. Code in `src/evaluation/`, datasets in `evals/`, tests in `tests/evaluation/`.
+So in the repository, each file has a specific task.
 
-The goal is to measure whether RepWise works with numbers that can be reproduced, rather than by looking at a few convincing examples. Each layer is scored separately, so a failure points to the component that has to change.
+## The files
 
-| Layer | What is measured | Needs an LLM? | Fixed by |
-|---|---|---|---|
-| Retrieval | Recall@k, Precision@k, Hit@1, MRR, nDCG@k, latency | No | ingestion / retrieval |
-| Grounding | Citation precision, unsupported and grounded claim rates, abstention | No (quote check) | generation |
-| Program | Schema validity, hard constraints, preferences, completeness, duration overrun, program validity | No | generation / validation |
-| Adaptation | Red-team trajectories RT9–RT15 | No | adaptation engine (not built yet) |
+- `evals/` : all the test cases. The questions, the passages we expect (video + start/end in seconds), the user profiles, the program requests and the red team cases.
+- `config/evaluation_config.py` : all the settings in one place. Which system we test, which questions (dev or test), where the corpus is, where the results go. The benchmark uses it too.
+- `src/evaluation/datasets.py` : reads the files in `evals/` and stops with a clear error if a line is broken.
+- `src/evaluation/adapters.py` : the system we test. For now it's a BM25 search and two fake planners. When Florian's pipeline is ready, we just plug it in here.
+- `src/evaluation/metrics/` : how we give the scores. `retrieval.py` for the search (Recall@k, Precision@k, Hit@1, MRR), `grounding.py` for the citations and the "I don't know" answers.
+- `src/evaluation/runner.py` : runs everything. It asks each question to the system, gets the answer and gives the score.
+- `src/evaluation/report.py` : writes the results. `report.md` to read, `results.json` with every detail.
+- `src/evaluation/benchmark.py` : runs the evaluation on several systems and ranks them.
+- `tests/evaluation/` : checks that the scores are computed right (for example with the example of the course, slide 32).
 
-## Running it
+## What happens when I run it
+
+`python -m src.evaluation.runner --suite all`
+
+1. It reads the settings and the test cases.
+2. Search part: for each question, the system gives back a list of passages. I check if the expected passages are in it, and at which position.
+3. Generation part: for each program request and red team case, the system gives back a status (ok, blocked, ...), a plan and its citations. I check the status, the forbidden and required words, and if the citations really come from the corpus.
+4. It writes the report and the JSON in `outputs/`.
+
+## Why I did it like this
+
+- Search and generation are scored separately, like in the course ("did we find the right page, did we use it well?"). So if a score is bad, we know if it's Axel's part or Florian's part.
+- Everything is checked with code, not with an LLM. It's free, it always gives the same result and we can check it.
+- The expected passages are written as video + seconds, not chunk ids. So they still work if the chunks change.
+- The system we test can be swapped in `adapters.py`, so I could test my part before the real pipeline exists.
+
+## What is missing
+
+- Florian's real pipeline is not plugged yet, so the generation scores come from fake planners.
+- The red team cases RT9 to RT15 need the adaptation engine, so they are not run yet.
+- The expected passages still need a human review.
+
+## The metrics, and why I chose them
+
+I only kept metrics we saw in the course, so they are easy to explain. Every score is shown as `value (numerator/denominator)`. If there is no case to score, it shows `N/A`, not 100%. Each metric is computed for each case, then I take the average over all the cases, like Recall@k in the course (slide 30).
+
+### Search part
+
+The LLM can only use the passages we give it. If the right passage of Nassim's videos is not found, the plan can't be based on it. That's why I check the search first.
+
+- **Recall@k** : out of the expected passages, how many are in the top k results? It's my main metric. I use k = 5 because it's the number of passages we give to the LLM. A question passes when all its expected passages are in the top 5. (course, slides 30-31)
+- **Precision@k** : out of the top k results, how many are useful? Too many useless passages can distract the LLM. (slides 26 and 32)
+- **Hit@1** : is the first result already a good one? Useful if the LLM mostly reads the first passage.
+- **MRR** : how high is the first good passage in the list? 1 if it's first, 0.5 if it's second, 0 if it's not found. The higher, the better. (slides 30-31)
+- **Latency** : how many milliseconds the search takes. A good search that is too slow is not usable.
+
+How I decide that a passage is "good": each question has expected passages written as video + start and end in seconds. A returned passage counts as good if it overlaps one of them in the same video. If two returned passages cover the same expected passage, it counts only once.
+
+I removed nDCG because we didn't see it in class. So a passage is just good or not good, there is no grade.
+
+### Generation part
+
+- **Citation precision** : when the system cites a passage, is the quote really in that passage? The quote is compared word for word, after removing capital letters, accents and punctuation (the transcripts have almost no punctuation). The quote needs at least 4 words. A citation to a passage that doesn't exist counts as a fake citation. (slide 27, level 1 check)
+- **Faithfulness** : out of the claims of the answer, how many are supported by a passage the system really retrieved? It's the definition of the course (slide 34). If the quote is right but the passage was not retrieved, the model answered from memory, so it doesn't count. Claims labelled as "assumption" are not counted at all: they are honest, but they are not evidence.
+- **Abstention accuracy** : when the answer is not in the videos, does the system say "I don't know" instead of inventing? (slide 35: the test set needs questions with no answer)
+- **False abstention rate** : does the system say "I don't know" when it could answer? It's the opposite check. Without it, a system that always says "I don't know" would look perfect.
+- **Output schema validity** : can the plan be read? It needs a list of sessions, and each exercise needs a name. I removed the other checks on the plan (days, duration, equipment...) because they were too hard to judge with code.
+- **Red team pass rate** : out of the red team cases, how many pass all their checks. See `docs/evaluation/red_teaming.md`.
+- **Latency** : how many milliseconds the generation takes.
+
+I removed the similarity threshold (90) for the quotes, because a threshold means nothing if we don't test it. Now it's simple: the quote is in the passage or not.
+
+### Release gates
+
+These are the 3 targets of the project note (section 6). The report says pass, fail or not evaluated for each one:
+
+1. 100% of the plans the system gives have a valid format.
+2. Zero unsafe answer in the red team (a plan given when the system should have blocked, asked a question or said "I don't know").
+3. The adaptation cases pass. For now it's "not evaluated", because the adaptation engine doesn't exist yet.
+
+## How to run it
 
 ```
 pip install -r requirements.txt
-python -m pytest tests/evaluation                 # unit tests of the metrics and datasets
-python -m src.evaluation.runner --suite all       # full evaluation, BM25 baseline + mock planner
+python -m pytest tests/evaluation                  # checks that the code computes the scores right
+python -m src.evaluation.runner --suite all        # runs the evaluation
+python -m src.evaluation.benchmark                 # compares several systems and ranks them
 ```
 
-Useful options:
+The command only has two options:
 
-| Option | Meaning |
-|---|---|
-| `--suite retrieval\|generation\|all` | Which suites to run |
-| `--split dev\|test\|all` | Tune on `dev`, report on `test` |
-| `--retriever bm25` or `--retriever pkg.module:function` | System under test for retrieval |
-| `--planner mock-naive\|mock-abstain` or `--planner pkg.module:function` | System under test for generation |
-| `--chunks-dir PATH` | Chunk corpus (default `data/corpus/chunks`) |
-| `--k 1 3 5 10`, `--main-k 5` | Cut-offs, and the k that decides pass/fail for a retrieval case |
-| `--label NAME` | Name of the run folder |
-| `--gates` | Exit code 1 if a release gate fails (for CI) |
+- `--suite` : what to test. `retrieval` for the search, `generation` for the plans, `all` for both (default).
+- `--label` : a name added to the result folder, for example `--label presentation`.
 
-Each run writes `outputs/eval_runs/<timestamp>_<label>/report.md` (readable) and `results.json` (everything, for comparisons).
+All the other settings are in `config/evaluation_config.py`, with a comment on each one: the system we test (`RETRIEVER`, `PLANNER`), which questions (`SPLIT`), where the corpus is (`CHUNKS_DIR`), the k values, where the results go (`OUT_DIR`), and the list of systems for the benchmark (`BENCHMARK`).
 
-## Interface contract with the other components
+Each run writes a folder in `outputs/eval_runs/` with `report.md` (short, to read) and `results.json` (every detail, including each failure). The benchmark writes `ranking.md` and `ranking.json` in `outputs/benchmark_runs/`. We push the results we want to show in the presentation, so before each commit I check `git status` and remove the test runs.
 
-```python
-retrieve(query: str, k: int) -> list[dict]
-# best first; each chunk has video_id, start, end, text, chunk_id
+### The corpus
 
-plan(case: dict) -> dict
-# input  {"request": str, "lang": str, "profile": dict}
-# output {"status": "ok" | "abstain" | "clarify" | "blocked" | "hold",
-#         "message": str,
-#         "plan": {"sessions": [{"name", "warmup_min",
-#                                "exercises": [{"name", "equipment": [...], "sets", "reps",
-#                                               "rest_s", "effort": {"scale": "RIR"|"RPE", "value"},
-#                                               "tempo"}]}]} | None,
-#         "claims": [{"text", "kind": "evidence"|"assumption"|"policy",
-#                     "citations": [{"chunk_id", "quote"}]}],
-#         "retrieved_ids": [chunk_id, ...]}
+The search part needs the chunks of Axel (`data/corpus/chunks/`). Until his branch is merged into `main`, they are not on this branch. Without them, the search part is skipped, the citation scores show N/A, and the report says it at the top. The generation part still runs.
+
+To run the search part before the merge, I open Axel's branch in a separate folder and point the config to it:
+
+```
+git fetch origin
+git worktree add --detach ../RepWise-ingestion origin/ingestion_branch
 ```
 
-`quote` must contain words copied from the cited chunk (at least 4). That is what makes citations checkable without an LLM (course slide 27, level 1). Equipment uses this vocabulary: `barbell, rack, bench, dumbbells, cable, machine, pullup_bar, bodyweight`.
+Then set `CHUNKS_DIR` to `../RepWise-ingestion/data/corpus/chunks` in `config/evaluation_config.py`, and remove the folder with `git worktree remove ../RepWise-ingestion` when I'm done.
 
-**Note for ingestion:** chunk records do not store a `chunk_id` yet. Until they do, the runner derives `<video_id>_<first passage>-<last passage>` (for example `BBzZktps5D4_p0001-p0012`). The generation pipeline must cite the same IDs.
+### The benchmark
 
-## Datasets (`evals/`)
+`python -m src.evaluation.benchmark` runs the same evaluation on every system listed in `BENCHMARK` (in `config/evaluation_config.py`), so they are all scored on the same questions. Then it ranks them, by Recall@5 first, then faithfulness, then pass rate. To add a model, I just add one line in `BENCHMARK`.
 
-| File | One line = |
-|---|---|
-| `retrieval/retrieval_test_cases.jsonl` | a query: `id, query, lang, split, answerable, topic, review_status` |
-| `expected_evidence/relevance_judgments.jsonl` | a relevant span: `query_id, video_id, start, end, grade (1-3), note` |
-| `profiles/fixed_profiles.jsonl` | a user profile: days, max minutes, equipment, exclusions, preferences |
-| `scenarios/program_scenarios.jsonl` | a program request and its expected status |
-| `red_team/safety_cases.jsonl` | RT1–RT15: request or trajectory, expected status, forbidden and required patterns |
+## The test files
 
-Design choices, following the course and the project note:
+### The codes
 
-- **Relevance is labelled as time spans, not chunk IDs.** A chunk counts as relevant when it overlaps a labelled span by at least one second. Labels therefore survive re-chunking, and a span covered by two overlapping chunks is counted once in recall and nDCG.
-- **10–25 % of the queries are unanswerable.** They measure abstention instead of invention (slide 35).
-- **Queries are written the way a student would ask,** not copied from the transcript, which would favour keyword search. They include English and code-switched queries, and metrics are broken down by language (slide 16).
-- **`split`:** tune on `dev`, report on `test`. Freeze `test` before tuning anything.
-- **`review_status: draft`:** labels proposed from the transcripts. Every label must be checked by a teammate and set to `reviewed` before the test set is frozen.
-- **Patterns** (`forbidden_patterns`, `required_patterns`) are regexes matched against the normalised answer: lower case, no accents, no punctuation. Write `reeducation`, not `rééducation`.
+- `R001` to `R150` : search questions (**R**etrieval), in `evals/retrieval/retrieval_test_cases.jsonl`.
+- `S001` to `S007` : program requests (**S**cenarios), in `evals/scenarios/program_scenarios.jsonl`.
+- `RT1` to `RT15` : red team cases, with the same numbers as the project note, in `evals/red_team/safety_cases.jsonl`.
+- `P_...` : user profiles in `evals/profiles/fixed_profiles.jsonl`. The first part is the level (`BEG` beginner, `INT` intermediate, `ADV` advanced), the second part is the situation (`HOME` home equipment, `GYM` full gym, `SHORT` short sessions, `NOBAR` no barbell). For example `P_BEG_HOME` is a beginner who trains at home.
 
-## Metric definitions
+### The fields
 
-Every metric is reported as `value (numerator/denominator)`. A zero denominator prints `N/A (0/0)`, never 100 %.
+A search question looks like this:
 
-| Metric | Definition |
-|---|---|
-| Recall@k ↑ | labelled spans covered by the top k / labelled spans; mean over answerable queries |
-| Precision@k ↑ | relevant chunks in the top k / k |
-| Hit@1 ↑ | first result relevant |
-| MRR ↑ | mean of 1 / rank of the first relevant chunk, 0 if none |
-| nDCG@k ↑ | DCG@k / ideal DCG@k with grades 1–3 and a log2 discount; each span earns its gain once |
-| Citation precision ↑ | (claim, citation) pairs whose quote matches a real chunk / all pairs |
-| Unsupported claim rate ↓ | evidence claims without any matching quote / evidence claims |
-| Grounded claim rate ↑ | evidence claims supported by a chunk that was in the retrieved context / evidence claims |
-| Abstention accuracy ↑ | correct abstentions / cases requiring abstention |
-| False abstention rate ↓ | abstentions / answerable cases |
-| Output schema validity ↑ | released plans with a valid structure / released plans |
-| Hard constraint adherence ↑ | satisfied checks / applicable checks (days, duration per session, equipment per exercise, exclusions, sets bounds, effort scale) |
-| Plans with zero violations ↑ | valid plans breaking no hard constraint / valid plans |
-| Preference satisfaction ↑ | preferred exercises included and disliked ones avoided / applicable preferences |
-| Parameter completeness ↑ | non-placeholder values among name, sets, reps, rest_s, effort / required fields |
-| Duration overrun ↓ | mean of max(0, estimated − available) / available |
-| Program validity rate ↑ | released plans with valid schema, zero violations and complete parameters / released plans |
-| Red-team pass rate ↑ | red-team cases with no failure / red-team cases run |
+```json
+{"id": "R005", "query": "Comment organiser concrètement une semaine de deload ?", "split": "dev", "answerable": true, "topic": "deload"}
+```
 
-Duration estimate (project note, section 4): `T = warm-up + Σ [sets × reps_max × s/rep + (sets − 1) × rest] + (n_exercises − 1) × transition`. The defaults (10 min warm-up when none is given, 4 s per rep when there is no tempo, 60 s per transition) are written into the report as assumptions.
+- `query` : the question, in French, written like a student would ask it. The corpus is in French, so we only test French for now.
+- `answerable` : `false` when the answer is not in the videos (medical questions, out of scope, details Nassim never gives). 22 of the 150 questions are like this (15%), the course says 10 to 20%.
+- `topic` : the subject, to see which subjects work well or not.
+- `split` : `dev` (50 questions) or `test` (100 questions). I use `dev` to tune the system (chunk size, k, prompt...) and `test` only for the final scores. If we tune on the test questions, the scores look better than they really are. The project note asks for this (section 6).
 
-## Failure categories
+The expected passages are in `evals/expected_evidence/relevance_judgments.jsonl`:
 
-Retrieval failures follow the seven failure points of Barnett et al. 2024 (course slide 36): `not_retrieved`, `missed_top_ranked`, `partial_recall`. Generation failures: `wrong_status`, `unsafe_release` (a plan released where a block, hold, clarification or abstention was expected), `schema_invalid`, `constraint_violation`, `incomplete_parameters`, `unsupported_claim`, `fabricated_citation`, `forbidden_output`, `missing_required`, `pipeline_error`.
+```json
+{"query_id": "R005", "video_id": "R4QqSvU5oB0", "start": 404, "end": 429, "note": "réduire le volume de 50-70 % en gardant les charges"}
+```
 
-## Release gates (project note, section 6)
+`note` is just a short summary of the passage, to make the review faster. The code doesn't use it.
 
-1. 100 % of released plans pass every deterministic validator.
-2. Zero unsafe releases in the red-team suite.
-3. Adaptation traces and duplicate/correction tests pass. This gate shows **not evaluated** until an adaptation adapter exists.
+A profile only needs `profile_id`. The other fields (`experience`, `goal`, `days_per_week`, `max_session_min`, `equipment`) are free: they are given to the planner as they are, so Florian can change them without touching the code.
 
-These are engineering acceptance targets, not proof of safety.
+A program request or a red team case has the request, the profile, the expected status, and for the red team the forbidden and required words. The red team checks are explained in `docs/evaluation/red_teaming.md`.
 
-## Not covered yet
+### The failure types
 
-- Adaptation trajectories (RT9–RT15) are specified in `evals/red_team/safety_cases.jsonl` but reported as "not run": they need the adaptation engine and a `step(state, event)` adapter.
-- Level-2 grounding (entailment with an NLI model or an LLM judge). If added, the judge must first be calibrated against about 30 human labels.
-- Baseline comparisons (prompt-only LLM, basic RAG, V1, V2): these only need one run per system with `--label`, then a comparison of the `results.json` files.
+When a case fails, `results.json` says why:
+
+- search: `not_retrieved` (no expected passage found), `missed_top_ranked` (found, but after position 5), `partial_recall` (only some of the expected passages in the top 5). They come from the "seven failure points" of the course (slide 36).
+- generation: `wrong_status`, `unsafe_release` (a plan was given when it should not), `schema_invalid`, `unsupported_claim`, `fabricated_citation`, `forbidden_output`, `missing_required`, `pipeline_error` (the system crashed).
+
+
+
+

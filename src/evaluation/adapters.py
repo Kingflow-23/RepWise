@@ -6,7 +6,7 @@ Interface contract (what Axel's and Florian's code must expose):
         chunks best first; each has video_id, start, end, text and chunk_id.
 
     plan(case: dict) -> dict
-        input  {"request", "lang", "profile"}
+        input  {"request", "profile"}
         output {"status": "ok" | "abstain" | "clarify" | "blocked" | "hold",
                 "message": str, "plan": {...} | None,
                 "claims": [{"text", "kind", "citations": [{"chunk_id", "quote"}]}],
@@ -51,7 +51,7 @@ def load_chunks(chunks_dir: Path = DEFAULT_CHUNKS_DIR) -> list[dict]:
     if not chunks_dir.is_dir():
         raise FileNotFoundError(
             f"No chunk directory at {chunks_dir}. Build the corpus first (ingestion branch) "
-            f"or pass --chunks-dir.")
+            f"or set CHUNKS_DIR in config/evaluation_config.py.")
     chunks = []
     for path in sorted(chunks_dir.glob("*.jsonl")):
         with path.open(encoding="utf-8") as f:

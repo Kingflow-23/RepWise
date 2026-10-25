@@ -1,11 +1,14 @@
 """One command to run the evaluation suites and report pass rates and failures.
 
-    python -m src.evaluation.runner --suite all --retriever bm25 --planner mock-naive
+    python -m src.evaluation.runner --suite all
+
+Settings (systems under test, split, corpus folder, k values, output folder)
+are in config/evaluation_config.py.
 
 Suites:
-    retrieval   labelled queries -> Recall@k, Precision@k, Hit@1, MRR, nDCG@k, latency
-    generation  program scenarios + red-team cases -> status, abstention, grounding,
-                hard constraints, completeness, duration, program validity
+    retrieval   labelled queries -> Recall@k, Precision@k, Hit@1, MRR, latency
+    generation  program scenarios + red-team cases -> status, abstention,
+                citation precision, faithfulness, output format
     all         both
 
 Adaptation (multi-session) red-team cases are listed as "not run" until an
@@ -19,17 +22,12 @@ import sys
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from pathlib import Path
 
+from config import evaluation_config as config
 from . import adapters, datasets, report
-from .metrics.common import Ratio, mean_ratio, pooled
+from .metrics.common import Ratio, mean_ratio
 from .metrics.grounding import abstention_metrics, abstention_outcome, check_claims
-from .metrics.program import check_program
 from .metrics.retrieval import judge_ranking
-
-DEFAULT_KS = (1, 3, 5, 10)
-RETRIEVAL_DEPTH = 50
-DEFAULT_OUT = datasets.REPO / "outputs" / "eval_runs"
 
 
 @dataclass
@@ -47,7 +45,6 @@ class SuiteResult:
     n_cases: int = 0
     n_passed: int = 0
     metrics: dict[str, Ratio] = field(default_factory=dict)
-    breakdown: dict[str, dict[str, Ratio]] = field(default_factory=dict)
     extra: dict = field(default_factory=dict)
     failures: list[Failure] = field(default_factory=list)
     not_run: list[dict] = field(default_factory=list)
@@ -66,19 +63,21 @@ def _percentile(values: list[float], q: float) -> float | None:
 
 # ---------------------------------------------------------------- retrieval
 
-def evaluate_retrieval(cases, retriever, ks=DEFAULT_KS, main_k: int = 5) -> SuiteResult:
+def evaluate_retrieval(cases, retriever, ks=None, main_k=None) -> SuiteResult:
+    ks = ks or config.K_VALUES
+    main_k = main_k or config.MAIN_K
     res = SuiteResult("retrieval")
     per_query: dict[str, list[float]] = {}
-    by_lang: dict[str, dict[str, list[float]]] = {}
     latencies = []
 
     def add(bucket: dict, key: str, value):
+
         if value is not None:
             bucket.setdefault(key, []).append(value)
 
     for case in cases:
         t0 = time.perf_counter()
-        ranking = retriever(case.query, max(max(ks), RETRIEVAL_DEPTH))
+        ranking = retriever(case.query, max(max(ks), config.RETRIEVAL_DEPTH))
         latencies.append((time.perf_counter() - t0) * 1000)
         if not case.answerable:
             # Retrieval scores need labelled evidence; abstention is judged in the generation suite.
@@ -88,12 +87,8 @@ def evaluate_retrieval(cases, retriever, ks=DEFAULT_KS, main_k: int = 5) -> Suit
         for k in ks:
             add(per_query, f"recall@{k}", j.recall_at_k(k))
             add(per_query, f"precision@{k}", j.precision_at_k(k))
-            add(per_query, f"ndcg@{k}", j.ndcg_at_k(k))
         add(per_query, "hit@1", j.hit_at_k(1))
         add(per_query, "mrr", j.reciprocal_rank())
-        lang = by_lang.setdefault(case.lang, {})
-        add(lang, f"recall@{main_k}", j.recall_at_k(main_k))
-        add(lang, "mrr", j.reciprocal_rank())
 
         recall = j.recall_at_k(main_k)
         if recall == 1.0:
@@ -110,11 +105,9 @@ def evaluate_retrieval(cases, retriever, ks=DEFAULT_KS, main_k: int = 5) -> Suit
         res.failures.append(Failure(case.id, "retrieval", category, f"{detail}. Top 3: {top}. Query: {case.query}"))
 
     res.metrics = {name: mean_ratio(vals) for name, vals in per_query.items()}
-    res.breakdown = {lang: {m: mean_ratio(v) for m, v in vals.items()} for lang, vals in by_lang.items()}
     res.extra = {
         "main_k": main_k,
         "n_unanswerable_skipped": sum(not c.answerable for c in cases),
-        "n_draft_labels": sum(c.review_status != "reviewed" for c in cases),
         "latency_ms_median": statistics.median(latencies) if latencies else None,
         "latency_ms_p95": _percentile(latencies, 0.95),
     }
@@ -141,10 +134,8 @@ def plan_schema_errors(plan) -> list[str]:
 def evaluate_generation(cases, planner, profiles: dict, corpus: dict[str, str] | None) -> SuiteResult:
     res = SuiteResult("generation")
     outcomes, latencies = [], []
-    released = valid_released = schema_ok = 0
-    constraint_ratios, completeness, prefs, overruns = [], [], [], []
-    zero_violation_plans = 0
-    grounding = {"citation_precision": [], "unsupported_claim_rate": [], "grounded_claim_rate": []}
+    released = schema_ok = 0
+    grounding = {"citation_precision": [], "faithfulness": []}
     fabricated = 0
     redteam_total = redteam_passed = 0
 
@@ -156,7 +147,7 @@ def evaluate_generation(cases, planner, profiles: dict, corpus: dict[str, str] |
         profile = {**profiles.get(case.profile_id, {}), **case.profile_overrides}
         t0 = time.perf_counter()
         try:
-            out = planner({"request": case.request, "lang": case.lang, "profile": profile})
+            out = planner({"request": case.request, "profile": profile})
             error = None
         except Exception as e:  # a crash is a failure of the system under test, not of the runner
             out, error = {"status": "error"}, f"{type(e).__name__}: {e}"
@@ -189,29 +180,20 @@ def evaluate_generation(cases, planner, profiles: dict, corpus: dict[str, str] |
                 fail("schema_invalid", "; ".join(errors))
             else:
                 schema_ok += 1
-                pr = check_program(plan, profile, case.forbidden_exercises)
-                constraint_ratios.append(pr.hard_constraint_adherence)
-                completeness.append(pr.parameter_completeness)
-                prefs.append(pr.preference_satisfaction)
-                overruns.extend(pr.overruns)
-                zero_violation_plans += pr.zero_violations
-                for v in pr.violations:
-                    fail("constraint_violation", f"{v.name}: {v.detail}".rstrip(": "))
-                if pr.parameter_completeness.value not in (None, 1.0):
-                    fail("incomplete_parameters", f"completeness {pr.parameter_completeness.fmt()}")
-                if pr.zero_violations and pr.parameter_completeness.value in (None, 1.0):
-                    valid_released += 1
 
         if corpus is not None and out.get("claims"):
             g = check_claims(out["claims"], corpus, set(out.get("retrieved_ids") or []) or None)
-            grounding["citation_precision"].append(g.citation_precision)
-            grounding["unsupported_claim_rate"].append(g.unsupported_claim_rate)
-            grounding["grounded_claim_rate"].append(g.grounded_claim_rate)
+            for name in ("citation_precision", "faithfulness"):
+                value = getattr(g, name).value
+                if value is not None:
+                    grounding[name].append(value)
             fabricated += g.fabricated_citations
             if g.fabricated_citations:
                 fail("fabricated_citation", f"{g.fabricated_citations} citation(s) to unknown chunks")
-            if g.unsupported_claim_rate.num:
-                fail("unsupported_claim", f"{int(g.unsupported_claim_rate.num)} evidence claim(s) without a matching quote")
+            unsupported = g.n_evidence_claims - g.grounded_claims
+            if unsupported:
+                fail("unsupported_claim", f"{unsupported} claim(s) not supported by the retrieved passages")
+
 
         res.failures.extend(fails)
         res.n_passed += not fails
@@ -222,15 +204,8 @@ def evaluate_generation(cases, planner, profiles: dict, corpus: dict[str, str] |
     res.metrics = {
         **abstention_metrics(outcomes),
         "output_schema_validity": Ratio(schema_ok, released),
-        "hard_constraint_adherence": pooled(constraint_ratios),
-        "plans_with_zero_violations": Ratio(zero_violation_plans, schema_ok),
-        "preference_satisfaction": pooled(prefs),
-        "parameter_completeness": pooled(completeness),
-        "duration_overrun_mean": mean_ratio(overruns),
-        "program_validity_rate": Ratio(valid_released, released),
-        "citation_precision": pooled(grounding["citation_precision"]),
-        "unsupported_claim_rate": pooled(grounding["unsupported_claim_rate"]),
-        "grounded_claim_rate": pooled(grounding["grounded_claim_rate"]),
+        "citation_precision": mean_ratio(grounding["citation_precision"]),
+        "faithfulness": mean_ratio(grounding["faithfulness"]),
         "red_team_pass_rate": Ratio(redteam_passed, redteam_total),
     }
     res.extra = {
@@ -249,8 +224,8 @@ def release_gates(results: dict[str, SuiteResult]) -> list[dict]:
     gates = []
     gen = results.get("generation")
     if gen:
-        validity = gen.metrics["program_validity_rate"]
-        gates.append({"gate": "100% released-plan validator compliance",
+        validity = gen.metrics["output_schema_validity"]
+        gates.append({"gate": "100% of released plans have a valid format",
                       "status": "n/a" if validity.value is None else ("pass" if validity.value == 1 else "fail"),
                       "value": validity.fmt()})
         unsafe = [f for f in gen.failures if f.category == "unsafe_release"]
@@ -265,71 +240,80 @@ def release_gates(results: dict[str, SuiteResult]) -> list[dict]:
 # --------------------------------------------------------------------- CLI
 
 def parse_args(argv=None):
-    p = argparse.ArgumentParser(description="Run RepWise evaluation suites.")
-    p.add_argument("--suite", choices=["retrieval", "generation", "all"], default="all")
-    p.add_argument("--split", choices=["dev", "test", "all"], default="all")
-    p.add_argument("--retriever", default="bm25", help="'bm25' or 'module.path:callable'")
-    p.add_argument("--planner", default="mock-naive",
-                   help="'mock-naive', 'mock-abstain' or 'module.path:callable'")
-    p.add_argument("--chunks-dir", type=Path, default=adapters.DEFAULT_CHUNKS_DIR)
-    p.add_argument("--k", type=int, nargs="+", default=list(DEFAULT_KS))
-    p.add_argument("--main-k", type=int, default=5, help="k used for pass/fail of a retrieval case")
-    p.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    p.add_argument("--label", default="", help="free text name for this run")
-    p.add_argument("--gates", action="store_true", help="exit with code 1 if a release gate fails")
+    p = argparse.ArgumentParser(
+        description="Run the RepWise test cases and write a report. Other settings are in config/evaluation_config.py.")
+    p.add_argument("--suite", choices=["retrieval", "generation", "all"], default="all",
+                   help="what to test: retrieval of passages, generated plans, or both (default: all)")
+    p.add_argument("--label", default="",
+                   help="name added to the run folder, e.g. the benchmark entry being tested")
     return p.parse_args(argv)
 
 
-def main(argv=None) -> int:
-    args = parse_args(argv)
-    keep = (lambda c: True) if args.split == "all" else (lambda c: c.split == args.split)
+def run_evaluation(suite: str, retriever_name: str, planner_name: str, label: str = "") -> dict:
+    """Evaluate one retriever / planner pair on the test cases.
+
+    Writes results.json and report.md in a new run folder and returns
+    {"run_dir", "payload", "results", "gates"}. Used by main() and by the benchmark.
+    """
+    keep = (lambda c: True) if config.SPLIT == "all" else (lambda c: c.split == config.SPLIT)
     results: dict[str, SuiteResult] = {}
+    warnings: list[str] = []
+
+    def warn(message: str):
+        warnings.append(message)
+        print(f"[warn] {message}", file=sys.stderr)
 
     corpus = None
     try:
-        corpus = {c["chunk_id"]: c.get("text", "") for c in adapters.load_chunks(args.chunks_dir)}
+        corpus = {c["chunk_id"]: c.get("text", "") for c in adapters.load_chunks(config.CHUNKS_DIR)}
     except FileNotFoundError as e:
-        print(f"[warn] {e} Grounding metrics will be N/A.", file=sys.stderr)
+        warn(f"{e} Grounding metrics will be N/A.")
 
-    if args.suite in ("retrieval", "all"):
-        if corpus is None and args.retriever == "bm25":
-            print("[warn] retrieval suite skipped: the bm25 baseline needs the chunk corpus.", file=sys.stderr)
+    if suite in ("retrieval", "all"):
+        if corpus is None and retriever_name == "bm25":
+            warn("Retrieval suite skipped: the bm25 baseline needs the chunk corpus.")
         else:
             cases = [c for c in datasets.load_retrieval_cases() if keep(c)]
-            retriever = adapters.build_retriever(args.retriever, args.chunks_dir)
-            results["retrieval"] = evaluate_retrieval(cases, retriever, args.k, args.main_k)
+            retriever = adapters.build_retriever(retriever_name, config.CHUNKS_DIR)
+            results["retrieval"] = evaluate_retrieval(cases, retriever)
 
-    if args.suite in ("generation", "all"):
+    if suite in ("generation", "all"):
         profiles = datasets.load_profiles()
         cases = [c for c in datasets.load_generation_cases(profiles=profiles) if keep(c)]
-        planner = adapters.build_planner(args.planner, args.chunks_dir)
+        planner = adapters.build_planner(planner_name, config.CHUNKS_DIR)
         results["generation"] = evaluate_generation(cases, planner, profiles, corpus)
 
     gates = release_gates(results)
     meta = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "suite": args.suite, "split": args.split, "retriever": args.retriever,
-        "planner": args.planner, "chunks_dir": str(args.chunks_dir), "label": args.label,
+        "suite": suite, "split": config.SPLIT, "retriever": retriever_name,
+        "planner": planner_name, "chunks_dir": str(config.CHUNKS_DIR), "label": label,
         "n_corpus_chunks": len(corpus) if corpus is not None else 0,
+        "warnings": warnings,
     }
-    run_dir = args.out / f"{datetime.now():%Y%m%d-%H%M%S}{'_' + args.label if args.label else ''}"
+    run_dir = config.OUT_DIR / f"{datetime.now():%Y%m%d-%H%M%S}{'_' + label if label else ''}"
     run_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "meta": meta, "gates": gates,
         "suites": {name: {
             "n_cases": r.n_cases, "n_passed": r.n_passed, "pass_rate": r.pass_rate.to_dict(),
             "metrics": {k: v.to_dict() for k, v in r.metrics.items()},
-            "breakdown": {g: {k: v.to_dict() for k, v in m.items()} for g, m in r.breakdown.items()},
             "extra": r.extra, "failures": [asdict(f) for f in r.failures], "not_run": r.not_run,
         } for name, r in results.items()},
     }
     (run_dir / "results.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     markdown = report.render(meta, results, gates)
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
-    print(report.render_console(results, gates))
-    print(f"\nFull report: {run_dir / 'report.md'}")
+    return {"run_dir": run_dir, "payload": payload, "results": results, "gates": gates}
 
-    if args.gates and any(g["status"] == "fail" for g in gates):
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+    run = run_evaluation(args.suite, config.RETRIEVER, config.PLANNER, args.label)
+    print(report.render_console(run["results"], run["gates"]))
+    print(f"\nFull report: {run['run_dir'] / 'report.md'}")
+
+    if config.FAIL_ON_GATES and any(g["status"] == "fail" for g in run["gates"]):
         return 1
     return 0
 

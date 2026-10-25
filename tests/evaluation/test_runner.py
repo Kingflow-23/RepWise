@@ -5,6 +5,7 @@ import json
 import pytest
 
 from src.evaluation import adapters, runner
+from config import evaluation_config as config
 from src.evaluation.datasets import GenerationCase, RetrievalCase
 from src.evaluation.metrics.retrieval import Span
 
@@ -42,9 +43,9 @@ def test_bm25_finds_the_right_chunk_and_skips_sponsor(chunks_dir):
 def test_retrieval_suite_metrics_and_failures(chunks_dir):
     bm25 = adapters.BM25Retriever(adapters.load_chunks(chunks_dir))
     cases = [
-        RetrievalCase("Q1", "temps de récupération entre séries", "fr", "test", True, spans=[Span("v1", 10, 20, 3)]),
-        RetrievalCase("Q2", "deload volume charges", "fr", "test", True, spans=[Span("v9", 0, 10, 3)]),
-        RetrievalCase("Q3", "prix abonnement", "fr", "test", False),
+        RetrievalCase("Q1", "temps de récupération entre séries", "test", True, spans=[Span("v1", 10, 20)]),
+        RetrievalCase("Q2", "deload volume charges", "test", True, spans=[Span("v9", 0, 10)]),
+        RetrievalCase("Q3", "prix abonnement", "test", False),
     ]
     res = runner.evaluate_retrieval(cases, bm25, ks=(1, 3), main_k=3)
     assert res.n_cases == 2 and res.n_passed == 1
@@ -54,7 +55,7 @@ def test_retrieval_suite_metrics_and_failures(chunks_dir):
 
 
 def gen_case(cid, expected, source="scenario", layer="generation", **kw):
-    return GenerationCase(id=cid, source=source, layer=layer, request="r", lang="fr", split="test",
+    return GenerationCase(id=cid, source=source, layer=layer, request="r", split="test",
                           profile_id="P", expected_status=expected, **kw)
 
 
@@ -69,8 +70,8 @@ def test_generation_suite_with_naive_mock(chunks_dir):
     ]
     res = runner.evaluate_generation(cases, planner, profiles, corpus)
     categories = {f.category for f in res.failures}
-    assert {"constraint_violation", "fabricated_citation", "unsafe_release"} <= categories
-    assert res.metrics["program_validity_rate"].value == 0
+    assert {"fabricated_citation", "unsafe_release"} <= categories
+    assert res.metrics["output_schema_validity"].value == 1
     assert res.metrics["red_team_pass_rate"].fmt() == "0.000 (0/1)"
     assert res.not_run and res.not_run[0]["case_id"] == "RT9"
     gates = {g["gate"]: g["status"] for g in runner.release_gates({"generation": res})}
@@ -92,9 +93,12 @@ def test_crashing_planner_is_reported_not_raised():
     assert res.failures[0].category == "pipeline_error"
 
 
-def test_cli_writes_reports(chunks_dir, tmp_path):
+def test_cli_writes_reports(chunks_dir, tmp_path, monkeypatch):
+    """The command evaluates both suites and writes results.json and report.md."""
     out = tmp_path / "runs"
-    code = runner.main(["--suite", "all", "--chunks-dir", str(chunks_dir), "--out", str(out), "--label", "smoke"])
+    monkeypatch.setattr(config, "CHUNKS_DIR", chunks_dir)
+    monkeypatch.setattr(config, "OUT_DIR", out)
+    code = runner.main(["--suite", "all", "--label", "smoke"])
     assert code == 0
     run = next(out.iterdir())
     payload = json.loads((run / "results.json").read_text(encoding="utf-8"))
@@ -102,6 +106,23 @@ def test_cli_writes_reports(chunks_dir, tmp_path):
     assert "# RepWise evaluation report" in (run / "report.md").read_text(encoding="utf-8")
 
 
-def test_cli_gates_flag_returns_error_code(chunks_dir, tmp_path):
-    code = runner.main(["--suite", "generation", "--chunks-dir", str(chunks_dir), "--out", str(tmp_path), "--gates"])
+def test_cli_without_corpus_skips_retrieval_and_says_so(tmp_path, monkeypatch):
+    """Without the chunk corpus the retrieval suite is skipped and the report warns about it."""
+    out = tmp_path / "runs"
+    monkeypatch.setattr(config, "CHUNKS_DIR", tmp_path / "missing")
+    monkeypatch.setattr(config, "OUT_DIR", out)
+    code = runner.main(["--suite", "all"])
+    assert code == 0
+    run = next(out.iterdir())
+    payload = json.loads((run / "results.json").read_text(encoding="utf-8"))
+    assert set(payload["suites"]) == {"generation"}
+    assert "Retrieval suite skipped" in (run / "report.md").read_text(encoding="utf-8")
+
+
+def test_fail_on_gates_returns_error_code(chunks_dir, tmp_path, monkeypatch):
+    """With FAIL_ON_GATES, a failed release gate makes the command return 1."""
+    monkeypatch.setattr(config, "CHUNKS_DIR", chunks_dir)
+    monkeypatch.setattr(config, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(config, "FAIL_ON_GATES", True)
+    code = runner.main(["--suite", "generation"])
     assert code == 1

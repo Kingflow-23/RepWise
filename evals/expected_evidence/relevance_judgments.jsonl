@@ -1,23 +1,166 @@
-{"query_id": "R001", "video_id": "qcs8utwv9WE", "start": 130, "end": 161, "grade": 3, "note": "force ~4 min, hypertrophie 1 min 30 - 2 min"}
-{"query_id": "R001", "video_id": "qcs8utwv9WE", "start": 161, "end": 191, "grade": 2, "note": "études récentes: 2 - 2 min 30"}
-{"query_id": "R001", "video_id": "qcs8utwv9WE", "start": 473, "end": 496, "grade": 3, "note": "force 3-5 min, hypertrophie ~2 min"}
-{"query_id": "R002", "video_id": "qcs8utwv9WE", "start": 429, "end": 451, "grade": 3, "note": "débutant: 2-3 min puis réduire"}
-{"query_id": "R003", "video_id": "qcs8utwv9WE", "start": 594, "end": 620, "grade": 3, "note": "45 min ou 1 h: réduire la récup plutôt que le volume"}
-{"query_id": "R003", "video_id": "qcs8utwv9WE", "start": 664, "end": 688, "grade": 2, "note": "récup courte possible si volume plus élevé"}
-{"query_id": "R004", "video_id": "qcs8utwv9WE", "start": 451, "end": 466, "grade": 3, "note": "chronométrer pas nécessaire sous 5 min"}
-{"query_id": "R005", "video_id": "R4QqSvU5oB0", "start": 404, "end": 429, "grade": 3, "note": "réduire le volume de 50-70 % en gardant les charges"}
-{"query_id": "R005", "video_id": "R4QqSvU5oB0", "start": 429, "end": 464, "grade": 3, "note": "3 full body, 4 polyarticulaires, jamais à l'échec"}
-{"query_id": "R005", "video_id": "R4QqSvU5oB0", "start": 360, "end": 390, "grade": 1, "note": "option arrêt complet"}
-{"query_id": "R006", "video_id": "R4QqSvU5oB0", "start": 590, "end": 677, "grade": 3, "note": "5 signes: motivation, sommeil, charges, faim, récupération"}
-{"query_id": "R007", "video_id": "R4QqSvU5oB0", "start": 472, "end": 521, "grade": 3, "note": "individualiser; semaine 7 après 6 semaines intenses"}
-{"query_id": "R008", "video_id": "R4QqSvU5oB0", "start": 565, "end": 582, "grade": 3, "note": "débutant: deload pas nécessaire"}
-{"query_id": "R009", "video_id": "R4QqSvU5oB0", "start": 236, "end": 286, "grade": 2, "note": "progression - stagnation - récupération - surcompensation"}
-{"query_id": "R009", "video_id": "R4QqSvU5oB0", "start": 286, "end": 303, "grade": 3, "note": "stagner peut venir d'un mauvais programme"}
-{"query_id": "R010", "video_id": "R4QqSvU5oB0", "start": 373, "end": 404, "grade": 3, "note": "pas dramatique de s'arrêter une semaine"}
-{"query_id": "R011", "video_id": "1OsDiVvQT7k", "start": 215, "end": 263, "grade": 3, "note": "<12, 12-20, >20 séries par groupe et par semaine"}
-{"query_id": "R011", "video_id": "1OsDiVvQT7k", "start": 666, "end": 682, "grade": 2, "note": "6-8 puis 18-24 séries sur un cycle"}
-{"query_id": "R012", "video_id": "1OsDiVvQT7k", "start": 652, "end": 694, "grade": 3, "note": "périodiser le volume: doubler ou tripler sur le cycle"}
-{"query_id": "R013", "video_id": "8Upe8QgpYps", "start": 366, "end": 400, "grade": 3, "note": "la vraie surcharge progressive = la charge"}
-{"query_id": "R014", "video_id": "DJEi-FifTtg", "start": 55, "end": 80, "grade": 3, "note": "adulte 7-9 h, ado 8-10 h"}
-{"query_id": "R015", "video_id": "05WPpiDdC78", "start": 137, "end": 175, "grade": 2, "note": "exemple 3 séances/semaine pour débutant"}
-{"query_id": "R016", "video_id": "J_Zm4XvE__s", "start": 770, "end": 790, "grade": 2, "note": "squat classique avec cale: meilleure alternative au front squat pour l'hypertrophie"}
+{"query_id": "R001", "video_id": "qcs8utwv9WE", "start": 130, "end": 161, "note": "force ~4 min, hypertrophie 1 min 30 - 2 min"}
+{"query_id": "R001", "video_id": "qcs8utwv9WE", "start": 161, "end": 191, "note": "études récentes: 2 - 2 min 30"}
+{"query_id": "R001", "video_id": "qcs8utwv9WE", "start": 473, "end": 496, "note": "force 3-5 min, hypertrophie ~2 min"}
+{"query_id": "R002", "video_id": "qcs8utwv9WE", "start": 429, "end": 451, "note": "débutant: 2-3 min puis réduire"}
+{"query_id": "R003", "video_id": "qcs8utwv9WE", "start": 594, "end": 620, "note": "45 min ou 1 h: réduire la récup plutôt que le volume"}
+{"query_id": "R003", "video_id": "qcs8utwv9WE", "start": 664, "end": 688, "note": "récup courte possible si volume plus élevé"}
+{"query_id": "R004", "video_id": "qcs8utwv9WE", "start": 451, "end": 466, "note": "chronométrer pas nécessaire sous 5 min"}
+{"query_id": "R005", "video_id": "R4QqSvU5oB0", "start": 404, "end": 429, "note": "réduire le volume de 50-70 % en gardant les charges"}
+{"query_id": "R005", "video_id": "R4QqSvU5oB0", "start": 429, "end": 464, "note": "3 full body, 4 polyarticulaires, jamais à l'échec"}
+{"query_id": "R006", "video_id": "R4QqSvU5oB0", "start": 590, "end": 677, "note": "5 signes: motivation, sommeil, charges, faim, récupération"}
+{"query_id": "R007", "video_id": "R4QqSvU5oB0", "start": 472, "end": 521, "note": "individualiser; semaine 7 après 6 semaines intenses"}
+{"query_id": "R008", "video_id": "R4QqSvU5oB0", "start": 565, "end": 582, "note": "débutant: deload pas nécessaire"}
+{"query_id": "R009", "video_id": "R4QqSvU5oB0", "start": 236, "end": 286, "note": "progression - stagnation - récupération - surcompensation"}
+{"query_id": "R009", "video_id": "R4QqSvU5oB0", "start": 286, "end": 303, "note": "stagner peut venir d'un mauvais programme"}
+{"query_id": "R010", "video_id": "R4QqSvU5oB0", "start": 373, "end": 404, "note": "pas dramatique de s'arrêter une semaine"}
+{"query_id": "R011", "video_id": "1OsDiVvQT7k", "start": 215, "end": 263, "note": "<12, 12-20, >20 séries par groupe et par semaine"}
+{"query_id": "R011", "video_id": "1OsDiVvQT7k", "start": 666, "end": 682, "note": "6-8 puis 18-24 séries sur un cycle"}
+{"query_id": "R012", "video_id": "1OsDiVvQT7k", "start": 652, "end": 694, "note": "périodiser le volume: doubler ou tripler sur le cycle"}
+{"query_id": "R013", "video_id": "8Upe8QgpYps", "start": 366, "end": 400, "note": "la vraie surcharge progressive = la charge"}
+{"query_id": "R014", "video_id": "DJEi-FifTtg", "start": 55, "end": 80, "note": "adulte 7-9 h, ado 8-10 h"}
+{"query_id": "R015", "video_id": "05WPpiDdC78", "start": 137, "end": 175, "note": "exemple 3 séances/semaine pour débutant"}
+{"query_id": "R016", "video_id": "J_Zm4XvE__s", "start": 770, "end": 790, "note": "squat classique avec cale: meilleure alternative au front squat pour l'hypertrophie"}
+{"query_id": "R021", "video_id": "XFsbtGB1TXQ", "start": 928, "end": 960, "note": "le format parfait = volume max, intensité max et plaisir ; PPL, full body ou upper lower peuvent tous convenir"}
+{"query_id": "R021", "video_id": "XFsbtGB1TXQ", "start": 169, "end": 201, "note": "son format préféré : pecs-dos / épaules-bras / jambes sur 3 jours, inspiré de l'âge d'or"}
+{"query_id": "R022", "video_id": "XFsbtGB1TXQ", "start": 256, "end": 303, "note": "la fatigue du dos ne dégrade pas plus les pecs que dans un push pull legs"}
+{"query_id": "R022", "video_id": "XFsbtGB1TXQ", "start": 339, "end": 358, "note": "alterner un exercice pecs et un exercice dos laisse récupérer les pecs"}
+{"query_id": "R023", "video_id": "XFsbtGB1TXQ", "start": 1012, "end": 1059, "note": "faire les séances en rotation (cycle), pas attachées à un jour : J4 = séance 1"}
+{"query_id": "R023", "video_id": "45l6bl8Uyr4", "start": 543, "end": 561, "note": "5 jours avec 3 séances : J4 séance 1, J5 séance 2, chaque muscle plusieurs fois par semaine"}
+{"query_id": "R024", "video_id": "XFsbtGB1TXQ", "start": 1059, "end": 1082, "note": "sweet spot : 5 séances par semaine (3 jours, 1 repos, 2 jours, 1 repos)"}
+{"query_id": "R025", "video_id": "XFsbtGB1TXQ", "start": 700, "end": 742, "note": "commencer par du monoarticulaire (leg extension, leg curl) pour échauffer les genoux"}
+{"query_id": "R026", "video_id": "XFsbtGB1TXQ", "start": 226, "end": 256, "note": "pas prouvé plus efficace ; les études sur les supersets ne correspondent pas à ce format"}
+{"query_id": "R027", "video_id": "XFsbtGB1TXQ", "start": 817, "end": 832, "note": "remplacer le hack squat par squat pendule, Smith machine ou squat libre, pas la presse"}
+{"query_id": "R028", "video_id": "XFsbtGB1TXQ", "start": 325, "end": 339, "note": "premier exercice : 4 séries de 6 à 8 reps, fourchette basse car on est frais"}
+{"query_id": "R028", "video_id": "XFsbtGB1TXQ", "start": 557, "end": 590, "note": "séance épaules-bras : premier exercice développé militaire en 4 x 8, fourchette courte"}
+{"query_id": "R029", "video_id": "45l6bl8Uyr4", "start": 23, "end": 72, "note": "étape 1 : définir un objectif précis avant de choisir exercices, séries et répétitions"}
+{"query_id": "R029", "video_id": "45l6bl8Uyr4", "start": 183, "end": 223, "note": "rendre l'objectif mesurable : cm de bras, poitrine, cuisse en 6 mois"}
+{"query_id": "R030", "video_id": "45l6bl8Uyr4", "start": 231, "end": 272, "note": "en 6 mois : +2 à 5 % sur les mensurations, jusqu'à 10 % sur certaines"}
+{"query_id": "R031", "video_id": "45l6bl8Uyr4", "start": 318, "end": 344, "note": "macrocycle de 6 mois = 3 mésocycles de 2 mois, eux-mêmes découpés en microcycles"}
+{"query_id": "R031", "video_id": "45l6bl8Uyr4", "start": 354, "end": 379, "note": "un bon coach doit savoir découper un programme en macro, méso et microcycles"}
+{"query_id": "R032", "video_id": "45l6bl8Uyr4", "start": 410, "end": 442, "note": "ordre conseillé sur 6 mois : force, puis prise de muscle, puis perte de gras"}
+{"query_id": "R033", "video_id": "45l6bl8Uyr4", "start": 598, "end": 641, "note": "en perte de gras, passer en upper lower pour plus de groupes par séance et plus de dépense"}
+{"query_id": "R034", "video_id": "45l6bl8Uyr4", "start": 796, "end": 849, "note": "8 semaines = 3 + 3 + 2 : reps courtes et charges lourdes, puis séries longues, puis overreaching"}
+{"query_id": "R034", "video_id": "45l6bl8Uyr4", "start": 742, "end": 763, "note": "trois phases : stress mécanique, stress métabolique, overreaching"}
+{"query_id": "R035", "video_id": "45l6bl8Uyr4", "start": 706, "end": 732, "note": "la progression se termine par l'overreaching, qui précède la surcompensation"}
+{"query_id": "R035", "video_id": "45l6bl8Uyr4", "start": 752, "end": 773, "note": "en overreaching on augmente volume et intensité, techniques d'intensification"}
+{"query_id": "R036", "video_id": "45l6bl8Uyr4", "start": 875, "end": 901, "note": "en perte de gras, augmenter la densité : réduire peu à peu les temps de repos"}
+{"query_id": "R037", "video_id": "45l6bl8Uyr4", "start": 917, "end": 976, "note": "en théorie oui, mais il faudrait avoir choisi parfaitement dès le départ : mieux vaut des cycles"}
+{"query_id": "R038", "video_id": "45l6bl8Uyr4", "start": 841, "end": 849, "note": "après l'overreaching, deload de 3 à 7 jours : moins d'intensité et de volume"}
+{"query_id": "R038", "video_id": "R4QqSvU5oB0", "start": 17, "end": 36, "note": "le deload dure environ une semaine, parfois plus ou moins"}
+{"query_id": "R039", "video_id": "Dx0O5iGNoAQ", "start": 29, "end": 82, "note": "chasser plusieurs objectifs à la fois rend le programme inefficace"}
+{"query_id": "R039", "video_id": "45l6bl8Uyr4", "start": 379, "end": 401, "note": "mélanger muscle, gras et force réduit l'efficacité de chaque séance"}
+{"query_id": "R040", "video_id": "Dx0O5iGNoAQ", "start": 123, "end": 193, "note": "aucun exercice n'est indispensable, même squat, développé couché, tractions"}
+{"query_id": "R041", "video_id": "Dx0O5iGNoAQ", "start": 202, "end": 287, "note": "trop varier les exercices ralentit la progression ; « choquer le muscle » n'existe pas"}
+{"query_id": "R041", "video_id": "45l6bl8Uyr4", "start": 682, "end": 713, "note": "garder les mêmes exercices sur un mésocycle, faire varier les autres variables"}
+{"query_id": "R042", "video_id": "Dx0O5iGNoAQ", "start": 325, "end": 350, "note": "garder les mêmes variables 10 à 12 séances, voire plus, pour suivre ses performances"}
+{"query_id": "R043", "video_id": "Dx0O5iGNoAQ", "start": 435, "end": 497, "note": "ses meilleures périodes de progression : avec un partenaire d'entraînement"}
+{"query_id": "R044", "video_id": "HHpEn-HlCkM", "start": 301, "end": 354, "note": "à privilégier : le volume, l'accumulation de séries et de séances, pas la charge"}
+{"query_id": "R045", "video_id": "HHpEn-HlCkM", "start": 46, "end": 93, "note": "volume = séries par muscle, ou répétitions totales, ou tonnage"}
+{"query_id": "R046", "video_id": "HHpEn-HlCkM", "start": 93, "end": 146, "note": "intensité = pourcentage du max ; 70 % du max = environ 12 à 15 reps"}
+{"query_id": "R047", "video_id": "HHpEn-HlCkM", "start": 257, "end": 291, "note": "léger jusqu'à l'échec = mêmes gains musculaires que lourd"}
+{"query_id": "R047", "video_id": "HHpEn-HlCkM", "start": 164, "end": 199, "note": "études : 20-40 % du max gagnent moins ; seul le groupe à 80 % gagne en force"}
+{"query_id": "R048", "video_id": "HHpEn-HlCkM", "start": 354, "end": 382, "note": "répartir les séries sur la semaine plutôt que 20 séries en une séance"}
+{"query_id": "R049", "video_id": "HHpEn-HlCkM", "start": 382, "end": 403, "note": "des courbatures qui traînent réduisent le volume suivant, donc la progression"}
+{"query_id": "R050", "video_id": "HHpEn-HlCkM", "start": 403, "end": 467, "note": "débutant : presque toute intensité fait progresser, la technique prime"}
+{"query_id": "R051", "video_id": "HHpEn-HlCkM", "start": 511, "end": 547, "note": "débutant : 3 à 5 séries par muscle et par semaine suffisent, puis augmenter"}
+{"query_id": "R052", "video_id": "HHpEn-HlCkM", "start": 467, "end": 508, "note": "expérimenté : 3 semaines à 55 %, 3 à 70 %, 3 à 90 % de l'intensité max"}
+{"query_id": "R053", "video_id": "1OsDiVvQT7k", "start": 534, "end": 584, "note": "pour 6 mois il choisirait le haut volume ; sur 6 ans, une vraie périodisation"}
+{"query_id": "R053", "video_id": "1OsDiVvQT7k", "start": 0, "end": 45, "note": "le débat haut volume (Arnold) contre bas volume (Mentzer, Yates)"}
+{"query_id": "R054", "video_id": "1OsDiVvQT7k", "start": 398, "end": 443, "note": "junk volume = séries mal exécutées, pas assez intenses ou en excès ; nuit à la récupération"}
+{"query_id": "R055", "video_id": "1OsDiVvQT7k", "start": 359, "end": 398, "note": "rendements décroissants : chaque série supplémentaire rapporte moins"}
+{"query_id": "R056", "video_id": "1OsDiVvQT7k", "start": 448, "end": 534, "note": "les pros sont sous stéroïdes : leurs méthodes ne s'appliquent pas aux naturels"}
+{"query_id": "R057", "video_id": "1OsDiVvQT7k", "start": 584, "end": 620, "note": "le haut volume n'est possible que si sommeil, nutrition et stress sont bien gérés"}
+{"query_id": "R058", "video_id": "1OsDiVvQT7k", "start": 694, "end": 740, "note": "commencer à 6-8 séries par muscle ; +1 ou 2 séries la semaine suivante si tout est fait à fond"}
+{"query_id": "R058", "video_id": "1OsDiVvQT7k", "start": 636, "end": 682, "note": "le nombre de séries peut évoluer par surcharge progressive, comme la charge"}
+{"query_id": "R059", "video_id": "1OsDiVvQT7k", "start": 215, "end": 274, "note": "revue 2022 : moyen (12-20) = haut volume (>20) ; bas volume (<12) moins efficace"}
+{"query_id": "R059", "video_id": "1OsDiVvQT7k", "start": 140, "end": 192, "note": "Mentzer et Yates : haute intensité, une ou deux séries suffiraient"}
+{"query_id": "R060", "video_id": "DJEi-FifTtg", "start": 113, "end": 151, "note": "4 à 6 cycles de sommeil par nuit, environ 90 minutes chacun"}
+{"query_id": "R061", "video_id": "DJEi-FifTtg", "start": 167, "end": 230, "note": "une seule nuit blanche suffit à déclencher une dégradation des protéines musculaires"}
+{"query_id": "R062", "video_id": "DJEi-FifTtg", "start": 230, "end": 264, "note": "5 h au lieu de 8 h pendant une semaine : testostérone -10 à 15 %"}
+{"query_id": "R063", "video_id": "DJEi-FifTtg", "start": 326, "end": 383, "note": "le manque de sommeil augmente les calories et la part d'aliments gras"}
+{"query_id": "R064", "video_id": "DJEi-FifTtg", "start": 434, "end": 486, "note": "même entraînement, meilleur sommeil : +500 g de muscle en 10 semaines"}
+{"query_id": "R065", "video_id": "DJEi-FifTtg", "start": 507, "end": 557, "note": "la température de la chambre compte plus que le bruit ; viser 16 à 20 degrés"}
+{"query_id": "R066", "video_id": "DJEi-FifTtg", "start": 637, "end": 709, "note": "la lumière bleue des écrans avant le coucher est une très mauvaise habitude"}
+{"query_id": "R067", "video_id": "DJEi-FifTtg", "start": 709, "end": 736, "note": "la caféine retire 40 à 60 min de sommeil ; éviter le café après 14 h"}
+{"query_id": "R068", "video_id": "DJEi-FifTtg", "start": 264, "end": 289, "note": "mélatonine : d'abord améliorer ses habitudes de sommeil, compléments seulement si nécessaire"}
+{"query_id": "R069", "video_id": "-m8uXyMD0n4", "start": 31, "end": 105, "note": "1re année : programme déséquilibré, seulement les muscles du miroir, pas de suivi"}
+{"query_id": "R069", "video_id": "-m8uXyMD0n4", "start": 1293, "end": 1335, "note": "ses conseils : programmation alignée sur l'objectif, tout noter, ne jamais improviser"}
+{"query_id": "R070", "video_id": "-m8uXyMD0n4", "start": 459, "end": 483, "note": "cardio modéré à jeun : pas plus efficace pour la perte de gras, à éviter"}
+{"query_id": "R071", "video_id": "-m8uXyMD0n4", "start": 1293, "end": 1335, "note": "noter toutes ses séances et appliquer la surcharge progressive, ne jamais improviser"}
+{"query_id": "R071", "video_id": "-m8uXyMD0n4", "start": 168, "end": 183, "note": "il a perdu des mois faute de traquer sa progression et de noter ses séances"}
+{"query_id": "R072", "video_id": "-m8uXyMD0n4", "start": 250, "end": 288, "note": "en 3e année il ne sentait pas ses quadriceps au squat : technique à corriger"}
+{"query_id": "R073", "video_id": "-m8uXyMD0n4", "start": 1445, "end": 1477, "note": "faire du cardio pour la santé et la longévité, en plus de la musculation"}
+{"query_id": "R074", "video_id": "-m8uXyMD0n4", "start": 1381, "end": 1422, "note": "la régularité et la longévité font la différence sur le long terme"}
+{"query_id": "R075", "video_id": "-m8uXyMD0n4", "start": 39, "end": 63, "note": "programme déséquilibré : on oublie dos, épaules, ischios et mollets"}
+{"query_id": "R075", "video_id": "-m8uXyMD0n4", "start": 304, "end": 321, "note": "en formation il apprend à travailler chaque muscle avec la même intensité et le même volume"}
+{"query_id": "R076", "video_id": "J_Zm4XvE__s", "start": 120, "end": 157, "note": "vue de profil, la tête ne bouge que de haut en bas ; trop de flexion de hanche fait basculer en avant"}
+{"query_id": "R076", "video_id": "J_Zm4XvE__s", "start": 96, "end": 120, "note": "erreurs de débutant : trop de flexion de hanche (dos rond) ou de genou (talons qui décollent)"}
+{"query_id": "R077", "video_id": "J_Zm4XvE__s", "start": 182, "end": 251, "note": "colonne neutre : ne pas arrondir ni trop cambrer, le dos doit former un bloc stable"}
+{"query_id": "R078", "video_id": "J_Zm4XvE__s", "start": 325, "end": 398, "note": "écartement des pieds très individuel ; tester 3 écartements au poids du corps"}
+{"query_id": "R079", "video_id": "J_Zm4XvE__s", "start": 398, "end": 440, "note": "genoux alignés avec les pointes de pied ; tempo lent pendant l'apprentissage"}
+{"query_id": "R080", "video_id": "J_Zm4XvE__s", "start": 440, "end": 524, "note": "placement de la barre : high bar sur les trapèzes supérieurs, low bar plus bas ; jamais douloureux"}
+{"query_id": "R081", "video_id": "J_Zm4XvE__s", "start": 557, "end": 658, "note": "débutant : inspirer à la descente, expirer à la montée ; bracing quand les charges deviennent lourdes"}
+{"query_id": "R082", "video_id": "J_Zm4XvE__s", "start": 658, "end": 763, "note": "quadriceps = extension du genou, fessiers = extension de hanche : choisir l'articulation à accentuer"}
+{"query_id": "R083", "video_id": "J_Zm4XvE__s", "start": 721, "end": 738, "note": "au-delà d'une certaine amplitude, descendre plus bas n'ajoute pas de tension : se filmer de profil"}
+{"query_id": "R084", "video_id": "TnKwgVrCtl8", "start": 325, "end": 375, "note": "point faible au deltoïde moyen : poulie en bas ou haltères (tension de contraction) plutôt que poulie à la hanche"}
+{"query_id": "R084", "video_id": "TnKwgVrCtl8", "start": 210, "end": 227, "note": "les trois variantes ont leur place ; il explique pourquoi il règle la poulie en bas"}
+{"query_id": "R085", "video_id": "TnKwgVrCtl8", "start": 62, "end": 115, "note": "courbe de résistance = force subie à chaque point ; haltères difficiles en haut, poulie basse en cloche"}
+{"query_id": "R085", "video_id": "05WPpiDdC78", "start": 613, "end": 651, "note": "tracer une courbe de résistance : position étirée à gauche, contractée à droite"}
+{"query_id": "R086", "video_id": "TnKwgVrCtl8", "start": 242, "end": 285, "note": "étirement = plus efficace en théorie, mais plus dur à ressentir : on compense avec d'autres muscles"}
+{"query_id": "R086", "video_id": "TnKwgVrCtl8", "start": 357, "end": 375, "note": "mieux vaut un exercice un peu inférieur bien exécuté qu'un exercice supérieur mal exécuté"}
+{"query_id": "R087", "video_id": "TnKwgVrCtl8", "start": 459, "end": 505, "note": "poulie basse : ramener la poignée légèrement devant et monter légèrement vers l'avant"}
+{"query_id": "R088", "video_id": "TnKwgVrCtl8", "start": 332, "end": 375, "note": "deltoïde moyen faible : plus d'exercices en contraction ou à courbe neutre pour mieux le sentir"}
+{"query_id": "R089", "video_id": "BksiVi6lTWI", "start": 120, "end": 170, "note": "coudes trop rentrés et pont (leg drive) : OK pour la performance, à éviter pour l'hypertrophie"}
+{"query_id": "R090", "video_id": "BksiVi6lTWI", "start": 346, "end": 364, "note": "il préfère des séries continues, sans pause entre les répétitions, pour l'hypertrophie"}
+{"query_id": "R091", "video_id": "BksiVi6lTWI", "start": 395, "end": 489, "note": "curl dos à la poulie : rester redressé, ne pas s'incliner, sinon ça revient à un curl classique"}
+{"query_id": "R092", "video_id": "BksiVi6lTWI", "start": 928, "end": 950, "note": "pas de disques sous les talons (risque pour la cheville) : demander des cales à la salle"}
+{"query_id": "R092", "video_id": "J_Zm4XvE__s", "start": 738, "end": 755, "note": "une cale sous les talons améliore le travail des quadriceps au squat"}
+{"query_id": "R093", "video_id": "BksiVi6lTWI", "start": 551, "end": 587, "note": "plutôt que des demi-répétitions, faire du rest-pause : 10 s de pause puis 2-3 reps propres"}
+{"query_id": "R094", "video_id": "qq_bX5iw0HY", "start": 158, "end": 235, "note": "développé incliné à la barre : bon seulement avec les bons avantages morphologiques"}
+{"query_id": "R095", "video_id": "qq_bX5iw0HY", "start": 433, "end": 489, "note": "meilleurs exercices pecs : dips et développé légèrement décliné"}
+{"query_id": "R095", "video_id": "qq_bX5iw0HY", "start": 345, "end": 433, "note": "la machine convergente : tension continue, intéressante quelle que soit la morphologie"}
+{"query_id": "R096", "video_id": "qq_bX5iw0HY", "start": 511, "end": 538, "note": "douleurs au sternum aux dips : réduire l'amplitude et monter la charge progressivement"}
+{"query_id": "R097", "video_id": "qq_bX5iw0HY", "start": 345, "end": 433, "note": "machine convergente bien conçue : tension continue, courbe de résistance adaptée"}
+{"query_id": "R098", "video_id": "Ibr1O8UxU3E", "start": 216, "end": 324, "note": "rowing à un bras : exercice en contraction, souvent mal exécuté ; garder une trajectoire verticale"}
+{"query_id": "R099", "video_id": "Ibr1O8UxU3E", "start": 324, "end": 435, "note": "tirage vertical supination : travaille la rétropulsion, action principale du grand dorsal"}
+{"query_id": "R100", "video_id": "Ibr1O8UxU3E", "start": 435, "end": 533, "note": "tractions pronation : travaillent l'adduction, mais difficiles à maîtriser et à surcharger"}
+{"query_id": "R101", "video_id": "Ibr1O8UxU3E", "start": 524, "end": 643, "note": "son exercice préféré : tirage grand dorsal unilatéral à la poulie, assis"}
+{"query_id": "R102", "video_id": "WYMludGzu48", "start": 23, "end": 126, "note": "développé Arnold : la rotation interne n'ajoute rien, exercice abandonné"}
+{"query_id": "R103", "video_id": "WYMludGzu48", "start": 126, "end": 252, "note": "tirage menton : souvent douloureux pour l'épaule et non indispensable"}
+{"query_id": "R104", "video_id": "WYMludGzu48", "start": 372, "end": 498, "note": "la poulie permet d'ajuster la courbe de résistance : plus de tension au milieu du mouvement"}
+{"query_id": "R104", "video_id": "WYMludGzu48", "start": 252, "end": 372, "note": "élévations aux haltères : bons exercices en contraction, faciles à ressentir"}
+{"query_id": "R105", "video_id": "WYMludGzu48", "start": 576, "end": 681, "note": "overhead press et développé militaire : seuls développés verticaux, en tête du classement"}
+{"query_id": "R106", "video_id": "pA-q30r2EzI", "start": 182, "end": 226, "note": "trop de volume peut provoquer stagnation ou régression (courbe en cloche)"}
+{"query_id": "R106", "video_id": "1OsDiVvQT7k", "start": 359, "end": 398, "note": "rendements décroissants du volume au-delà d'un certain nombre de séries"}
+{"query_id": "R107", "video_id": "pA-q30r2EzI", "start": 24, "end": 182, "note": "un stress chronique entretient le cortisol et le catabolisme, ce qui freine la prise de muscle"}
+{"query_id": "R108", "video_id": "pA-q30r2EzI", "start": 329, "end": 459, "note": "on surestime souvent son intensité ; un coach ou un partenaire aide à aller plus loin"}
+{"query_id": "R109", "video_id": "pA-q30r2EzI", "start": 644, "end": 719, "note": "grosses différences individuelles : jusqu'à 5 fois plus de progrès chez certains"}
+{"query_id": "R110", "video_id": "pA-q30r2EzI", "start": 719, "end": 800, "note": "alcool, tabac et drogues réduisent l'appétit, perturbent les hormones et augmentent l'inflammation"}
+{"query_id": "R111", "video_id": "LfHhA_6n1zI", "start": 22, "end": 79, "note": "un point faible vient de la génétique, de la technique ou du choix des exercices"}
+{"query_id": "R111", "video_id": "LfHhA_6n1zI", "start": 381, "end": 415, "note": "s'il est génétique, il faut un programme structuré et du temps ; sinon, techniques d'intensification"}
+{"query_id": "R112", "video_id": "LfHhA_6n1zI", "start": 126, "end": 144, "note": "point faible : commencer par des exercices en contraction, plus faciles à ressentir"}
+{"query_id": "R112", "video_id": "LfHhA_6n1zI", "start": 547, "end": 586, "note": "finir la séance par les exercices en étirement, une fois le muscle bien congestionné"}
+{"query_id": "R113", "video_id": "LfHhA_6n1zI", "start": 381, "end": 445, "note": "ne pas abuser des supersets et dégressifs : identifier d'abord la cause du point faible"}
+{"query_id": "R114", "video_id": "LfHhA_6n1zI", "start": 726, "end": 767, "note": "séries de 100 et 21 : charge trop légère, pas assez de tension mécanique"}
+{"query_id": "R115", "video_id": "di2pTqQKdss", "start": 113, "end": 208, "note": "barre EZ : coudes écartés et douleurs possibles ; préférer le curl unilatéral aux haltères"}
+{"query_id": "R116", "video_id": "di2pTqQKdss", "start": 347, "end": 406, "note": "curl incliné : adapter l'inclinaison et l'amplitude à sa souplesse pour limiter le risque"}
+{"query_id": "R116", "video_id": "di2pTqQKdss", "start": 314, "end": 347, "note": "curl incliné : en étirement, très bon pour l'hypertrophie, inclinaison réglable"}
+{"query_id": "R117", "video_id": "di2pTqQKdss", "start": 535, "end": 672, "note": "meilleur exercice biceps : curl dos à la poulie (stabilité, tension continue)"}
+{"query_id": "R118", "video_id": "cXNeX_t08wQ", "start": 272, "end": 373, "note": "extension derrière la tête : en étirement, très efficace mais mise en place difficile"}
+{"query_id": "R119", "video_id": "cXNeX_t08wQ", "start": 502, "end": 644, "note": "meilleur exercice triceps : les « extensions trichées » (barre au front et pull-over combinés)"}
+{"query_id": "R120", "video_id": "uTOc6d4NoVE", "start": 95, "end": 180, "note": "presse à cuisse linéaire peu optimale pour les quadriceps, sauf petits fémurs et bonne souplesse"}
+{"query_id": "R120", "video_id": "uTOc6d4NoVE", "start": 15, "end": 95, "note": "presse à cuisse circulaire : la pire pour les quadriceps, plutôt pour les fessiers"}
+{"query_id": "R121", "video_id": "uTOc6d4NoVE", "start": 180, "end": 317, "note": "le squat n'est pas le meilleur exercice quadriceps : très dépendant de la morphologie"}
+{"query_id": "R122", "video_id": "uTOc6d4NoVE", "start": 397, "end": 465, "note": "fentes marchées : plus stables que le squat, longueur des pas réglable pour cibler les quadriceps"}
+{"query_id": "R123", "video_id": "uTOc6d4NoVE", "start": 465, "end": 543, "note": "meilleur exercice quadriceps : le hack squat linéaire"}
+{"query_id": "R124", "video_id": "R4QqSvU5oB0", "start": 110, "end": 155, "note": "le deload laisse récupérer le système nerveux central, avec un effet sur l'humeur et le sommeil"}
+{"query_id": "R125", "video_id": "R4QqSvU5oB0", "start": 495, "end": 534, "note": "ne pas planifier le deload des mois à l'avance, le placer quand on en a besoin"}
+{"query_id": "R126", "video_id": "R4QqSvU5oB0", "start": 707, "end": 746, "note": "si seul le bas du corps est fatigué, réduire les séances jambes plutôt qu'un deload complet"}
+{"query_id": "R127", "video_id": "R4QqSvU5oB0", "start": 187, "end": 217, "note": "il fait précéder ses deload de 2 semaines d'overreaching épuisantes"}
+{"query_id": "R127", "video_id": "45l6bl8Uyr4", "start": 831, "end": 849, "note": "après l'overreaching, deload de 3 à 7 jours pour laisser place à la surcompensation"}
+{"query_id": "R128", "video_id": "R4QqSvU5oB0", "start": 677, "end": 707, "note": "il reconnaît que les études sur le deload sont rares : sujet débattu"}
+{"query_id": "R129", "video_id": "qcs8utwv9WE", "start": 473, "end": 489, "note": "objectif force : 3 à 5 minutes de repos entre les séries, voire plus"}
+{"query_id": "R129", "video_id": "qcs8utwv9WE", "start": 130, "end": 146, "note": "cycle de force : environ 4 minutes de repos ; hypertrophie : 1 min 30 à 2 min"}
+{"query_id": "R130", "video_id": "qcs8utwv9WE", "start": 496, "end": 529, "note": "étude 2012 : les femmes récupèrent plus vite et tolèrent plus de densité de travail"}
+{"query_id": "R131", "video_id": "qcs8utwv9WE", "start": 658, "end": 698, "note": "repos courts possibles si on compense par plus de volume (exemple du CrossFit)"}
+{"query_id": "R132", "video_id": "qcs8utwv9WE", "start": 458, "end": 481, "note": "exercices les plus lourds et durs en début de séance, quand on est frais"}

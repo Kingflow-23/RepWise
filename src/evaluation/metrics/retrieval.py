@@ -10,7 +10,6 @@ Two levels are supported:
   corpus, and a span covered by two overlapping chunks is counted once.
 """
 
-import math
 from dataclasses import dataclass, field
 
 
@@ -40,18 +39,6 @@ def reciprocal_rank_ids(relevant: set, ranking: list) -> float:
     return 0.0
 
 
-def dcg(gains: list[float]) -> float:
-    return sum(g / math.log2(rank + 1) for rank, g in enumerate(gains, start=1))
-
-
-def ndcg_at_k_ids(grades: dict, ranking: list, k: int) -> float | None:
-    """grades maps item ID -> graded relevance (0 = not relevant)."""
-    ideal = sorted((g for g in grades.values() if g > 0), reverse=True)[:k]
-    if not ideal:
-        return None
-    gains = [grades.get(d, 0) for d in ranking[:k]]
-    return dcg(gains) / dcg(ideal)
-
 
 # -------------------------------------------------------------- span level
 
@@ -60,7 +47,7 @@ class Span:
     video_id: str
     start: float
     end: float
-    grade: int = 1
+    
 
 
 @dataclass
@@ -70,7 +57,7 @@ class RankingJudgement:
     n_spans: int
     # For each rank: indices of labelled spans that the chunk overlaps.
     matches: list[list[int]] = field(default_factory=list)
-    grades: list[int] = field(default_factory=list)
+    
 
     def recall_at_k(self, k: int) -> float | None:
         if self.n_spans == 0:
@@ -96,18 +83,6 @@ class RankingJudgement:
                 return rank
         return None
 
-    def ndcg_at_k(self, k: int) -> float | None:
-        ideal = sorted((g for g in self.grades if g > 0), reverse=True)[:k]
-        if not ideal:
-            return None
-        # Each span earns its gain once, at the first chunk that covers it.
-        credited: set[int] = set()
-        gains = []
-        for m in self.matches[:k]:
-            fresh = [i for i in m if i not in credited]
-            credited.update(fresh)
-            gains.append(max((self.grades[i] for i in fresh), default=0))
-        return dcg(gains) / dcg(ideal)
 
 
 def overlap_seconds(a_start: float, a_end: float, b_start: float, b_end: float) -> float:
@@ -116,12 +91,11 @@ def overlap_seconds(a_start: float, a_end: float, b_start: float, b_end: float) 
 
 def judge_ranking(spans: list[Span], ranking: list[dict], min_overlap_s: float = 1.0) -> RankingJudgement:
     """ranking: retrieved chunks, best first, each with video_id, start and end."""
-    judgement = RankingJudgement(n_spans=len(spans), grades=[s.grade for s in spans])
+    judgement = RankingJudgement(n_spans=len(spans))
     for chunk in ranking:
         hits = [
             i for i, s in enumerate(spans)
-            if s.grade > 0
-            and chunk.get("video_id") == s.video_id
+            if chunk.get("video_id") == s.video_id
             and overlap_seconds(chunk["start"], chunk["end"], s.start, s.end) >= min_overlap_s
         ]
         judgement.matches.append(hits)

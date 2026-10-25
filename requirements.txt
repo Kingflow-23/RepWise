@@ -1,3 +1,1 @@
-# Evaluation (src/evaluation, tests/evaluation)
-pytest>=8
-rapidfuzz>=3  # optional: faster fuzzy quote matching, difflib fallback otherwise
+pytest

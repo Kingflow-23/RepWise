@@ -66,11 +66,9 @@ def _unique(ids: list[str], what: str) -> None:
 class RetrievalCase:
     id: str
     query: str
-    lang: str
     split: str
     answerable: bool
     topic: str = ""
-    review_status: str = "draft"
     spans: list[Span] = field(default_factory=list)
 
 
@@ -78,25 +76,23 @@ def load_retrieval_cases(cases_path: Path = RETRIEVAL_CASES, qrels_path: Path = 
     cases = {}
     for lineno, row in read_jsonl(cases_path):
         where = f"{cases_path.name}:{lineno}"
-        _require(row, ("id", "query", "lang", "split", "answerable"), where)
+        _require(row, ("id", "query", "split", "answerable"), where)
         _check_choice(row["split"], SPLITS, "split", where)
         if row["id"] in cases:
             raise DatasetError(f"{where}: duplicate retrieval case id {row['id']!r}")
         cases[row["id"]] = RetrievalCase(
-            id=row["id"], query=row["query"], lang=row["lang"], split=row["split"],
-            answerable=bool(row["answerable"]), topic=row.get("topic", ""),
-            review_status=row.get("review_status", "draft"))
+        id=row["id"], query=row["query"], split=row["split"],
+        answerable=bool(row["answerable"]), topic=row.get("topic", ""))
+
 
     for lineno, row in read_jsonl(qrels_path):
         where = f"{qrels_path.name}:{lineno}"
-        _require(row, ("query_id", "video_id", "start", "end", "grade"), where)
+        _require(row, ("query_id", "video_id", "start", "end"), where)
         if row["query_id"] not in cases:
             raise DatasetError(f"{where}: unknown query_id {row['query_id']!r}")
         if row["end"] <= row["start"]:
             raise DatasetError(f"{where}: end must be greater than start")
-        if row["grade"] not in (1, 2, 3):
-            raise DatasetError(f"{where}: grade must be 1, 2 or 3")
-        cases[row["query_id"]].spans.append(Span(row["video_id"], row["start"], row["end"], row["grade"]))
+        cases[row["query_id"]].spans.append(Span(row["video_id"], row["start"], row["end"]))
 
     for case in cases.values():
         if case.answerable and not case.spans:
@@ -112,7 +108,7 @@ def load_profiles(path: Path = PROFILES) -> dict[str, dict]:
     profiles = {}
     for lineno, row in read_jsonl(path):
         where = f"{path.name}:{lineno}"
-        _require(row, ("profile_id", "experience", "days_per_week", "max_session_min", "equipment"), where)
+        _require(row, ("profile_id",), where)
         if row["profile_id"] in profiles:
             raise DatasetError(f"{where}: duplicate profile_id {row['profile_id']!r}")
         profiles[row["profile_id"]] = row
@@ -127,14 +123,12 @@ class GenerationCase:
     source: str  # "scenario" or "red_team"
     layer: str
     request: str
-    lang: str
     split: str
     profile_id: str | None
     expected_status: list[str]
     rt: str | None = None
     forbidden_patterns: list[str] = field(default_factory=list)
     required_patterns: list[str] = field(default_factory=list)
-    forbidden_exercises: list[str] = field(default_factory=list)
     profile_overrides: dict = field(default_factory=dict)
     trajectory: list[dict] = field(default_factory=list)
     expected_state: dict = field(default_factory=dict)
@@ -142,7 +136,7 @@ class GenerationCase:
 
 
 def _generation_case(row: dict, source: str, where: str, profiles: dict) -> GenerationCase:
-    _require(row, ("id", "layer", "lang", "split", "expected_status"), where)
+    _require(row, ("id", "layer", "split", "expected_status"), where)
     _check_choice(row["layer"], LAYERS - {"retrieval"}, "layer", where)
     _check_choice(row["split"], SPLITS, "split", where)
     expected = row["expected_status"]
@@ -158,10 +152,9 @@ def _generation_case(row: dict, source: str, where: str, profiles: dict) -> Gene
         raise DatasetError(f"{where}: adaptation case needs a 'trajectory'")
     return GenerationCase(
         id=row["id"], source=source, layer=row["layer"], request=row.get("request", ""),
-        lang=row["lang"], split=row["split"], profile_id=profile_id, expected_status=expected,
+        split=row["split"], profile_id=profile_id, expected_status=expected,
         rt=row.get("rt"), forbidden_patterns=row.get("forbidden_patterns", []),
         required_patterns=row.get("required_patterns", []),
-        forbidden_exercises=row.get("forbidden_exercises", []),
         profile_overrides=row.get("profile_overrides", {}),
         trajectory=row.get("trajectory", []), expected_state=row.get("expected_state", {}),
         notes=row.get("notes", ""))
