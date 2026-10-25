@@ -11,3 +11,5 @@ data/corpus/clean_txt/
 data/corpus/passages/
 data/corpus/chunks/
 data/corpus/coverage_hits.csv
+src/ingestion/__pycache__
+

@@ -1,25 +1,86 @@
-"""Build the cleaned RepWise corpus from raw YouTube transcripts.
+"""Step 1 of the RepWise data ingestion pipeline: clean the raw transcripts.
 
-Raw files are never modified. For each transcript this script:
-  1. parses both caption layouts found in the corpus (rolling captions with
-     empty duplicate timestamps, and flat one-line-per-timestamp files, plus
-     untimestamped continuation lines);
-  2. strips sound tags ([Musique], [Rires], ...) and normalises unicode;
-  3. merges 1-2 second caption fragments into passages (sentence-based when the
-     file has punctuation, ~30-word windows otherwise), each with start/end time;
-  4. applies the ASR correction map (config/term_corrections.json);
-  5. flags sponsor / call-to-action passages so chunking can exclude them.
+WHAT THIS SCRIPT DOES 
+    YouTube captions are messy: the text comes in tiny 1-2 second pieces,
+    sentences are cut in half, most files have no punctuation, sound tags
+    like [Musique] appear in the middle of sentences, and the speech
+    recognition gets gym words wrong ("dilode" instead of "deload",
+    "push pool legs" instead of "push pull legs").
 
-Outputs (under data/corpus/):
-  manifest.csv                one row per video with provenance metadata
-  passages/<video_id>.jsonl   cleaned, timestamped passages
-  clean_txt/<video_id>.txt    human-readable version for review
-  corrections_log.csv         how many times each correction fired per video
+    This script takes each raw transcript and turns it into clean,
+    timestamped passages that the rest of the pipeline can use. It never
+    modifies the raw files: it reads them and writes new files.
 
-Usage (from the RepWise folder):
-  python scripts/build_corpus.py
-  python scripts/build_corpus.py --corpus-version v1.1
+    For each video it:
+      1. Reads the raw captions. Two caption layouts exist in the corpus
+         (rolling captions with empty duplicate timestamps, and flat
+         captions), plus lines that continue the previous one without a
+         timestamp. All are handled.
+      2. Cleans the text: removes sound tags ([Musique], [Rires], ...),
+         normalises accents and apostrophes, removes duplicates.
+      3. Fixes known speech recognition errors using the correction map.
+         Corrections run on the whole transcript, so an error split across
+         two caption pieces ("push" | "pool legs") is still fixed.
+      4. Groups the tiny caption pieces into passages of a few sentences
+         (about 30 words when the file has no punctuation). Each passage
+         keeps its start and end time in seconds and a link that opens the
+         video at that moment.
+      5. Flags passages that are sponsor reads ("sponsor") or calls to
+         action ("cta") so later steps can leave them out.
+      6. Writes one manifest row per video with its provenance: url, title,
+         raw file hash, duration, caption quality, linked scientific papers.
+
+INPUT FILES
+    ../corpus/*.txt                 raw transcripts, one per video
+                                    (outside the repo, never committed)
+    ../dictionnary_links.txt        "video url : title" for each video,
+                                    used to match each file to its video id
+    ../links.txt                    video urls with the scientific papers
+                                    linked to each video (tab-indented)
+    config/term_corrections.json    speech recognition correction map
+                                    (edit it when we find new errors)
+
+    Paths are relative to the RepWise folder. The raw inputs are shared
+    privately (zip), not through git.
+
+OUTPUT FILES (in data/corpus/)
+    manifest.csv                one row per video: metadata and provenance
+                                (committed: contains no transcript text)
+    corrections_log.csv         how many times each correction fired, per
+                                video (committed)
+    passages/<video_id>.jsonl   cleaned, timestamped passages: the input of
+                                the next steps (gitignored: transcript text)
+    clean_txt/<video_id>.txt    human-readable version of the passages, for
+                                reviewing by eye (gitignored: transcript text)
+
+FULL DATA INGESTION PIPELINE (run from the RepWise folder, in this order)
+    1. python src/ingestion/build_corpus.py
+           raw transcripts -> passages/, clean_txt/, manifest.csv,
+           corrections_log.csv
+    2. python src/ingestion/coverage_report.py
+           passages + config/topic_lexicon.json -> coverage_matrix.csv,
+           coverage_hits.csv, coverage_summary.md (which videos discuss
+           which training topic)
+    3. python src/ingestion/chunker.py
+           passages + manifest.csv + coverage_matrix.csv -> chunks/
+           (passages merged into ~450-word chunks with one passage of
+           overlap, enriched with title, topics, papers and timestamp
+           links: the units that get embedded for retrieval)
+    4. Embedding and indexing of the chunks (not built yet).
+
+    Rerun all steps in order after changing the raw files,
+    term_corrections.json or topic_lexicon.json. The pipeline is
+    deterministic: the same inputs always give the same outputs, and the
+    raw_sha256 column of manifest.csv lets anyone check that their raw
+    files match.
+
+USAGE
+    python src/ingestion/build_corpus.py
+    python src/ingestion/build_corpus.py --corpus-version v1.1
+    python src/ingestion/build_corpus.py --help     (all path options)
 """
+
+
 from __future__ import annotations
 
 import argparse
@@ -33,7 +94,7 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 PROJECT = REPO.parent
 
 TS_LINE = re.compile(r"^\s*(?:(\d+):)?(\d{1,3}):(\d{2})\s?(.*)$")

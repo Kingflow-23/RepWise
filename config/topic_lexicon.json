@@ -1,19 +1,197 @@
 {
-  "_doc": "French regex lexicon used by scripts/coverage_report.py to map which passages discuss each adaptation topic. Run on corrected passages. A keyword hit means 'worth reading', not 'supports a rule': confirm by reading the hit before linking a rule to it.",
+  "_about": {
+    "purpose": "Find which videos, and which passages inside them, talk about each training topic that RepWise's adaptation engine needs (progression, volume, deload, substitution...). It answers the question: does the corpus have enough material to ground each adaptation rule?",
+    "used_by": "src/ingestion/coverage_report.py, which writes data/corpus/coverage_matrix.csv, coverage_hits.csv and coverage_summary.md. chunker.py then reads coverage_matrix.csv to tag each chunk with its video's topics.",
+    "when_applied": "On the cleaned and corrected passages (data/corpus/passages/), so the corrected words (deload, push pull legs...) are found. Passages flagged 'sponsor' are skipped.",
+    "how_matching_works": [
+      "Each topic has a list of patterns (regular expressions, case-insensitive).",
+      "A passage counts as one hit for a topic if at least one of its patterns appears in it. A passage can count for several topics.",
+      "Patterns match anywhere in a word unless they use \\b: 'fatigu' catches fatigue, fatigué, fatiguant. This is on purpose, to catch every form of a French word.",
+      "A hit means 'this passage mentions the topic and is worth reading'. It does NOT mean the passage supports a training rule: read the hit before linking a rule to it."
+    ],
+    "regex_cheat_sheet": {
+      "\\b": "word boundary: '\\bsplit' catches 'split' but not a word that merely contains it.",
+      "(?:a|b)": "a group of choices: 'temps de (?:repos|récupération)' catches both expressions.",
+      "s?": "the letter before is optional: 'douleurs?' catches 'douleur' and 'douleurs'.",
+      "[rz]": "one of these letters: 'augmente[rz]?' catches augmente, augmenter, augmentez.",
+      " ?": "an optional space: 'macro ?cycle' catches 'macrocycle' and 'macro cycle'."
+    },
+    "fields": {
+      "label": "short readable name, shown in coverage_summary.md.",
+      "description": "what the topic covers, which part of RepWise it feeds, and the known noise of its patterns.",
+      "patterns": "the expressions that make a passage count as a hit."
+    },
+    "how_to_tune": [
+      "Too many irrelevant hits: make a pattern stricter (add \\b, require a following word) or remove it.",
+      "Missing obvious passages: add the expression Nassim actually uses (check data/corpus/clean_txt/).",
+      "After any change, rerun coverage_report.py, then chunker.py, and compare coverage_summary.md."
+    ],
+    "limits": "Keyword matching only: synonyms or ideas expressed without these words are missed, and a word can appear in an unrelated context."
+  },
   "topics": {
-    "progression": {"label": "Load / rep progression", "patterns": ["surcharge progressive", "progressi(?:on|ve|f)", "progresser", "augmente[rz]? (?:la|les|vos|tes) charges?", "ajoute[rz]? (?:du|des|un|une) (?:poids|kilos?|r\u00e9p\u00e9titions?|s\u00e9ries?)", "double progression", "charge (?:plus|sup\u00e9rieure)"]},
-    "volume": {"label": "Training volume (sets)", "patterns": ["\\bvolume", "nombre de s\u00e9ries", "s\u00e9ries par (?:semaine|muscle|groupe|s\u00e9ance)", "s\u00e9ries? (?:effectives|de travail)"]},
-    "effort": {"label": "Effort / proximity to failure", "patterns": ["\u00e9chec", "\\bRIR\\b", "\\bRPE\\b", "r\u00e9p\u00e9titions? en r\u00e9serve", "en r\u00e9serve", "intensit\u00e9", "\u00e0 fond"]},
-    "rest_intervals": {"label": "Rest between sets", "patterns": ["temps de (?:repos|r\u00e9cup\u00e9ration)", "r\u00e9cup(?:\u00e9ration)? entre (?:les |deux |chaque )?s\u00e9ries", "repos entre", "minutes? de (?:repos|r\u00e9cup)"]},
-    "fatigue_recovery": {"label": "Fatigue, recovery, sleep", "patterns": ["fatigu", "r\u00e9cup\u00e9r(?:er|ation)", "sommeil", "surentra\u00eenement", "overreaching", "courbatures?", "surcompensation"]},
-    "deload": {"label": "Deload / lighter week", "patterns": ["\\bdeload", "semaine (?:de|plus) (?:l\u00e9g\u00e8re|repos|d\u00e9charge)", "d\u00e9charge"]},
-    "plateau": {"label": "Plateau / stagnation / regression", "patterns": ["stagn", "plateau", "r\u00e9gress", "bloqu\u00e9", "(?:ne|n') ?progress(?:e|ez|es) plus"]},
-    "substitution": {"label": "Exercise substitution / alternatives", "patterns": ["remplace[rz]?", "alternatives?", "variantes?", "\u00e0 la place (?:de|du|des)", "au lieu (?:de|du|des)", "si vous n'avez pas", "pas (?:acc\u00e8s|de machine)"]},
-    "cycles": {"label": "Cycles / periodization", "patterns": ["m\u00e9socycle", "microcycle", "macro ?cycle", "p\u00e9riodisation", "\\bcycles?\\b", "phase (?:de|d')"]},
-    "frequency_split": {"label": "Frequency / split choice", "patterns": ["fr\u00e9quence", "full body", "\\bsplit", "upper lower", "push pull legs", "fois par semaine", "jours? par semaine"]},
-    "break_detraining": {"label": "Missed sessions / breaks / detraining", "patterns": ["faire une pause", "\\bpause", "arr\u00eat(?:er)? (?:la muscu|de s'entra\u00eener|l'entra\u00eenement)", "reprendre", "reprise", "vacances", "d\u00e9sentra\u00eenement", "rater une s\u00e9ance", "s\u00e9ance rat\u00e9e"]},
-    "pain_safety": {"label": "Pain / injury (safety handling only)", "patterns": ["douleurs?", "blessure", "bless\u00e9", "tendinite", "mal (?:au|\u00e0 la|aux) (?:dos|genou|\u00e9paule|coude|poignet)"]},
-    "beginner": {"label": "Beginner guidance", "patterns": ["d\u00e9butants?", "premi\u00e8re ann\u00e9e", "quand on commence"]},
-    "nutrition": {"label": "Nutrition (out of MVP scope)", "patterns": ["calories?", "prot\u00e9ines?", "d\u00e9ficit", "prise de masse", "\\bs\u00e8che", "glucides"]}
+    "progression": {
+      "label": "Load / rep progression",
+      "description": "Passages about making training harder over time: progressive overload, adding weight, adding reps or sets. Feeds the load and repetition progression rules. Noise: 'progresser' and 'progression' are also used in a general sense (progressing in life, weight loss progress).",
+      "patterns": [
+        "surcharge progressive",
+        "progressi(?:on|ve|f)",
+        "progresser",
+        "augmente[rz]? (?:la|les|vos|tes) charges?",
+        "ajoute[rz]? (?:du|des|un|une) (?:poids|kilos?|répétitions?|séries?)",
+        "double progression",
+        "charge (?:plus|supérieure)"
+      ]
+    },
+    "volume": {
+      "label": "Training volume (sets)",
+      "description": "Passages about how much work is done: number of sets per exercise, per session, per muscle or per week. Feeds the volume adjustment rules (adding or removing sets). Noise: 'volume' can also mean muscle size ('prendre du volume').",
+      "patterns": [
+        "\\bvolume",
+        "nombre de séries",
+        "séries par (?:semaine|muscle|groupe|séance)",
+        "séries? (?:effectives|de travail)"
+      ]
+    },
+    "effort": {
+      "label": "Effort / proximity to failure",
+      "description": "Passages about how hard each set is: training to failure, reps in reserve (RIR), perceived exertion (RPE), intensity. Feeds the effort targets and the decision to progress. Note: Nassim talks about 'échec' (failure) and 'intensité', almost never RIR or RPE. 'intensité' and 'à fond' are vague and catch general motivation talk.",
+      "patterns": [
+        "échec",
+        "\\bRIR\\b",
+        "\\bRPE\\b",
+        "répétitions? en réserve",
+        "en réserve",
+        "intensité",
+        "à fond"
+      ]
+    },
+    "rest_intervals": {
+      "label": "Rest between sets",
+      "description": "Passages about rest time between sets ('temps de repos', 'récupération entre les séries', 'minutes de repos'). Feeds rest prescriptions and the session duration estimate. Mostly concentrated in one dedicated video.",
+      "patterns": [
+        "temps de (?:repos|récupération)",
+        "récup(?:ération)? entre (?:les |deux |chaque )?séries",
+        "repos entre",
+        "minutes? de (?:repos|récup)"
+      ]
+    },
+    "fatigue_recovery": {
+      "label": "Fatigue, recovery, sleep",
+      "description": "Passages about fatigue, recovery, sleep, overtraining, soreness and supercompensation. Feeds the recovery checks and the deload triggers. Noise: 'récupérer' is also used for rest between sets and for everyday meanings.",
+      "patterns": [
+        "fatigu",
+        "récupér(?:er|ation)",
+        "sommeil",
+        "surentraînement",
+        "overreaching",
+        "courbatures?",
+        "surcompensation"
+      ]
+    },
+    "deload": {
+      "label": "Deload / lighter week",
+      "description": "Passages about deload weeks: a planned lighter week to drop accumulated fatigue ('deload', 'semaine de décharge', 'semaine plus légère'). Feeds the deload rules. Only findable because term_corrections.json fixes the misheard 'dilode'. Coverage is essentially one video.",
+      "patterns": [
+        "\\bdeload",
+        "semaine (?:de|plus) (?:légère|repos|décharge)",
+        "décharge"
+      ]
+    },
+    "plateau": {
+      "label": "Plateau / stagnation / regression",
+      "description": "Passages about stagnation, plateaus and regression ('stagner', 'plateau', 'régresser', 'ne progresse plus'). Feeds the progression policy switch (what to do after repeated failure). Thin coverage. Noise: 'plateau' can also be a machine platform (leg press).",
+      "patterns": [
+        "stagn",
+        "plateau",
+        "régress",
+        "bloqué",
+        "(?:ne|n') ?progress(?:e|ez|es) plus"
+      ]
+    },
+    "substitution": {
+      "label": "Exercise substitution / alternatives",
+      "description": "Passages about replacing an exercise or using an alternative or variant ('remplacer', 'alternative', 'variante', 'à la place de', 'si vous n'avez pas'). Feeds the exercise substitution map. The exercise ranking videos ('du MEILLEUR au PIRE') are the richest source. Noise: 'au lieu de' and 'à la place de' are common in everyday speech.",
+      "patterns": [
+        "remplace[rz]?",
+        "alternatives?",
+        "variantes?",
+        "à la place (?:de|du|des)",
+        "au lieu (?:de|du|des)",
+        "si vous n'avez pas",
+        "pas (?:accès|de machine)"
+      ]
+    },
+    "cycles": {
+      "label": "Cycles / periodization",
+      "description": "Passages about training cycles and periodization: macrocycle, mesocycle, microcycle, phases. Feeds the cycle structure of the program. Noise: '\\bcycles?\\b' and 'phase de' are broad (a cardio cycle, a fat loss phase).",
+      "patterns": [
+        "mésocycle",
+        "microcycle",
+        "macro ?cycle",
+        "périodisation",
+        "\\bcycles?\\b",
+        "phase (?:de|d')"
+      ]
+    },
+    "frequency_split": {
+      "label": "Frequency / split choice",
+      "description": "Passages about how often to train and how to split the week: full body, split, upper lower, push pull legs, sessions per week. Feeds the initial program structure (frequency and split choice).",
+      "patterns": [
+        "fréquence",
+        "full body",
+        "\\bsplit",
+        "upper lower",
+        "push pull legs",
+        "fois par semaine",
+        "jours? par semaine"
+      ]
+    },
+    "break_detraining": {
+      "label": "Missed sessions / breaks / detraining",
+      "description": "Passages about missed sessions, breaks and detraining: pausing training, losing muscle, coming back without regressing. Feeds the rules for missed sessions and returns after a break. Thin coverage: most of these rules will be implementation assumptions.",
+      "patterns": [
+        "faire une pause",
+        "\\bpause",
+        "arrêt(?:er)? (?:la muscu|de s'entraîner|l'entraînement)",
+        "reprendre",
+        "reprise",
+        "vacances",
+        "désentraînement",
+        "rater une séance",
+        "séance ratée"
+      ]
+    },
+    "pain_safety": {
+      "label": "Pain / injury (safety handling only)",
+      "description": "Passages that mention pain or injury ('douleur', 'blessure', 'tendinite', 'mal au genou/dos/épaule...'). Used only to route pain reports to safety handling: RepWise never diagnoses or treats injuries, so these passages must not become treatment advice.",
+      "patterns": [
+        "douleurs?",
+        "blessure",
+        "blessé",
+        "tendinite",
+        "mal (?:au|à la|aux) (?:dos|genou|épaule|coude|poignet)"
+      ]
+    },
+    "beginner": {
+      "label": "Beginner guidance",
+      "description": "Passages with advice for beginners ('débutant', 'première année', 'quand on commence'). Feeds experience-appropriate restrictions (red team case RT1: a beginner asking for an advanced routine).",
+      "patterns": [
+        "débutants?",
+        "première année",
+        "quand on commence"
+      ]
+    },
+    "nutrition": {
+      "label": "Nutrition (out of MVP scope)",
+      "description": "Passages about nutrition: calories, protein, deficit, bulking, cutting, carbs. Out of the MVP scope: tracked so these passages can be identified and kept out of training advice, not used to answer.",
+      "patterns": [
+        "calories?",
+        "protéines?",
+        "déficit",
+        "prise de masse",
+        "\\bsèche",
+        "glucides"
+      ]
+    }
   }
 }
