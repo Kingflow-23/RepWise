@@ -24,6 +24,20 @@ class UserProfile(Model):
     preferences: str | None = Field(default=None, max_length=500)
 
 
+class AccountCredentials(Model):
+    """Credentials accepted only by the local account registration and login routes."""
+
+    username: str = Field(min_length=3, max_length=100, pattern=r"^[A-Za-z0-9_.-]+$")
+    password: str = Field(min_length=8, max_length=200)
+
+
+class AccessToken(Model):
+    """Standard bearer token response returned after successful login."""
+
+    access_token: str
+    token_type: str = "bearer"
+
+
 class PlanOptions(Model):
     """The current request sent alongside a saved student profile."""
 
@@ -42,6 +56,7 @@ class RetrievedChunk(Model):
     """A chunk returned by the retrieval layer owned by the ingestion team."""
 
     text: str = Field(min_length=1)
+    chunk_id: str | None = None
     video_id: str
     passage_ids: list[str] = Field(min_length=1)
     title: str
@@ -63,6 +78,11 @@ class Source(Model):
     title: str
     url: str
     excerpt: str
+    chunk_id: str | None = None
+    passage_ids: list[str] = Field(default_factory=list)
+    video_id: str | None = None
+    start: int | None = None
+    end: int | None = None
 
 
 class Exercise(Model):
@@ -72,6 +92,7 @@ class Exercise(Model):
     rest_seconds: int = Field(ge=0, le=600)
     coaching_note: str
     source_ids: list[str] = Field(default_factory=list)
+    equipment: list[str] = Field(default_factory=list)
 
 
 class Workout(Model):

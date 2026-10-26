@@ -8,7 +8,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ..schemas.models import PlanOptions, PlanResult, UserProfile
+from ..schemas.models import PlanOptions, PlanResult, TrainingPlan, UserProfile
 
 
 def now() -> str:
@@ -27,6 +27,11 @@ class StudentRepository:
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.executescript("""
+                CREATE TABLE IF NOT EXISTS users (
+                    username TEXT PRIMARY KEY,
+                    password_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS student_profiles (
                     student_id TEXT PRIMARY KEY,
                     profile_json TEXT NOT NULL,
@@ -43,6 +48,22 @@ class StudentRepository:
                 );
                 CREATE INDEX IF NOT EXISTS plans_by_student ON training_plans(student_id, created_at DESC);
             """)
+
+    def create_user(self, username: str, password_hash: str) -> None:
+        """Create one account; uniqueness is enforced by SQLite."""
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO users(username, password_hash, created_at) VALUES (?, ?, ?)",
+                (username, password_hash, now()),
+            )
+
+    def get_password_hash(self, username: str) -> str | None:
+        """Return the stored hash for login verification, if the account exists."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT password_hash FROM users WHERE username=?", (username,)
+            ).fetchone()
+        return row[0] if row else None
 
     def save_profile(self, student_id: str, profile: UserProfile) -> None:
         """Create or replace the profile deliberately supplied by a student."""
@@ -109,6 +130,24 @@ class StudentRepository:
             }
             for row in rows
         ]
+
+    def update_plan(self, student_id: str, plan_id: str, plan: TrainingPlan) -> bool:
+        """Update a saved plan only when its owner matches the authenticated account."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE training_plans SET plan_json=? WHERE id=? AND student_id=?",
+                (plan.model_dump_json(), plan_id, student_id),
+            )
+        return cursor.rowcount == 1
+
+    def delete_plan(self, student_id: str, plan_id: str) -> bool:
+        """Delete one saved plan only when its owner matches the account."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM training_plans WHERE id=? AND student_id=?",
+                (plan_id, student_id),
+            )
+        return cursor.rowcount == 1
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path)

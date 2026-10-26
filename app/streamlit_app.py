@@ -30,6 +30,12 @@ class ApiError(RuntimeError):
 
 
 def api_request(method: str, path: str, **kwargs: Any) -> Any:
+    # The backend derives ownership from this signed token, not a client-sent ID.
+    token = st.session_state.get("access_token")
+    if token:
+        headers = dict(kwargs.pop("headers", {}))
+        headers["Authorization"] = f"Bearer {token}"
+        kwargs["headers"] = headers
     try:
         response = requests.request(method, f"{API_BASE}{path}", timeout=130, **kwargs)
     except requests.RequestException as error:
@@ -96,6 +102,34 @@ st.write(
 
 with st.sidebar:
     st.header("Demo connection")
+    st.subheader("Account")
+    account_name = st.text_input("Username", value=st.session_state.get("username", ""))
+    account_password = st.text_input("Password", type="password")
+    sign_in, register = st.columns(2)
+    if sign_in.button("Sign in", use_container_width=True):
+        try:
+            token = api_request(
+                "POST",
+                "/api/v1/auth/login",
+                json={"username": account_name, "password": account_password},
+            )
+            st.session_state.access_token = token["access_token"]
+            st.session_state.username = account_name
+            st.success("Signed in.")
+        except ApiError as error:
+            st.error(str(error))
+    if register.button("Create account", use_container_width=True):
+        try:
+            token = api_request(
+                "POST",
+                "/api/v1/auth/register",
+                json={"username": account_name, "password": account_password},
+            )
+            st.session_state.access_token = token["access_token"]
+            st.session_state.username = account_name
+            st.success("Account created and signed in.")
+        except ApiError as error:
+            st.error(str(error))
     api_base = st.text_input(
         "Backend API",
         value=API_BASE,
@@ -133,8 +167,9 @@ with profile_tab:
     st.write("Save or update the profile the backend will use to personalize plans.")
     student_id = st.text_input(
         "Student ID",
-        value=st.session_state.get("student_id", "demo-student"),
+        value=st.session_state.get("username", st.session_state.get("student_id", "")),
         max_chars=100,
+        disabled=bool(st.session_state.get("access_token")),
     )
     st.session_state.student_id = student_id.strip()
     if st.button("Load saved profile"):
