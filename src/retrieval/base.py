@@ -15,9 +15,12 @@ class Retriever(Protocol):
 
 
 class MissingRetriever:
-    """Clear placeholder until the vector-index adapter is connected."""
+    """Keep the API available while preserving a clear corpus/index setup error."""
+
+    def __init__(self, message: str | None = None):
+        self.message = (
+            message or "Retrieval is not connected yet. Configure a local corpus."
+        )
 
     def search(self, query: str, top_k: int) -> list[RetrievedChunk]:
-        raise RuntimeError(
-            "Retrieval is not connected yet. Add the knowledge-base adapter."
-        )
+        raise RuntimeError(self.message)

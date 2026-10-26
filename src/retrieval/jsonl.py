@@ -9,10 +9,9 @@ from ..schemas.models import RetrievedChunk
 
 
 class JsonlRetriever:
-    """Read JSONL chunks and rank them by matching words.
+    """Small word-overlap baseline retained for tests and one-file demos.
 
-    This is only a demonstration retriever. Axel's vector-index adapter can
-    replace this class while keeping the same ``search`` method.
+    The API uses the BM25, semantic, or hybrid retriever in ``src/retrieval``.
     """
 
     def __init__(self, chunk_file: str | Path):
