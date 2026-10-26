@@ -1,0 +1,48 @@
+{
+  "_doc": "Benchmark entries, run one change at a time. Explanations in docs/evaluation/benchmark_models.md. LLM IDs checked on provider pages on 2026-10-24.",
+  "checked_on": "2026-10-24",
+  "common_settings": {
+    "llm": {"temperature": 0, "repetitions": 3, "json_mode": true},
+    "retrieval": {"k": [1, 3, 5, 10], "main_k": 5, "candidates_for_rerank": 50, "rrf_k": 60},
+    "split_for_selection": "dev",
+    "split_for_report": "test"
+  },
+  "stages": {
+    "A_retrieval": [
+      {"id": "bm25", "type": "sparse", "model": null, "params": {"k1": 1.5, "b": 0.75}, "status": "implemented"},
+      {"id": "bge-m3", "type": "dense", "model": "BAAI/bge-m3", "max_input_tokens": 8192, "status": "todo"},
+      {"id": "me5-large", "type": "dense", "model": "intfloat/multilingual-e5-large", "max_input_tokens": 512, "prefixes": {"query": "query: ", "passage": "passage: "}, "status": "todo", "note": "chunks longer than 512 tokens are truncated"},
+      {"id": "qwen3-emb-0.6b", "type": "dense", "model": "Qwen/Qwen3-Embedding-0.6B", "status": "todo"},
+      {"id": "nomic-v2", "type": "dense", "model": "nomic-ai/nomic-embed-text-v2-moe", "status": "todo"},
+      {"id": "hybrid", "type": "hybrid", "components": ["bm25", "<best dense>"], "fusion": "rrf", "status": "todo"},
+      {"id": "hybrid+rerank", "type": "rerank", "base": "hybrid", "model": "BAAI/bge-reranker-v2-m3", "status": "todo"},
+      {"id": "hybrid+rerank-jina", "type": "rerank", "base": "hybrid", "model": "jinaai/jina-reranker-v2-base-multilingual", "status": "todo", "note": "non-commercial licence"}
+    ],
+    "B_generation": [
+      {"id": "llama-8b", "provider": "groq", "model": "llama-3.1-8b-instant", "provider_status": "production", "status": "todo"},
+      {"id": "llama-70b", "provider": "groq", "model": "llama-3.3-70b-versatile", "provider_status": "production", "status": "todo"},
+      {"id": "gpt-oss-20b", "provider": "groq", "model": "openai/gpt-oss-20b", "provider_status": "production", "status": "todo"},
+      {"id": "gpt-oss-120b", "provider": "groq", "model": "openai/gpt-oss-120b", "provider_status": "production", "status": "todo"},
+      {"id": "qwen-27b", "provider": "groq", "model": "qwen/qwen3.8-27b", "provider_status": "preview", "status": "optional", "note": "preview: report apart, never select for the final system"}
+    ],
+    "B_backup_provider": [
+      {"provider": "cerebras", "model": "gpt-oss-120b"},
+      {"provider": "cerebras", "model": "qwen-3.8-27b"}
+    ],
+    "C_systems": [
+      {"id": "prompt-only", "retrieval": false, "validators": false, "adaptation": false, "status": "todo"},
+      {"id": "basic-rag", "retrieval": true, "validators": false, "adaptation": false, "status": "todo"},
+      {"id": "v1", "retrieval": true, "validators": true, "adaptation": false, "status": "todo"},
+      {"id": "v2", "retrieval": true, "validators": true, "adaptation": true, "status": "blocked: no adaptation engine yet"},
+      {"id": "v2-no-adapt", "retrieval": true, "validators": true, "adaptation": "disabled (ablation)", "status": "blocked: no adaptation engine yet"}
+    ]
+  },
+  "llm_judge": {
+    "rule": "judge from a different model family than the generator under test",
+    "candidates": [
+      {"provider": "groq", "model": "llama-3.3-70b-versatile", "judges": "gpt-oss generators"},
+      {"provider": "groq", "model": "openai/gpt-oss-120b", "judges": "llama generators"}
+    ],
+    "calibration": "about 30 human labels before use"
+  }
+}
