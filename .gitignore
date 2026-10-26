@@ -4,6 +4,14 @@ GenAI_project_starter
 # Environment files
 .env
 
-# Python caches
+# Python and local test artifacts
 __pycache__/
+*.py[cod]
 .pytest_cache/
+.pytest-tmp/
+
+# Local demo database
+data/*.sqlite3
+
+# Docs
+generator_implementation_guide.txt

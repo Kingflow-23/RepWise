@@ -1,1 +1,8 @@
+pydantic
+ollama
+fastapi
+uvicorn
+python-dotenv
 pytest
+streamlit
+requests

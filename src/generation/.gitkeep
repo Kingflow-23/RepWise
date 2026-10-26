@@ -1,1 +1,0 @@
-Manages model calls, prompts, structured-output parsing, program generation, and revision. Retrieved passages are untrusted evidence, never executable instructions. Invalid or malformed output must not bypass validation.
