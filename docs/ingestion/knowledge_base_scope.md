@@ -135,7 +135,9 @@ These are not missing topics, but properties of the data that limit what we can 
 
 `chunker.py` gives every chunk the full topic list of its video (all topics with at least 1 hit in `coverage_matrix.csv`). Result: **every chunk of a video carries the same topics** (median 6 topics per chunk, up to 12). A chunk tagged `deload` may not say a word about deload.
 
-Consequence: topic metadata can't be used to filter or evaluate retrieval at chunk level, and can't be used as proof that a chunk supports a rule. Fix: run the topic lexicon on each chunk's own text and keep the video-level topics as a separate field.
+Consequence: topic metadata can't be used to filter or evaluate retrieval at chunk level, and can't be used as proof that a chunk supports a rule.
+
+**Fixed on 2026-10-26:** `chunker.py` now tags `topics` from each chunk's own text (median 1 topic per chunk instead of 7) and keeps the video-level list in `video_topics`. Example: 16 chunks are tagged `deload`, against 74 when topics were copied from the video. A topic tag is still a keyword match, not proof of support.
 
 ### 6.2 Not every chunk is Nassim's advice
 
@@ -148,6 +150,8 @@ All chunks have `speaker: "Nassim Sahili"`. But part of the corpus is speech by 
 
 Consequence: retrieval can return a passage that **describes or criticizes** a practice as if it were a recommendation. The citation would be valid, while the support is false. This directly affects Citation Precision.
 
+**Partly fixed on 2026-10-26:** every video now has a `content_type` (`config/video_content_types.json`: advice, program, ranking, session_vlog, coaching_case, third_party_analysis, fat_loss_nutrition), copied onto each chunk with a matching `speaker` value. Retrieval and grading can now prefer `advice`, `program` and `ranking` as evidence. Inside a vlog, the voices are still not separated.
+
 ### 6.3 No upload dates
 
 `upload_date` is empty. Nassim's positions evolve (the volume video is literally titled "On s'est tous trompés...", and the rest video updates "1 to 1.5 min" to "2 to 2.5 min"). Without dates we can't tell which position is the more recent, so conflicting evidence (red team case RT5) can be shown, but not resolved by recency.
@@ -158,7 +162,7 @@ Only 6 of the 60 videos have linked papers (22 in total), all with status `menti
 
 ### 6.5 Text quality
 
-48 of 60 transcripts have no punctuation, speech recognition errors remain beyond the 29 corrected patterns, and sponsor reads are only partly flagged (the chunker keeps flagged passages). See `data/corpus/README.md`.
+48 of 60 transcripts have no punctuation, speech recognition errors remain beyond the 29 corrected patterns, and sponsor reads are only partly flagged (the chunker removes flagged sponsor passages, but unflagged parts of a sponsor read remain). See `data/corpus/README.md`.
 
 ### 6.6 Off-topic share
 
@@ -212,8 +216,8 @@ A large part of the corpus is about fat loss, cardio and nutrition (24 videos me
 
 1. **Freeze the perimeter for the presentation:** commercial gym, 3 to 5 days, 60 to 90 min, hypertrophy goal, healthy adults, beginner to advanced. Say it explicitly on a slide.
 2. **Write the assumption register:** one line per ungrounded value (RIR targets, kg increments, exposures before progression, deload trigger and %, missed-session rule, policy switch, warm-up, transitions), each labelled `implementation_assumption`, frozen before evaluation.
-3. **Tag topics at chunk level** (6.1) before building retrieval labels.
-4. **Mark non-advice content** (6.2): at least a `content_type` per video (advice, program, ranking, session vlog, analysis of someone else, nutrition), so retrieval and grading can treat them differently.
+3. ~~Tag topics at chunk level (6.1)~~ done.
+4. ~~Mark non-advice content (6.2)~~ done at video level; review the proposed types in `config/video_content_types.json`.
 5. **Fill `upload_date`** for the 60 videos (one manual pass on YouTube is enough) to make RT5 resolvable.
 6. **Build the substitution map** from the 6 ranking videos, each entry linked to its passage.
 7. **Use the gaps as test cases:** every "Not grounded" row above is a ready-made RT2 or abstention test.

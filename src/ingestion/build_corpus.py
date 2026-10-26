@@ -62,10 +62,11 @@ FULL DATA INGESTION PIPELINE (run from the RepWise folder, in this order)
            coverage_hits.csv, coverage_summary.md (which videos discuss
            which training topic)
     3. python src/ingestion/chunker.py
-           passages + manifest.csv + coverage_matrix.csv -> chunks/
-           (passages merged into ~450-word chunks with one passage of
-           overlap, enriched with title, topics, papers and timestamp
-           links: the units that get embedded for retrieval)
+           passages + manifest.csv + coverage_matrix.csv + topic lexicon +
+           video_content_types.json -> chunks/ (sponsor passages removed,
+           ~250-word chunks with one passage of overlap, topics tagged on
+           each chunk's own text, content type, speaker, papers and
+           timestamp links: the units that get embedded for retrieval)
     4. Embedding and indexing of the chunks (not built yet).
 
     Rerun all steps in order after changing the raw files,

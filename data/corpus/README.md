@@ -265,4 +265,4 @@ Being clear about this matters for the evaluation and the presentation.
 - **The correction map only fixes known errors.** Other misheard words certainly remain. The map grows as new errors are found.
 - **Timestamps are precise to the second only,** as in the raw captions.
 - **`upload_date` is empty,** and the linked papers have not been checked yet (`mentioned` status).
-- **The chunker keeps flagged passages:** `chunker.py` carries the flags into the chunks but does not drop sponsor passages. Excluding them is up to the embedding / indexing step.
+- **Sponsor detection limits carry over to chunks:** `chunker.py` removes every passage flagged `sponsor` (and never joins the text before and after one), but the unflagged parts of a sponsor read stay in the chunks. Passages flagged `cta` are kept on purpose, since they usually also contain real content.

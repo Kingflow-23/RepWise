@@ -1,0 +1,90 @@
+{
+  "_about": {
+    "purpose": "Say what kind of video each source is, so retrieval and grading can tell Nassim's own recommendations apart from training vlogs with guests, analyses of other people's programs and off-scope fat loss content. Without it, a passage where Nassim describes or criticizes a practice can be cited as if he recommended it.",
+    "used_by": "src/ingestion/chunker.py: copies content_type and speaker onto every chunk of the video.",
+    "status": "Proposed from the video titles and a look at the transcripts (2026-10-26). Review a type when in doubt: open the video or data/corpus/clean_txt/<video_id>.txt.",
+    "how_to_use_in_retrieval": "Prefer 'advice', 'program' and 'ranking' as evidence for prescriptions. Treat 'session_vlog', 'coaching_case' and 'third_party_analysis' as weaker evidence (several voices, or commentary on someone else). 'fat_loss_nutrition' is outside the MVP scope.",
+    "types": {
+      "advice": "Nassim explains a training topic on his own (principles, mistakes, how-to).",
+      "program": "Nassim prescribes a complete program or session with its variables (exercises, sets, reps, rest).",
+      "ranking": "Exercises for one muscle ranked from best to worst: the main source for substitutions.",
+      "session_vlog": "Filmed training session, usually with a guest: two voices mixed with no speaker labels, opinions may differ.",
+      "coaching_case": "Nassim coaches one specific person: advice adapted to that person.",
+      "third_party_analysis": "Nassim analyses someone else's program, physique or technique: the text often describes practices he does not recommend.",
+      "fat_loss_nutrition": "Mainly fat loss, cardio or nutrition: outside the MVP scope."
+    },
+    "speakers": {
+      "single": "Nassim Sahili",
+      "mixed": "Nassim Sahili + guest (voices mixed, not labelled)",
+      "commentary": "Nassim Sahili (commenting on a third party)"
+    }
+  },
+  "videos": {
+    "1OsDiVvQT7k": "advice",
+    "05WPpiDdC78": "advice",
+    "_-XnY-bwD4A": "advice",
+    "7b0irWZcfu0": "advice",
+    "-m8uXyMD0n4": "advice",
+    "LHGPAV6e9VI": "advice",
+    "DeHRm_3AcAI": "advice",
+    "J_Zm4XvE__s": "advice",
+    "7--wCDtdGHM": "advice",
+    "ucMKYB8XeRI": "advice",
+    "pA-q30r2EzI": "advice",
+    "TnKwgVrCtl8": "advice",
+    "yL9W6I8WBOA": "advice",
+    "pJ8YrURHCs0": "advice",
+    "LfHhA_6n1zI": "advice",
+    "R4QqSvU5oB0": "advice",
+    "KhpYqbZNW60": "advice",
+    "kkRJgNDBCHg": "advice",
+    "8Upe8QgpYps": "advice",
+    "qcs8utwv9WE": "advice",
+    "C6F0U3Be0QU": "advice",
+    "Dx0O5iGNoAQ": "advice",
+    "HHpEn-HlCkM": "advice",
+    "DJEi-FifTtg": "advice",
+
+    "XFsbtGB1TXQ": "program",
+    "Jd6jgL2s2F4": "program",
+    "45l6bl8Uyr4": "program",
+    "gOViaSi6y38": "program",
+
+    "WYMludGzu48": "ranking",
+    "cXNeX_t08wQ": "ranking",
+    "di2pTqQKdss": "ranking",
+    "qq_bX5iw0HY": "ranking",
+    "uTOc6d4NoVE": "ranking",
+    "Ibr1O8UxU3E": "ranking",
+
+    "-yB8TWvU83g": "session_vlog",
+    "nKZjIVbRifU": "session_vlog",
+    "4Y6VKipZcyQ": "session_vlog",
+    "LWhrWQRzyos": "session_vlog",
+    "npDYdbjJTVI": "session_vlog",
+    "t4XKBDDjLKE": "session_vlog",
+    "e2jbgVfqFEY": "session_vlog",
+    "2YV5hNnei7s": "session_vlog",
+    "CWeFx7Q3E4U": "session_vlog",
+    "kKr_d1duFHs": "session_vlog",
+
+    "2Fv0yyCLrW8": "coaching_case",
+    "Yhyk5waoob8": "coaching_case",
+
+    "dctYv3j4o3U": "third_party_analysis",
+    "nkyrc-iBXq8": "third_party_analysis",
+    "BksiVi6lTWI": "third_party_analysis",
+
+    "cvfTTuOZKV8": "fat_loss_nutrition",
+    "ZP0LLX_Srs8": "fat_loss_nutrition",
+    "A2DqNIw2VPU": "fat_loss_nutrition",
+    "OwPD4u0qOvs": "fat_loss_nutrition",
+    "BBzZktps5D4": "fat_loss_nutrition",
+    "qnF5AzNmGYQ": "fat_loss_nutrition",
+    "BuujftJEACA": "fat_loss_nutrition",
+    "IMkWQtWQfzs": "fat_loss_nutrition",
+    "ld5_Z0ua278": "fat_loss_nutrition",
+    "drdNo6yfAUI": "fat_loss_nutrition",
+    "NQWG3icC9Kk": "fat_loss_nutrition"
+  }
+}
