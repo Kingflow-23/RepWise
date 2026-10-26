@@ -6,3 +6,9 @@ python-dotenv
 pytest
 streamlit
 requests
+pandas
+httpx
+PyJWT
+pwdlib[argon2]
+numpy
+sentence-transformers
