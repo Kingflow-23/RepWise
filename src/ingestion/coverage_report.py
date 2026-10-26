@@ -9,6 +9,7 @@ Outputs (under data/corpus/):
   coverage_hits.csv     every hit with timestamp link, for manual review
   coverage_summary.md   per-topic totals and the strongest videos
 """
+
 from __future__ import annotations
 
 import csv
@@ -22,8 +23,13 @@ CORPUS = REPO / "data" / "corpus"
 
 
 def main() -> None:
-    lex = json.loads((REPO / "config" / "topic_lexicon.json").read_text(encoding="utf-8"))["topics"]
-    rx = {t: re.compile("|".join(f"(?:{p})" for p in v["patterns"]), re.I) for t, v in lex.items()}
+    lex = json.loads(
+        (REPO / "config" / "topic_lexicon.json").read_text(encoding="utf-8")
+    )["topics"]
+    rx = {
+        t: re.compile("|".join(f"(?:{p})" for p in v["patterns"]), re.I)
+        for t, v in lex.items()
+    }
     titles = {}
     with open(CORPUS / "manifest.csv", encoding="utf-8") as f:
         for row in csv.DictReader(f):
@@ -40,9 +46,17 @@ def main() -> None:
                 m = r.search(p["text"])
                 if m:
                     matrix[vid][topic] += 1
-                    hits.append({"topic": topic, "video_id": vid, "title": titles[vid],
-                                 "start": p["start"], "url_t": p["url_t"], "match": m.group(0),
-                                 "text": p["text"]})
+                    hits.append(
+                        {
+                            "topic": topic,
+                            "video_id": vid,
+                            "title": titles[vid],
+                            "start": p["start"],
+                            "url_t": p["url_t"],
+                            "match": m.group(0),
+                            "text": p["text"],
+                        }
+                    )
 
     topics = list(lex)
     with open(CORPUS / "coverage_matrix.csv", "w", encoding="utf-8", newline="") as f:
@@ -55,17 +69,27 @@ def main() -> None:
         w.writeheader()
         w.writerows(hits)
 
-    lines = ["# Corpus topic coverage", "",
-             "Passage-level keyword hits (sponsor passages excluded). A hit is a lead to read, not evidence.", "",
-             "| Topic | Passages | Videos with >=1 hit | Videos with >=5 hits | Top videos (hits) |",
-             "|---|---|---|---|---|"]
+    lines = [
+        "# Corpus topic coverage",
+        "",
+        "Passage-level keyword hits (sponsor passages excluded). A hit is a lead to read, not evidence.",
+        "",
+        "| Topic | Passages | Videos with >=1 hit | Videos with >=5 hits | Top videos (hits) |",
+        "|---|---|---|---|---|",
+    ]
     for t in topics:
-        per_vid = sorted(((matrix[v][t], v) for v in titles if matrix[v][t]), reverse=True)
+        per_vid = sorted(
+            ((matrix[v][t], v) for v in titles if matrix[v][t]), reverse=True
+        )
         total = sum(c for c, _ in per_vid)
         strong = sum(1 for c, _ in per_vid if c >= 5)
         top = "; ".join(f"{titles[v][:45]} ({c})" for c, v in per_vid[:3])
-        lines.append(f"| {lex[t]['label']} | {total} | {len(per_vid)} | {strong} | {top} |")
-    (CORPUS / "coverage_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        lines.append(
+            f"| {lex[t]['label']} | {total} | {len(per_vid)} | {strong} | {top} |"
+        )
+    (CORPUS / "coverage_summary.md").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
+    )
     print("\n".join(lines))
 
 

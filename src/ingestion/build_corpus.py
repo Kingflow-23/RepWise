@@ -1,6 +1,6 @@
 """Step 1 of the RepWise data ingestion pipeline: clean the raw transcripts.
 
-WHAT THIS SCRIPT DOES 
+WHAT THIS SCRIPT DOES
     YouTube captions are messy: the text comes in tiny 1-2 second pieces,
     sentences are cut in half, most files have no punctuation, sound tags
     like [Musique] appear in the middle of sentences, and the speech
@@ -80,7 +80,6 @@ USAGE
     python src/ingestion/build_corpus.py --help     (all path options)
 """
 
-
 from __future__ import annotations
 
 import argparse
@@ -111,9 +110,9 @@ CTA = re.compile(
     re.I,
 )
 
-UNPUNCT_WORDS = 30   # passage size when the file has no punctuation
-MAX_WORDS = 60       # hard cap for punctuated files
-MIN_SENT_WORDS = 8   # do not close a passage on a very short sentence
+UNPUNCT_WORDS = 30  # passage size when the file has no punctuation
+MAX_WORDS = 60  # hard cap for punctuated files
+MIN_SENT_WORDS = 8  # do not close a passage on a very short sentence
 
 
 def nfc(s: str) -> str:
@@ -184,7 +183,7 @@ def correct_fragments(frags: list[dict], rules, counter: Counter) -> list[dict]:
         out, last, shifts = [], 0, []
         for m in matches:
             new = m.expand(rep)
-            out += [text[last:m.start()], new]
+            out += [text[last : m.start()], new]
             shifts.append((m.start(), m.end(), len(new) - (m.end() - m.start())))
             last = m.end()
         out.append(text[last:])
@@ -193,7 +192,7 @@ def correct_fragments(frags: list[dict], rules, counter: Counter) -> list[dict]:
         for b in bounds:
             delta, nb = 0, None
             for s, e, d in shifts:
-                if s < b < e:          # boundary inside a match: snap to match start
+                if s < b < e:  # boundary inside a match: snap to match start
                     nb = s + delta
                     break
                 if e <= b:
@@ -202,7 +201,7 @@ def correct_fragments(frags: list[dict], rules, counter: Counter) -> list[dict]:
         bounds = new_bounds
     bounds.append(len(text) + 1)
     return [
-        {"start": f["start"], "text": text[bounds[i]:bounds[i + 1]].strip()}
+        {"start": f["start"], "text": text[bounds[i] : bounds[i + 1]].strip()}
         for i, f in enumerate(frags)
     ]
 
@@ -225,17 +224,24 @@ def to_passages(frags: list[dict], punctuated: bool) -> list[dict]:
             close = n >= UNPUNCT_WORDS
         if close:
             end = frags[i + 1]["start"] if i + 1 < len(frags) else f["start"] + 2
-            passages.append({"start": start, "end": max(end, start + 1), "text": " ".join(buf)})
+            passages.append(
+                {"start": start, "end": max(end, start + 1), "text": " ".join(buf)}
+            )
             buf, start = [], None
     if buf:
         last = frags[-1]["start"] + 2
-        passages.append({"start": start, "end": max(last, start + 1), "text": " ".join(buf)})
+        passages.append(
+            {"start": start, "end": max(last, start + 1), "text": " ".join(buf)}
+        )
     return passages
 
 
 def load_corrections(path: Path) -> list[tuple[re.Pattern, str, str]]:
     data = json.loads(path.read_text(encoding="utf-8"))
-    return [(re.compile(c["pattern"], re.I), c["replacement"], c["pattern"]) for c in data["corrections"]]
+    return [
+        (re.compile(c["pattern"], re.I), c["replacement"], c["pattern"])
+        for c in data["corrections"]
+    ]
 
 
 def parse_title_map(path: Path) -> dict[str, str]:
@@ -262,7 +268,9 @@ def parse_refs(path: Path) -> dict[str, list[str]]:
     return refs
 
 
-def match_files(titles: dict[str, str], files: list[Path]) -> tuple[dict[str, Path], list[str]]:
+def match_files(
+    titles: dict[str, str], files: list[Path]
+) -> tuple[dict[str, Path], list[str]]:
     by_key = {key(f.stem): f for f in files}
     matched, issues = {}, []
     for vid, title in titles.items():
@@ -277,16 +285,22 @@ def match_files(titles: dict[str, str], files: list[Path]) -> tuple[dict[str, Pa
         else:
             issues.append(f"NO TRANSCRIPT FILE for {vid} '{title}'")
     used = set(matched.values())
-    issues += [f"transcript file not in dictionary: {f.name}" for f in files if f not in used]
+    issues += [
+        f"transcript file not in dictionary: {f.name}" for f in files if f not in used
+    ]
     return matched, issues
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--corpus-dir", type=Path, default=PROJECT / "corpus")
     ap.add_argument("--titles", type=Path, default=PROJECT / "dictionnary_links.txt")
     ap.add_argument("--refs", type=Path, default=PROJECT / "links.txt")
-    ap.add_argument("--corrections", type=Path, default=REPO / "config" / "term_corrections.json")
+    ap.add_argument(
+        "--corrections", type=Path, default=REPO / "config" / "term_corrections.json"
+    )
     ap.add_argument("--out", type=Path, default=REPO / "data" / "corpus")
     ap.add_argument("--corpus-version", default=f"v1-{date.today().isoformat()}")
     args = ap.parse_args()
@@ -309,8 +323,11 @@ def main() -> None:
         passages = to_passages(correct_fragments(frags, rules, counter), punct)
         sponsor_ts = []
         url = f"https://youtu.be/{vid}"
-        with open(args.out / "passages" / f"{vid}.jsonl", "w", encoding="utf-8") as fj, \
-             open(args.out / "clean_txt" / f"{vid}.txt", "w", encoding="utf-8") as ft:
+        with open(
+            args.out / "passages" / f"{vid}.jsonl", "w", encoding="utf-8"
+        ) as fj, open(
+            args.out / "clean_txt" / f"{vid}.txt", "w", encoding="utf-8"
+        ) as ft:
             ft.write(f"# {titles[vid]}\n# {url}\n\n")
             for n, p in enumerate(passages, 1):
                 text = p["text"]
@@ -330,29 +347,33 @@ def main() -> None:
                     "flags": flags,
                 }
                 fj.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                ft.write(f"[{fmt_ts(p['start'])}]{' {' + ','.join(flags) + '}' if flags else ''} {text}\n")
+                ft.write(
+                    f"[{fmt_ts(p['start'])}]{' {' + ','.join(flags) + '}' if flags else ''} {text}\n"
+                )
         for name, c in counter.items():
             corr_rows.append({"video_id": vid, "pattern": name, "count": c})
         words = sum(len(p["text"].split()) for p in passages)
-        manifest.append({
-            "video_id": vid,
-            "url": url,
-            "title": titles[vid],
-            "source_file": path.name,
-            "raw_sha256": hashlib.sha256(raw).hexdigest(),
-            "upload_date": "",  # not in the raw files; fill from YouTube if needed
-            "duration_s": frags[-1]["start"] if frags else 0,
-            "caption_layout": layout,
-            "punctuated": punct,
-            "n_passages": len(passages),
-            "n_words": words,
-            "n_corrections": sum(counter.values()),
-            "sponsor_passages": "|".join(sponsor_ts),
-            "scientific_references": "|".join(refs.get(vid, [])),
-            "n_references": len(refs.get(vid, [])),
-            "reference_review_status": "mentioned" if refs.get(vid) else "",
-            "corpus_version": args.corpus_version,
-        })
+        manifest.append(
+            {
+                "video_id": vid,
+                "url": url,
+                "title": titles[vid],
+                "source_file": path.name,
+                "raw_sha256": hashlib.sha256(raw).hexdigest(),
+                "upload_date": "",  # not in the raw files; fill from YouTube if needed
+                "duration_s": frags[-1]["start"] if frags else 0,
+                "caption_layout": layout,
+                "punctuated": punct,
+                "n_passages": len(passages),
+                "n_words": words,
+                "n_corrections": sum(counter.values()),
+                "sponsor_passages": "|".join(sponsor_ts),
+                "scientific_references": "|".join(refs.get(vid, [])),
+                "n_references": len(refs.get(vid, [])),
+                "reference_review_status": "mentioned" if refs.get(vid) else "",
+                "corpus_version": args.corpus_version,
+            }
+        )
 
     with open(args.out / "manifest.csv", "w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(manifest[0]))
@@ -364,11 +385,15 @@ def main() -> None:
         w.writerows(corr_rows)
 
     total_s = sum(m["duration_s"] for m in manifest)
-    print(f"videos: {len(manifest)}  passages: {sum(m['n_passages'] for m in manifest)}  "
-          f"words: {sum(m['n_words'] for m in manifest)}  hours: {total_s / 3600:.1f}")
-    print(f"punctuated: {sum(m['punctuated'] for m in manifest)}  "
-          f"with refs: {sum(1 for m in manifest if m['n_references'])}  "
-          f"corrections applied: {sum(m['n_corrections'] for m in manifest)}")
+    print(
+        f"videos: {len(manifest)}  passages: {sum(m['n_passages'] for m in manifest)}  "
+        f"words: {sum(m['n_words'] for m in manifest)}  hours: {total_s / 3600:.1f}"
+    )
+    print(
+        f"punctuated: {sum(m['punctuated'] for m in manifest)}  "
+        f"with refs: {sum(1 for m in manifest if m['n_references'])}  "
+        f"corrections applied: {sum(m['n_corrections'] for m in manifest)}"
+    )
     for i in issues:
         print("WARN", i)
 
