@@ -1,6 +1,6 @@
 # RepWise corpus: how the raw transcripts are cleaned
 
-This folder holds the cleaned version of the RepWise corpus: 60 French YouTube videos by Nassim Sahili about gym training. This document explains, step by step and in plain words, what `src/ingestion/build_corpus.py` does to the raw transcripts, why each step exists, and what it does **not** do.
+The transcript files are kept outside Git. This document records the cleaned corpus scope and explains, step by step and in plain words, what `src/ingestion/build_corpus.py` does to authorized raw transcripts, why each step exists, and what it does **not** do.
 
 | | |
 |---|---|
@@ -265,4 +265,4 @@ Being clear about this matters for the evaluation and the presentation.
 - **The correction map only fixes known errors.** Other misheard words certainly remain. The map grows as new errors are found.
 - **Timestamps are precise to the second only,** as in the raw captions.
 - **`upload_date` is empty,** and the linked papers have not been checked yet (`mentioned` status).
-- **The chunker keeps flagged passages:** `chunker.py` carries the flags into the chunks but does not drop sponsor passages. Excluding them is up to the embedding / indexing step.
+- **The chunker keeps flagged passages:** `chunker.py` carries the flags into chunk JSONL. BM25, semantic, hybrid retrieval, and evidence selection exclude sponsor and CTA chunks before they can reach the model.

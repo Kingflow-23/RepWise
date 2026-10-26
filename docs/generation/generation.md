@@ -21,7 +21,8 @@ The code rejects a plan when:
 - it uses more workouts than the student has available days;
 - it schedules a workout on an unavailable day;
 - a workout exceeds the requested duration;
-- an exercise refers to a source that was not retrieved.
+- an exercise has no source ID or refers to a source that was not retrieved;
+- an exercise requires equipment absent from the profile (unless the profile says full gym).
 
 These are simple consistency checks. They do not prove that the programme is safe, medically suitable or scientifically complete. The returned plan always contains a short safety note and the system must not be used to diagnose pain or injuries.
 
@@ -31,14 +32,14 @@ If retrieval returns no usable evidence, the pipeline returns `insufficient_evid
 
 ## Full implemented request path
 
-The FastAPI `POST /api/v1/students/{student_id}/plans` route reads the saved profile, combines it with `PlanOptions`, and invokes `PlanPipeline`. The pipeline builds a query from focus, goal, experience, equipment, and extra constraints, asks the configured retriever for `top_k` chunks, and selects usable evidence. `JsonlRetriever` is the current runnable baseline: it reads a caller-provided JSONL file and ranks by word overlap. The index and embedding pipeline are not included in this repository.
+The FastAPI `POST /api/v1/students/{student_id}/plans` route authenticates the account, reads its saved profile, combines it with `PlanOptions`, and invokes `PlanPipeline`. The pipeline builds a query from focus, goal, experience, equipment, and extra constraints, asks the configured BM25, semantic, or hybrid retriever for `top_k` chunks, and selects usable evidence. Hybrid uses RRF to combine BM25 and local multilingual E5 ranks. See [retrieval setup](../retrieval/hybrid_retrieval.md).
 
-The prompt builder loads `prompts/system_prompt_v1.txt`, serializes the request and selected evidence, and includes the `TrainingPlan` JSON schema. `OllamaGenerator` sends this to the configured local Ollama host with temperature 0.2. The model output is parsed directly as `TrainingPlan`; there is no retry or repair pass. A successful plan is stored with its request and selected source records. Failed results are returned as API errors and are not persisted as plans.
+The prompt builder loads `prompts/system_prompt_v1.txt`, serializes the request and selected evidence, and includes the `TrainingPlan` JSON schema. `OllamaGenerator` sends this to the configured local Ollama host with temperature 0.2. Pydantic parses the model output. If parsing or validation fails, the pipeline makes one correction attempt with the validation error, then returns a controlled `generation_error`. A successful plan is stored with its request and selected source records. Failed results are returned as API errors and are not persisted as plans.
 
 The Streamlit demo in `app/streamlit_app.py` is an HTTP client for this API. It provides profile create/update and load, plan generation, source display, and saved-plan history. It does not call the model or database directly. Run the API and Streamlit as separate processes; set `REPWISE_API_URL` when using a non-default API address.
 
-The health route indicates whether a retriever was configured and reports the model name; it does not make a live Ollama health check. A configured chunk path is validated when the JSONL retriever is constructed during backend startup.
+The health route indicates whether retrieval is ready and reports the configured model name; it does not make a live Ollama health check. The API does not substitute a mock when the corpus, embedding package, model, or index is missing. It keeps the health page available and returns the retrieval setup error when a plan is requested.
 
 ## Configuration and limitations
 
-`OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `REPWISE_TOP_K`, `REPWISE_CHUNK_FILE`, and `REPWISE_DATABASE_PATH` are read by `config.config.AppConfig`. The Streamlit API URL is read by `config.app_config.get_api_url()` from `REPWISE_API_URL`. The JSONL overlap score is only a simple ranking signal and is not a calibrated relevance probability. Validation does not check exercise safety, equipment compatibility, progression quality, or scientific support beyond the existence of cited selected source IDs. The repository has no evaluation benchmark, corpus manifest, or end-to-end test against a real Ollama server or index.
+`OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `REPWISE_TOP_K`, `REPWISE_RETRIEVAL`, `REPWISE_EMBEDDING_MODEL`, `REPWISE_EMBEDDING_INDEX`, `REPWISE_CHUNK_FILE`, `REPWISE_DATABASE_PATH`, and `REPWISE_AUTH_SECRET` are read by `config.config.AppConfig`. The Streamlit API URL is read by `config.app_config.get_api_url()` from `REPWISE_API_URL`. Citation-ID validation proves that an exercise points to evidence supplied to the model; it does not prove that the passage semantically supports the recommendation. Other limits include medical safety, progression quality, and the scope and quality of the source corpus.
