@@ -21,10 +21,13 @@ class PlanPipeline:
         """Create one grounded plan, or return a clear status when this fails."""
         try:
             chunks = self.retriever.search(make_query(request), self.top_k)
-        except Exception:
+        except Exception as error:
             return PlanResult(
                 status="retrieval_error",
-                message="Retrieval failed. Check that the knowledge base is available.",
+                message=(
+                    "Retrieval failed. Check that the knowledge base corpus and configured index are "
+                    f"available. Details: {error}"
+                ),
             )
 
         evidence, sources = select_evidence(chunks)
@@ -34,15 +37,27 @@ class PlanPipeline:
                 message="No useful training evidence was found.",
             )
 
-        try:
-            plan = self.generator.generate(
-                load_system_prompt(), make_user_prompt(request, evidence)
-            )
-            validate_plan(plan, request, {source.source_id for source in sources})
-        except (OSError, ValueError, RuntimeError) as error:
+        system_prompt = load_system_prompt()
+        user_prompt = make_user_prompt(request, evidence)
+        plan = None
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                if attempt:
+                    user_prompt += (
+                        "\n\nCorrection request: the previous response failed validation: "
+                        f"{last_error}. Return corrected JSON only."
+                    )
+                plan = self.generator.generate(system_prompt, user_prompt)
+                validate_plan(plan, request, {source.source_id for source in sources})
+                break
+            except (OSError, ValueError, RuntimeError) as error:
+                last_error = error
+        else:
+            assert last_error is not None
             return PlanResult(
                 status="generation_error",
-                message=f"The plan could not be validated: {error}",
+                message=f"The plan could not be validated after one correction attempt: {last_error}",
                 sources=sources,
             )
 
@@ -64,6 +79,7 @@ def validate_plan(
         raise ValueError("weeks must be numbered from 1 to the requested duration")
 
     available_days = set(request.profile.available_days)
+    available_equipment = {item.casefold() for item in request.profile.equipment}
     for week in plan.weeks:
         if len(week.workouts) > len(available_days):
             raise ValueError("a week has more workouts than available days")
@@ -75,6 +91,16 @@ def validate_plan(
                     "a workout is longer than the requested session duration"
                 )
             for exercise in workout.exercises:
+                required_equipment = {item.casefold() for item in exercise.equipment}
+                unavailable = required_equipment - available_equipment - {"bodyweight"}
+                if unavailable and "full gym" not in available_equipment:
+                    raise ValueError(
+                        "an exercise requires equipment that is not in the student profile"
+                    )
+                if not exercise.source_ids:
+                    raise ValueError(
+                        "an exercise must cite at least one supplied source"
+                    )
                 if set(exercise.source_ids) - source_ids:
                     raise ValueError(
                         "an exercise cites a source that was not retrieved"

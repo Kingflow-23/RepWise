@@ -43,4 +43,8 @@ class OllamaGenerator:
             )
             return TrainingPlan.model_validate_json(content)
         except Exception as error:
-            raise RuntimeError("Ollama could not generate a valid plan.") from error
+            raise RuntimeError(
+                "Ollama could not generate a valid plan. Confirm the local server is "
+                f"running and install the configured model with `ollama pull {self.model}`. "
+                f"Details: {error}"
+            ) from error

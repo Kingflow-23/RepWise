@@ -17,6 +17,10 @@ class AppConfig:
     ollama_url: str = "http://localhost:11434"
     top_k: int = 5
     chunk_file: str | None = None
+    retrieval_strategy: str = "hybrid"
+    embedding_model: str = "intfloat/multilingual-e5-small"
+    embedding_index: str = "data/corpus/index/semantic.npz"
+    auth_secret: str = ""
 
     @classmethod
     def from_environment(cls) -> "AppConfig":
@@ -28,4 +32,12 @@ class AppConfig:
             ollama_url=os.getenv("OLLAMA_BASE_URL", cls.ollama_url),
             top_k=int(os.getenv("REPWISE_TOP_K", cls.top_k)),
             chunk_file=os.getenv("REPWISE_CHUNK_FILE") or None,
+            retrieval_strategy=os.getenv("REPWISE_RETRIEVAL", "hybrid"),
+            embedding_model=os.getenv(
+                "REPWISE_EMBEDDING_MODEL", "intfloat/multilingual-e5-small"
+            ),
+            embedding_index=os.getenv(
+                "REPWISE_EMBEDDING_INDEX", "data/corpus/index/semantic.npz"
+            ),
+            auth_secret=os.getenv("REPWISE_AUTH_SECRET", ""),
         )
