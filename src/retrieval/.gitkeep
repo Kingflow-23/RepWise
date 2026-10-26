@@ -1,1 +1,0 @@
-finds relevant chunks, applies metadata filters, optionally reranks results, and assembles an evidence pack with source identifiers and links.
