@@ -1,0 +1,271 @@
+{
+  "_about": {
+    "purpose": "Fix the words that YouTube's automatic captions mishear, mostly gym vocabulary. Without these fixes, a search for 'deload' or 'hack squat' finds nothing, because the captions wrote 'dilode' and 'axquat'.",
+    "used_by": "src/ingestion/build_corpus.py (step 3: fix speech recognition errors).",
+    "when_applied": "After the sound tags are removed and before the passages are built. The raw transcript files are never changed: corrections only apply to the cleaned copy.",
+    "how_matching_works": [
+      "Each 'pattern' is a regular expression, matched case-insensitively (DILODE, Dilode and dilode are all caught).",
+      "Rules run on the whole transcript of a video, so an error split across two caption pieces ('push' | 'pool legs') is still caught.",
+      "Rules run from top to bottom, in the order of this file. Each rule sees the text already fixed by the rules above it.",
+      "Every hit is counted per video in data/corpus/corrections_log.csv."
+    ],
+    "regex_cheat_sheet": {
+      "\\b": "word boundary: the match must start or end a whole word. '\\bdilo\\b' catches 'dilo' on its own, not inside a longer word.",
+      "a|b": "either a or b: 'pration|prenation' catches both spellings.",
+      "s?": "the letter before is optional: 'dilodes?' catches 'dilode' and 'dilodes'.",
+      "(?:a|b)": "a group of choices, without capturing it: 'push (?:pool|poule) legs' catches both.",
+      "(...) and \\1": "a captured group reused in the replacement: 'développer (couché|incliné)' becomes 'développé couché' or 'développé incliné'.",
+      " ?": "an optional space: 'face ?pool' catches 'facepool' and 'face pool'."
+    },
+    "fields": {
+      "pattern": "what to look for (regular expression).",
+      "replacement": "what to write instead.",
+      "category": "what kind of error it is: training_term, exercise_name, anatomy, body_composition, spelling, person_name.",
+      "description": "plain-language explanation of what the rule catches and why.",
+      "status": "'confirmed' = checked in context in the transcripts. 'needs_review' = likely, but check the example against the video before trusting it.",
+      "example": "a real phrase from the corpus where the error appears (empty when not recorded)."
+    },
+    "how_to_add_a_rule": [
+      "1. Find the misheard word in data/corpus/clean_txt/ (or in a search result).",
+      "2. Add an entry: pattern with \\b around the word, replacement, category, description, status 'needs_review' and a real example.",
+      "3. Make the pattern strict enough not to catch correct words (test it on a few transcripts).",
+      "4. Rerun build_corpus.py, coverage_report.py and chunker.py, then check corrections_log.csv for the hit count.",
+      "5. Switch status to 'confirmed' once checked in context."
+    ],
+    "limits": "This map only fixes errors that someone already spotted. Other misheard words certainly remain in the corpus."
+  },
+  "corrections": [
+    {
+      "pattern": "\\bdilodes?\\b|\\bdiloads?\\b|\\bdilos?\\b|\\bdit laude\\b|\\bdodade\\b",
+      "replacement": "deload",
+      "category": "training_term",
+      "description": "Catches the many ways the captions mishear 'deload' (a lighter training week): 'dilode', 'diload', 'dilo', 'dit laude', 'dodade'. The correct word never appears in the raw captions, so this rule is what makes the deload video findable at all.",
+      "status": "confirmed",
+      "example": "c'est apres cette phase de dilode qu'intervient la surcompensation"
+    },
+    {
+      "pattern": "\\bpush (?:pool|poule) legs?\\b|\\bpush pull leg\\b",
+      "replacement": "push pull legs",
+      "category": "training_term",
+      "description": "Catches 'push pool legs' and 'push poule legs', the misheard name of the push / pull / legs training split.",
+      "status": "confirmed",
+      "example": "le push pool legs, le full body"
+    },
+    {
+      "pattern": "\\bséance pool\\b",
+      "replacement": "séance pull",
+      "category": "training_term",
+      "description": "Catches 'séance pool', the misheard name of a 'pull' session (back and biceps day).",
+      "status": "confirmed",
+      "example": "je la mettrai plus dans une séance pool"
+    },
+    {
+      "pattern": "\\bperlower\\b|\\bper lower\\b",
+      "replacement": "upper lower",
+      "category": "training_term",
+      "description": "Catches 'perlower' and 'per lower', the misheard name of the upper body / lower body split.",
+      "status": "confirmed",
+      "example": "le full body, le perlower, le split"
+    },
+    {
+      "pattern": "\\bface ?pool\\b|\\bfaceol\\b",
+      "replacement": "face pull",
+      "category": "exercise_name",
+      "description": "Catches 'facepool', 'face pool' and 'faceol', misheard names of the face pull (cable exercise for the rear shoulders).",
+      "status": "confirmed",
+      "example": "j'adore le facepool"
+    },
+    {
+      "pattern": "\\brac ?pool\\b",
+      "replacement": "rack pull",
+      "category": "exercise_name",
+      "description": "Catches 'racpool' and 'rac pool', the misheard rack pull (a deadlift started from a raised position).",
+      "status": "confirmed",
+      "example": "le racpool c'est en fait un souleve de terre"
+    },
+    {
+      "pattern": "\\baxquats?\\b|\\baxwats?\\b",
+      "replacement": "hack squat",
+      "category": "exercise_name",
+      "description": "Catches 'axquat' and 'axwat', the misheard hack squat machine.",
+      "status": "confirmed",
+      "example": "le hack squat mais attention le axquat lineaire"
+    },
+    {
+      "pattern": "\\bisquots?\\b",
+      "replacement": "ischios",
+      "category": "anatomy",
+      "description": "Catches 'isquot', the misheard 'ischios' (hamstrings).",
+      "status": "confirmed",
+      "example": "equilibrees entre les isquot et les quadriceps"
+    },
+    {
+      "pattern": "\\bmasse? grass(?:ce|e)?\\b",
+      "replacement": "masse grasse",
+      "category": "body_composition",
+      "description": "Catches 'mass grass', 'masse grass' and 'grassce' variants of 'masse grasse' (body fat). The most frequent error in the corpus.",
+      "status": "confirmed",
+      "example": "25 % de mass grass"
+    },
+    {
+      "pattern": "\\bdorseaux\\b",
+      "replacement": "dorsaux",
+      "category": "anatomy",
+      "description": "Catches 'dorseaux', a misspelling of 'dorsaux' (lats, back muscles).",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bpration\\b|\\bprenation\\b",
+      "replacement": "pronation",
+      "category": "anatomy",
+      "description": "Catches 'pration' and 'prenation', misheard 'pronation' (palm-down grip or rotation of the forearm).",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bdeux?ème\\b",
+      "replacement": "deuxième",
+      "category": "spelling",
+      "description": "Catches 'deème' and 'deuxème', truncated forms of 'deuxième' (second).",
+      "status": "confirmed",
+      "example": "le deème jour d'entraînement"
+    },
+    {
+      "pattern": "\\btroisème\\b",
+      "replacement": "troisième",
+      "category": "spelling",
+      "description": "Catches 'troisème', a truncated form of 'troisième' (third).",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bchromion\\b",
+      "replacement": "acromion",
+      "category": "anatomy",
+      "description": "Catches 'chromion', the misheard 'acromion' (bony tip of the shoulder blade).",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\brwing\\b",
+      "replacement": "rowing",
+      "category": "exercise_name",
+      "description": "Catches 'rwing', the misheard 'rowing' (row exercise).",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bpalof\\b",
+      "replacement": "pallof",
+      "category": "exercise_name",
+      "description": "Catches 'palof', the misspelled Pallof press (anti-rotation core exercise).",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bpc deck\\b",
+      "replacement": "pec deck",
+      "category": "exercise_name",
+      "description": "Catches 'pc deck', the misheard pec deck (chest fly machine).",
+      "status": "confirmed",
+      "example": "j'aime bien le pc deck"
+    },
+    {
+      "pattern": "\\baltères\\b|\\balters\\b",
+      "replacement": "haltères",
+      "category": "exercise_name",
+      "description": "Catches 'alters' and 'altères', the misheard or misspelled 'haltères' (dumbbells).",
+      "status": "confirmed",
+      "example": "en serrant les alters l'un contre l'autre"
+    },
+    {
+      "pattern": "\\bsoulev(?:er|é)? (?:de )?terre\\b",
+      "replacement": "soulevé de terre",
+      "category": "exercise_name",
+      "description": "Catches 'soulever terre', 'soulever de terre' and 'soulev de terre', normalizing them to 'soulevé de terre' (deadlift).",
+      "status": "confirmed",
+      "example": "le soulever terre"
+    },
+    {
+      "pattern": "\\bdévelopper (couché|incliné|semi-incliné|décliné|militaire|assis|épaules?)\\b",
+      "replacement": "développé \\1",
+      "category": "exercise_name",
+      "description": "Catches 'développer' (the verb) when it is followed by a press variation (couché, incliné, semi-incliné, décliné, militaire, assis, épaules), and turns it into the exercise name 'développé ...' (bench press, incline press, shoulder press...). The variation word is kept as it was.",
+      "status": "confirmed",
+      "example": "du développer semi-incliné aux altères"
+    },
+    {
+      "pattern": "\\bmolets\\b",
+      "replacement": "mollets",
+      "category": "anatomy",
+      "description": "Catches 'molets', a misspelling of 'mollets' (calves).",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bsur compensation\\b",
+      "replacement": "surcompensation",
+      "category": "training_term",
+      "description": "Catches 'sur compensation' written in two words, normalizing it to 'surcompensation' (the rebound in performance after recovery).",
+      "status": "confirmed",
+      "example": ""
+    },
+    {
+      "pattern": "\\bover(?:i|a)ching\\b",
+      "replacement": "overreaching",
+      "category": "training_term",
+      "description": "Catches 'overiching' and 'overaching', the misheard 'overreaching' (short period of deliberately excessive training load).",
+      "status": "confirmed",
+      "example": "un cycle d'overiching"
+    },
+    {
+      "pattern": "\\btibodo\\b",
+      "replacement": "Thibaudeau",
+      "category": "person_name",
+      "description": "Catches 'tibodo', the misheard name of the coach Christian Thibaudeau.",
+      "status": "confirmed",
+      "example": "christian tibodo"
+    },
+    {
+      "pattern": "\\buberman\\b",
+      "replacement": "Huberman",
+      "category": "person_name",
+      "description": "Catches 'uberman', the misheard name of Andrew Huberman.",
+      "status": "confirmed",
+      "example": "andrew uberman"
+    },
+    {
+      "pattern": "\\bmenzer\\b",
+      "replacement": "Mentzer",
+      "category": "person_name",
+      "description": "Catches 'menzer', the misheard name of the bodybuilder Mike Mentzer (heavy duty, low volume training).",
+      "status": "confirmed",
+      "example": "mike menzer ou dorian yates"
+    },
+    {
+      "pattern": "\\bnubray\\b",
+      "replacement": "Nubret",
+      "category": "person_name",
+      "description": "Catches 'nubray', the misheard name of the bodybuilder Serge Nubret.",
+      "status": "confirmed",
+      "example": "serge nubray"
+    },
+    {
+      "pattern": "\\blegl\\b",
+      "replacement": "leg curl",
+      "category": "exercise_name",
+      "description": "Catches 'legl', probably the misheard 'leg curl' (hamstring machine). To review: confirm by listening to the passage.",
+      "status": "needs_review",
+      "example": "des séries de 15 sur le legl"
+    },
+    {
+      "pattern": "\\bdrakker\\b",
+      "replacement": "drag curl",
+      "category": "exercise_name",
+      "description": "Catches 'drakker', probably the misheard 'drag curl' (biceps exercise), in the biceps ranking video. To review: confirm by listening to the passage.",
+      "status": "needs_review",
+      "example": "biceps ranking: on va commencer par le pire, le drakker"
+    }
+  ]
+}
