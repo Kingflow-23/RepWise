@@ -16,6 +16,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from .common import Ratio
+
 MIN_QUOTE_WORDS = 4
 EVIDENCE_KINDS = {"evidence"}
 
@@ -29,8 +30,6 @@ def normalise(text: str) -> str:
 def quote_found(quote: str, source: str) -> bool:
     """True when the quote appears word for word in the source, ignoring case, accents and punctuation."""
     return normalise(quote) in normalise(source)
-
-    
 
 
 @dataclass
@@ -51,8 +50,10 @@ class GroundingReport:
 
     @property
     def citation_precision(self) -> Ratio:
-        return Ratio(sum(c.status in {"supported", "not_retrieved"} for c in self.checks), len(self.checks))
-
+        return Ratio(
+            sum(c.status in {"supported", "not_retrieved"} for c in self.checks),
+            len(self.checks),
+        )
 
     @property
     def faithfulness(self) -> Ratio:
@@ -64,9 +65,7 @@ class GroundingReport:
 
 
 def check_claims(
-    claims: list[dict],
-    corpus: dict[str, str],
-    retrieved_ids: set[str] | None = None
+    claims: list[dict], corpus: dict[str, str], retrieved_ids: set[str] | None = None
 ) -> GroundingReport:
     """corpus maps chunk_id -> chunk text; retrieved_ids is what the generator was given.
 
@@ -99,7 +98,11 @@ def check_claims(
             supported = True
             in_context = retrieved_ids is None or chunk_id in retrieved_ids
             grounded = grounded or in_context
-            report.checks.append(CitationCheck(i, chunk_id, "supported" if in_context else "not_retrieved"))
+            report.checks.append(
+                CitationCheck(
+                    i, chunk_id, "supported" if in_context else "not_retrieved"
+                )
+            )
         report.supported_claims += supported
         report.grounded_claims += grounded
     return report
@@ -117,7 +120,9 @@ def abstention_outcome(expected: str, actual: str) -> str | None:
     "answered" or None when the case is not about abstention.
     """
     if expected in ABSTAIN_STATUSES:
-        return "correct_abstention" if actual in ABSTAIN_STATUSES else "missed_abstention"
+        return (
+            "correct_abstention" if actual in ABSTAIN_STATUSES else "missed_abstention"
+        )
     if expected == "ok":
         return "false_abstention" if actual in ABSTAIN_STATUSES else "answered"
     return None
@@ -128,5 +133,7 @@ def abstention_metrics(outcomes: list[str | None]) -> dict[str, Ratio]:
     answerable = [o for o in outcomes if o in {"false_abstention", "answered"}]
     return {
         "abstention_accuracy": Ratio(needs.count("correct_abstention"), len(needs)),
-        "false_abstention_rate": Ratio(answerable.count("false_abstention"), len(answerable)),
+        "false_abstention_rate": Ratio(
+            answerable.count("false_abstention"), len(answerable)
+        ),
     }

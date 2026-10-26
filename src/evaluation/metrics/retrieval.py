@@ -1,4 +1,4 @@
-"""Retrieval metrics: Recall@k, Precision@k, Hit@k, MRR, nDCG@k.
+"""Retrieval metrics: Recall@k, Precision@k, Hit@k, and MRR.
 
 Two levels are supported:
 
@@ -12,8 +12,8 @@ Two levels are supported:
 
 from dataclasses import dataclass, field
 
-
 # ---------------------------------------------------------------- ID level
+
 
 def recall_at_k_ids(relevant: set, ranking: list, k: int) -> float | None:
     if not relevant:
@@ -39,15 +39,14 @@ def reciprocal_rank_ids(relevant: set, ranking: list) -> float:
     return 0.0
 
 
-
 # -------------------------------------------------------------- span level
+
 
 @dataclass(frozen=True)
 class Span:
     video_id: str
     start: float
     end: float
-    
 
 
 @dataclass
@@ -57,7 +56,6 @@ class RankingJudgement:
     n_spans: int
     # For each rank: indices of labelled spans that the chunk overlaps.
     matches: list[list[int]] = field(default_factory=list)
-    
 
     def recall_at_k(self, k: int) -> float | None:
         if self.n_spans == 0:
@@ -84,19 +82,24 @@ class RankingJudgement:
         return None
 
 
-
-def overlap_seconds(a_start: float, a_end: float, b_start: float, b_end: float) -> float:
+def overlap_seconds(
+    a_start: float, a_end: float, b_start: float, b_end: float
+) -> float:
     return max(0.0, min(a_end, b_end) - max(a_start, b_start))
 
 
-def judge_ranking(spans: list[Span], ranking: list[dict], min_overlap_s: float = 1.0) -> RankingJudgement:
+def judge_ranking(
+    spans: list[Span], ranking: list[dict], min_overlap_s: float = 1.0
+) -> RankingJudgement:
     """ranking: retrieved chunks, best first, each with video_id, start and end."""
     judgement = RankingJudgement(n_spans=len(spans))
     for chunk in ranking:
         hits = [
-            i for i, s in enumerate(spans)
+            i
+            for i, s in enumerate(spans)
             if chunk.get("video_id") == s.video_id
-            and overlap_seconds(chunk["start"], chunk["end"], s.start, s.end) >= min_overlap_s
+            and overlap_seconds(chunk["start"], chunk["end"], s.start, s.end)
+            >= min_overlap_s
         ]
         judgement.matches.append(hits)
     return judgement

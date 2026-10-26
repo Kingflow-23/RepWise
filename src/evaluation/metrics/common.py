@@ -16,7 +16,6 @@ class Ratio:
     def value(self) -> float | None:
         return None if self.den == 0 else self.num / self.den
 
-
     def fmt(self, digits: int = 3) -> str:
         if self.value is None:
             return "N/A (0/0)"
@@ -31,5 +30,3 @@ class Ratio:
 def mean_ratio(values: list[float]) -> Ratio:
     """Mean of per-query scores, kept as sum / count so N/A survives aggregation."""
     return Ratio(sum(values), len(values))
-
-

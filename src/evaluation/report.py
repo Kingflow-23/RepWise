@@ -1,4 +1,5 @@
 """Readable summaries of an evaluation run: a Markdown report and a short console view."""
+
 from collections import Counter
 
 # Direction of each metric: True = higher is better, False = lower is better.
@@ -23,8 +24,10 @@ def render(meta: dict, results: dict, gates: list[dict]) -> str:
         "# RepWise evaluation report",
         "",
         f"- **Run:** {meta['timestamp']}{' · ' + meta['label'] if meta.get('label') else ''}",
-        f"- **Suite / split:** {meta['suite']} / {meta['split']}",
+        f"- **Mode:** {meta['suite']}",
         f"- **Retriever:** `{meta['retriever']}` · **Planner:** `{meta['planner']}`",
+        f"- **Generation mode:** {meta.get('llm_mode', 'not reported')}",
+        f"- **Models:** embedding `{meta.get('embedding_model') or 'not used'}` · generation `{meta.get('generation_model') or 'not used'}`",
         f"- **Corpus:** {meta['n_corpus_chunks']} chunks from `{meta['chunks_dir']}`",
         "",
         "Values are shown as `value (numerator/denominator)`. `N/A (0/0)` means no applicable case, "
@@ -39,23 +42,22 @@ def render(meta: dict, results: dict, gates: list[dict]) -> str:
         lines += [f"| {g['gate']} | **{g['status']}** | {g['value']} |" for g in gates]
         lines.append("")
 
-
     for name, r in results.items():
-        lines += [f"## {name.capitalize()}", "",
-                "| Metric | Value |", "|---|---|",
-                f"| pass rate ↑ | {r.pass_rate.fmt()} |",
-                *_metric_rows(r.metrics)]
+        lines += [
+            f"## {name.capitalize()}",
+            "",
+            "| Metric | Value |",
+            "|---|---|",
+            f"| pass rate ↑ | {r.pass_rate.fmt()} |",
+            *_metric_rows(r.metrics),
+        ]
         for key in ("latency_ms_median", "latency_ms_p95"):
             if r.extra.get(key) is not None:
                 lines.append(f"| {key} ↓ | {r.extra[key]:.1f} |")
         lines.append("")
-        if r.not_run:
-            lines += [f"{len(r.not_run)} adaptation case(s) not run (no adaptation engine yet).", ""]
 
     lines += ["Failure details are in `results.json`.", ""]
     return "\n".join(lines)
-
-
 
 
 def render_console(results: dict, gates: list[dict]) -> str:
@@ -64,12 +66,14 @@ def render_console(results: dict, gates: list[dict]) -> str:
     for name, r in results.items():
         out.append(f"\n== {name} ==  pass rate {r.pass_rate.fmt()}")
         for metric, ratio in r.metrics.items():
-            out.append(f"  {metric:<30} {_arrow(metric, ascii_only=True)} {ratio.fmt()}")
+            out.append(
+                f"  {metric:<30} {_arrow(metric, ascii_only=True)} {ratio.fmt()}"
+            )
         if r.failures:
             counts = Counter(f.category for f in r.failures)
-            out.append("  failures: " + ", ".join(f"{c}={n}" for c, n in counts.most_common()))
-        if r.not_run:
-            out.append(f"  not run: {len(r.not_run)} case(s)")
+            out.append(
+                "  failures: " + ", ".join(f"{c}={n}" for c, n in counts.most_common())
+            )
     if gates:
         out.append("\n== release gates ==")
         out += [f"  [{g['status']}] {g['gate']} ({g['value']})" for g in gates]
