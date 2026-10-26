@@ -2,8 +2,12 @@ import pytest
 
 from src.evaluation.metrics.common import Ratio, mean_ratio
 from src.evaluation.metrics.retrieval import (
-    Span, hit_at_k_ids, judge_ranking, precision_at_k_ids,
-    recall_at_k_ids, reciprocal_rank_ids,
+    Span,
+    hit_at_k_ids,
+    judge_ranking,
+    precision_at_k_ids,
+    recall_at_k_ids,
+    reciprocal_rank_ids,
 )
 
 # Worked example from the course (GenAI, 7 Oct, slide 32).
@@ -44,6 +48,7 @@ def test_recall_is_not_applicable_without_relevant_items():
 
 # ------------------------------------------------------------- span level
 
+
 def chunk(video, start, end):
     return {"video_id": video, "start": start, "end": end}
 
@@ -59,7 +64,10 @@ def test_span_overlap_marks_chunk_relevant():
 
 def test_same_span_in_two_overlapping_chunks_counts_once():
     spans = [Span("v1", 100, 130), Span("v1", 400, 420)]
-    ranking = [chunk("v1", 0, 120), chunk("v1", 110, 200)]  # both overlap the first span
+    ranking = [
+        chunk("v1", 0, 120),
+        chunk("v1", 110, 200),
+    ]  # both overlap the first span
     j = judge_ranking(spans, ranking)
     assert j.recall_at_k(2) == 0.5
     assert j.precision_at_k(2) == 1.0

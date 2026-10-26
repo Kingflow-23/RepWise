@@ -87,6 +87,17 @@ def test_validator_rejects_unknown_source():
         raise AssertionError("Expected validation to fail")
 
 
+def test_validator_rejects_equipment_not_in_profile():
+    plan = valid_plan()
+    plan.weeks[0].workouts[0].exercises[0].equipment = ["barbell"]
+    try:
+        validate_plan(plan, request(), {"video-1_p001"})
+    except ValueError as error:
+        assert "equipment" in str(error)
+    else:
+        raise AssertionError("Expected equipment validation to fail")
+
+
 class FakeRetriever:
     def search(self, query, top_k):
         return [chunk()]
@@ -101,6 +112,24 @@ def test_pipeline_returns_valid_plan_with_mocked_dependencies():
     result = PlanPipeline(FakeRetriever(), FakeGenerator()).create_plan(request())
     assert result.status == "completed"
     assert result.plan is not None
+
+
+def test_pipeline_retries_once_after_validation_failure():
+    class CorrectingGenerator:
+        calls = 0
+
+        def generate(self, system_prompt, user_prompt):
+            self.calls += 1
+            if self.calls == 1:
+                plan = valid_plan()
+                plan.weeks[0].workouts[0].exercises[0].source_ids = ["not-supplied"]
+                return plan
+            return valid_plan()
+
+    generator = CorrectingGenerator()
+    result = PlanPipeline(FakeRetriever(), generator).create_plan(request())
+    assert result.status == "completed"
+    assert generator.calls == 2
 
 
 def test_pipeline_returns_a_clear_status_when_retrieval_fails():
