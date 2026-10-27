@@ -7,12 +7,17 @@ GenAI_project_starter
 # Corpus
 /corpus/
 /raw_corpus/
-data/corpus/clean_txt/
-data/corpus/passages/
-data/corpus/chunks/
-data/corpus/index/
+data/corpus/clean_txt/*
+!data/corpus/clean_txt/.gitkeep
+data/corpus/passages/*
+!data/corpus/passages/.gitkeep
+data/corpus/chunks/*
+!data/corpus/chunks/.gitkeep
+data/corpus/index/*
+!data/corpus/index/.gitkeep
+data/corpus/video_transcripts/*
+!data/corpus/video_transcripts/.gitkeep
 data/corpus/coverage_hits.csv
-data/corpus/video_transcripts/
 data/links.txt
 data/dictionnary_links.txt
 src/ingestion/__pycache__

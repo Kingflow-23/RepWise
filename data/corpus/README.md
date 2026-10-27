@@ -238,7 +238,7 @@ A header with the title and the link, then one passage per line with its time an
 | Video ↔ papers | `../links.txt` | private zip |
 | Correction map | `config/term_corrections.json` | git |
 
-To set up, unzip the shared archive **next to** the RepWise folder, so that `corpus/`, `dictionnary_links.txt` and `links.txt` sit beside `RepWise/`. Then, from the RepWise folder:
+To set up, unzip the shared archive in the data/corpus/ folder, so that `video_transcripts/`, `dictionnary_links.txt` and `links.txt` are accessible from the repo but not pushed on git. Then, from the RepWise folder:
 
 ```bash
 python src/ingestion/build_corpus.py        # step 1: clean the transcripts (this document)

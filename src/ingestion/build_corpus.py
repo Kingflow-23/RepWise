@@ -94,7 +94,7 @@ from datetime import date
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-PROJECT = REPO.parent
+DATA = REPO / "data"
 
 TS_LINE = re.compile(r"^\s*(?:(\d+):)?(\d{1,3}):(\d{2})\s?(.*)$")
 SOUND_TAG = re.compile(r"\[[^\]]*\]")
@@ -295,9 +295,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--corpus-dir", type=Path, default=PROJECT / "corpus")
-    ap.add_argument("--titles", type=Path, default=PROJECT / "dictionnary_links.txt")
-    ap.add_argument("--refs", type=Path, default=PROJECT / "links.txt")
+    ap.add_argument(
+        "--corpus-dir", type=Path, default=DATA / "corpus" / "video_transcripts"
+    )
+    ap.add_argument("--titles", type=Path, default=DATA / "dictionnary_links.txt")
+    ap.add_argument("--refs", type=Path, default=DATA / "links.txt")
     ap.add_argument(
         "--corrections", type=Path, default=REPO / "config" / "term_corrections.json"
     )
