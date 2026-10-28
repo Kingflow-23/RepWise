@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Iterator
 
-from ..schemas.models import PlanOptions, PlanResult, TrainingPlan, UserProfile
+from ..schemas.models import PlanRequest, PlanResult, TrainingPlan, UserProfile
 
 
 def now() -> str:
@@ -35,7 +37,8 @@ class StudentRepository:
                 CREATE TABLE IF NOT EXISTS student_profiles (
                     student_id TEXT PRIMARY KEY,
                     profile_json TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(student_id) REFERENCES users(username) ON DELETE CASCADE
                 );
                 CREATE TABLE IF NOT EXISTS training_plans (
                     id TEXT PRIMARY KEY,
@@ -48,6 +51,93 @@ class StudentRepository:
                 );
                 CREATE INDEX IF NOT EXISTS plans_by_student ON training_plans(student_id, created_at DESC);
             """)
+            profile_foreign_keys = connection.execute(
+                "PRAGMA foreign_key_list(student_profiles)"
+            ).fetchall()
+            if not any(
+                row[2] == "users" and row[3] == "student_id" and row[4] == "username"
+                for row in profile_foreign_keys
+            ):
+                self._migrate_profile_owner_constraint(connection)
+
+    def _migrate_profile_owner_constraint(self, connection: sqlite3.Connection) -> None:
+        """Add account ownership to legacy profile tables without dropping data."""
+        orphan_profiles = connection.execute("""
+            SELECT COUNT(*) FROM student_profiles p
+            LEFT JOIN users u ON u.username=p.student_id
+            WHERE u.username IS NULL
+            """).fetchone()[0]
+        orphan_plans = connection.execute("""
+            SELECT COUNT(*) FROM training_plans t
+            LEFT JOIN student_profiles p ON p.student_id=t.student_id
+            WHERE p.student_id IS NULL
+            """).fetchone()[0]
+        if orphan_profiles or orphan_plans:
+            raise RuntimeError(
+                "Cannot add account ownership constraints: the existing database has "
+                f"{orphan_profiles} profiles without users and {orphan_plans} plans "
+                "without profiles. Reconcile those rows before restarting RepWise."
+            )
+
+        connection.execute("PRAGMA foreign_keys=OFF")
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "ALTER TABLE training_plans RENAME TO training_plans_legacy"
+            )
+            connection.execute(
+                "ALTER TABLE student_profiles RENAME TO student_profiles_legacy"
+            )
+            connection.execute("""
+                CREATE TABLE student_profiles (
+                    student_id TEXT PRIMARY KEY,
+                    profile_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(student_id) REFERENCES users(username) ON DELETE CASCADE
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE training_plans (
+                    id TEXT PRIMARY KEY,
+                    student_id TEXT NOT NULL,
+                    request_json TEXT NOT NULL,
+                    plan_json TEXT NOT NULL,
+                    sources_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(student_id) REFERENCES student_profiles(student_id) ON DELETE CASCADE
+                )
+            """)
+            connection.execute("""
+                INSERT INTO student_profiles(student_id, profile_json, updated_at)
+                SELECT student_id, profile_json, updated_at FROM student_profiles_legacy
+            """)
+            connection.execute("""
+                INSERT INTO training_plans(
+                    id, student_id, request_json, plan_json, sources_json, created_at
+                )
+                SELECT id, student_id, request_json, plan_json, sources_json, created_at
+                FROM training_plans_legacy
+            """)
+            connection.execute("DROP TABLE training_plans_legacy")
+            connection.execute("DROP TABLE student_profiles_legacy")
+            connection.execute("""
+                CREATE INDEX plans_by_student
+                ON training_plans(student_id, created_at DESC)
+            """)
+            connection.commit()
+        except BaseException:
+            if connection.in_transaction:
+                connection.rollback()
+            raise
+        finally:
+            connection.execute("PRAGMA foreign_keys=ON")
+
+        violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise RuntimeError(
+                "Database ownership migration completed with foreign-key violations. "
+                "Restore the database backup and reconcile its profile and plan rows."
+            )
 
     def create_user(self, username: str, password_hash: str) -> None:
         """Create one account; uniqueness is enforced by SQLite."""
@@ -87,10 +177,10 @@ class StudentRepository:
         return UserProfile.model_validate_json(row[0]) if row else None
 
     def save_plan(
-        self, student_id: str, options: PlanOptions, result: PlanResult
+        self, student_id: str, request: PlanRequest, result: PlanResult
     ) -> str:
-        """Save a completed plan and the sources that were returned with it."""
-        if result.plan is None:
+        """Save a completed plan, its full request, and source evidence snapshots."""
+        if result.status != "completed" or result.plan is None:
             raise ValueError("only completed plans can be saved")
         plan_id = str(uuid.uuid4())
         with self._connect() as connection:
@@ -102,9 +192,12 @@ class StudentRepository:
                 (
                     plan_id,
                     student_id,
-                    options.model_dump_json(),
+                    request.model_dump_json(),
                     result.plan.model_dump_json(),
-                    json.dumps([source.model_dump() for source in result.sources]),
+                    json.dumps(
+                        [source.model_dump() for source in result.sources],
+                        ensure_ascii=False,
+                    ),
                     now(),
                 ),
             )
@@ -112,6 +205,12 @@ class StudentRepository:
 
     def list_plans(self, student_id: str, limit: int = 20) -> list[dict[str, object]]:
         """List recent plans without exposing data belonging to other students."""
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= 100
+        ):
+            raise ValueError("limit must be an integer between 1 and 100")
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -149,7 +248,17 @@ class StudentRepository:
             )
         return cursor.rowcount == 1
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        """Yield one foreign-key-enabled connection and always close it."""
         connection = sqlite3.connect(self.database_path)
-        connection.execute("PRAGMA foreign_keys = ON")
-        return connection
+        try:
+            connection.execute("PRAGMA foreign_keys = ON")
+            yield connection
+            connection.commit()
+        except BaseException:
+            if connection.in_transaction:
+                connection.rollback()
+            raise
+        finally:
+            connection.close()

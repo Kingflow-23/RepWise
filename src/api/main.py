@@ -187,7 +187,7 @@ def create_app(
         request = PlanRequest(profile=profile, **options.model_dump())
         result: PlanResult = pipeline.create_plan(request)
         if result.status == "completed":
-            plan_id = repository.save_plan(student_id, options, result)
+            plan_id = repository.save_plan(student_id, request, result)
             return {"plan_id": plan_id, **result.model_dump()}
         status_code = 503 if result.status == "retrieval_error" else 422
         raise HTTPException(status_code=status_code, detail=result.model_dump())
