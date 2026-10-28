@@ -66,6 +66,10 @@ class RetrievedChunk(Model):
     end: int | None = Field(default=None, ge=0)
     speaker: str | None = None
     topics: list[str] = Field(default_factory=list)
+    topic_counts: dict[str, int] = Field(default_factory=dict)
+    scientific_references: list[str] = Field(default_factory=list)
+    reference_review_status: str | None = None
+    word_count: int | None = Field(default=None, ge=0)
     flags: list[str] = Field(default_factory=list)
     score: float | None = None
     rank: int | None = Field(default=None, ge=1)
@@ -83,6 +87,9 @@ class Source(Model):
     video_id: str | None = None
     start: int | None = None
     end: int | None = None
+    video_url: str | None = None
+    start_url: str | None = None
+    evidence_text: str | None = None
 
 
 class Exercise(Model):

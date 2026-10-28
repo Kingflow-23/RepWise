@@ -51,6 +51,9 @@ def select_evidence(
                 video_id=chunk.video_id,
                 start=chunk.start,
                 end=chunk.end,
+                video_url=chunk.video_url,
+                start_url=chunk.start_url,
+                evidence_text=excerpt,
             )
         )
 
