@@ -43,10 +43,14 @@ The secret used to sign tokens comes from `REPWISE_AUTH_SECRET`. Without it, reg
 ## Tables and ownership
 
 - `users` stores a username, password hash, and creation time.
-- `student_profiles` stores the profile JSON and update time; the username is its key.
-- `training_plans` stores the options, validated plan, selected source records, and creation time. Every list, update, and delete query includes the authenticated username as the owner.
+- `student_profiles` stores the profile JSON and update time; its username key is a foreign key to `users`.
+- `training_plans` stores the complete generation request (including the profile snapshot), validated plan, selected source records, and creation time. Its student key references `student_profiles`, which ties each plan to an existing account. Account deletion cascades through profiles to plans.
+- Each saved source keeps its source, chunk, passage, and video IDs; title; canonical and timestamp URLs; timestamps; a short excerpt; and the full normalized evidence text used in the prompt. Saved plans remain understandable if the corpus is later changed or removed.
+- Database connections commit on success, roll back on failure, and close after every repository operation. The repository enforces a `list_plans` limit from 1 through 100 independently of API validation.
 
 Only completed plans are inserted. A failed generation result is returned as an API error and is not saved. SQLite is local and initialized when the API starts.
+
+Existing schemas are migrated to add the profile-to-user foreign key without dropping valid rows. If legacy profile rows have no matching user, startup stops with an explicit reconciliation error rather than discarding or assigning those rows. Plans created before full request snapshots were introduced retain their original options and plan/source JSON, but their historical profile cannot be recovered if it was not stored at creation time; new plans persist the exact profile and options used.
 
 ## Local-demo threat model
 

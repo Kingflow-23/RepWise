@@ -21,12 +21,14 @@ The default embedding model is [`intfloat/multilingual-e5-small`](https://huggin
 Download the model once, then build the index:
 
 ```powershell
-python -m pip install -r requirements-embeddings.txt
+python -m pip install -r requirements.txt
 python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='intfloat/multilingual-e5-small')"
 python -m src.retrieval.index --build --chunks data/corpus/chunks --index data/corpus/index/semantic.npz
 ```
 
 The index is a compressed NumPy file containing normalized vectors, ordered chunk IDs, model name, and a SHA-256 fingerprint of chunk text and IDs. Text and citation metadata remain in the JSONL files. Search verifies the model, IDs, and fingerprint; rebuild the index after changing the corpus or model. Generated indexes and corpus chunks are local artifacts and must not be committed.
+
+On load, RepWise also checks that the index matrix has one row per stored chunk ID and that its embedding dimension matches the configured model. If the model or index cannot be loaded locally, the API reports the setup error rather than falling back to another retrieval method. Install dependencies with `python -m pip install -r requirements.txt`, download the model using the command above, and rebuild a stale or incompatible index with the index-build command.
 
 ## Stable source IDs
 
