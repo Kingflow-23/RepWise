@@ -1,6 +1,6 @@
 from src.generation import PlanPipeline, validate_plan
 from src.rag import make_query, select_evidence
-from src.retrieval import JsonlRetriever
+from src.retrieval import BM25Retriever
 from src.schemas import PlanRequest, RetrievedChunk, TrainingPlan, UserProfile
 
 
@@ -143,11 +143,8 @@ def test_pipeline_returns_a_clear_status_when_retrieval_fails():
     assert "knowledge base" in result.message
 
 
-def test_jsonl_baseline_reads_axel_chunk_format(tmp_path):
-    chunk_file = tmp_path / "chunks.jsonl"
-    chunk_file.write_text(chunk().model_dump_json() + "\n", encoding="utf-8")
-
-    results = JsonlRetriever(chunk_file).search("abdominal repetitions", top_k=1)
+def test_bm25_retriever_finds_matching_chunk():
+    results = BM25Retriever([chunk()]).search("abdominal repetitions", top_k=1)
 
     assert results[0].passage_ids == ["video-1_p001"]
     assert results[0].rank == 1
