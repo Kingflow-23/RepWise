@@ -33,16 +33,16 @@ Place cleaned passage JSONL files in `data/corpus/passages/` and ensure `manifes
 
 ```powershell
 python -m src.ingestion.chunker
-python -m pip install -r requirements-embeddings.txt
+python -m pip install -r requirements.txt
 python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='intfloat/multilingual-e5-small')"
 python -m src.retrieval.index --build --chunks data/corpus/chunks --index data/corpus/index/semantic.npz
 ```
 
-The selected model is `intfloat/multilingual-e5-small`, an MIT-licensed multilingual model. Its model weights are about 471 MB; the full model repository is larger. Plan for roughly 1–2 GB of free RAM while encoding and additional disk space for the Python/PyTorch dependencies and index. The first model download needs internet; embedding and search run locally afterwards. The dependency package is separate so BM25-only use stays lightweight. See [hybrid retrieval](docs/retrieval/hybrid_retrieval.md) for the index format, RRF, and resource notes.
+The selected model is `intfloat/multilingual-e5-small`, an MIT-licensed multilingual model. Its model weights are about 471 MB; the full model repository is larger. Plan for roughly 1–2 GB of free RAM while encoding and additional disk space for the Python/PyTorch dependencies and index. The first model download needs internet; embedding and search run locally afterwards. `requirements.txt` includes the semantic retrieval dependencies; the API does not silently switch to BM25 if local model or index loading fails. See [hybrid retrieval](docs/retrieval/hybrid_retrieval.md) for the index format, RRF, and resource notes.
 
 ### Run the application
 
-Configure the corpus and model in `.env` (the path may point to any JSONL file inside the chunks folder):
+Configure the corpus and model in `.env` (the path may point to any JSONL file inside the chunks folder). `REPWISE_RETRIEVAL` accepts only `bm25`, `semantic`, or `hybrid` and defaults to `hybrid`:
 
 ```dotenv
 REPWISE_CHUNK_FILE=data/corpus/chunks/VIDEO_ID.jsonl
@@ -95,6 +95,6 @@ The `mock` planner is for deterministic test cases and simulated failure example
 4. Evidence selection removes sponsor/CTA material and duplicate passage IDs, then formats bounded context.
 5. The prompt builder supplies the request, evidence, and JSON schema to Ollama.
 6. Pydantic parses the response; `validate_plan` checks week numbering, available days, session duration, and source ID membership.
-7. Only completed plans are saved, with their original options and source links.
+7. Only completed plans are saved, with the full request/profile snapshot, validated plan, and source evidence snapshots.
 
 See [generation](docs/generation/generation.md), [API and database](docs/generation/api_and_database.md), and [hybrid retrieval](docs/retrieval/hybrid_retrieval.md) for the exact responsibilities and current limitations of each step.
