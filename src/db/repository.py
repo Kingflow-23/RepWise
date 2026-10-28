@@ -124,6 +124,12 @@ class StudentRepository:
                 CREATE INDEX plans_by_student
                 ON training_plans(student_id, created_at DESC)
             """)
+            violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+            if violations:
+                raise RuntimeError(
+                    "Database ownership migration would leave foreign-key violations. "
+                    "Reconcile the affected profile and plan rows before restarting RepWise."
+                )
             connection.commit()
         except BaseException:
             if connection.in_transaction:
@@ -131,13 +137,6 @@ class StudentRepository:
             raise
         finally:
             connection.execute("PRAGMA foreign_keys=ON")
-
-        violations = connection.execute("PRAGMA foreign_key_check").fetchall()
-        if violations:
-            raise RuntimeError(
-                "Database ownership migration completed with foreign-key violations. "
-                "Restore the database backup and reconcile its profile and plan rows."
-            )
 
     def create_user(self, username: str, password_hash: str) -> None:
         """Create one account; uniqueness is enforced by SQLite."""

@@ -1,11 +1,26 @@
-import json
+import sys
+from types import ModuleType
 
 import pytest
 
+from config.config import AppConfig
 from src.retrieval.hybrid import HybridRetriever
-from src.retrieval.semantic import SemanticRetriever, build_index, corpus_fingerprint
+from src.retrieval.semantic import (
+    SemanticRetriever,
+    _load_model,
+    build_index,
+    corpus_fingerprint,
+)
 from src.retrieval.sparse import BM25Retriever
 from src.schemas import RetrievedChunk
+
+
+def test_retrieval_configuration_supports_only_the_three_named_modes(monkeypatch):
+    assert AppConfig().retrieval_strategy == "hybrid"
+
+    for strategy in ("bm25", "semantic", "hybrid"):
+        monkeypatch.setenv("REPWISE_RETRIEVAL", strategy)
+        assert AppConfig.from_environment().retrieval_strategy == strategy
 
 
 def chunk(chunk_id: str, text: str, flags: list[str] | None = None):
@@ -68,7 +83,7 @@ def test_semantic_index_round_trip_and_query(tmp_path, monkeypatch):
         )
 
     class FakeModel:
-        def get_sentence_embedding_dimension(self):
+        def get_embedding_dimension(self):
             return 2
 
         def encode(self, texts, **kwargs):
@@ -110,7 +125,7 @@ def test_semantic_rejects_an_index_with_a_different_model_dimension(
     )
 
     class DifferentDimensionModel:
-        def get_sentence_embedding_dimension(self):
+        def get_embedding_dimension(self):
             return 3
 
     monkeypatch.setattr(
@@ -138,3 +153,21 @@ def test_semantic_rejects_stale_corpus_fingerprint(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="index is stale"):
         SemanticRetriever([changed], index_path, "test-model")
+
+
+def test_local_model_loading_failure_is_actionable_without_fallback(monkeypatch):
+    module = ModuleType("sentence_transformers")
+
+    class FailingSentenceTransformer:
+        def __init__(self, model_name, local_files_only):
+            raise OSError("local weights not found")
+
+    module.SentenceTransformer = FailingSentenceTransformer
+    monkeypatch.setitem(sys.modules, "sentence_transformers", module)
+
+    with pytest.raises(RuntimeError) as error:
+        _load_model("intfloat/multilingual-e5-small")
+
+    assert "local Hugging Face cache" in str(error.value)
+    assert "retriever fallback are disabled" in str(error.value)
+    assert "requirements.txt" in str(error.value)

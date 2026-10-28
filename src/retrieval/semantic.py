@@ -109,7 +109,7 @@ def build_index(
             "Embedding model returned an invalid index matrix. "
             f"Expected ({len(chunks)}, embedding_dimension), got {vectors.shape}."
         )
-    model_dimension = model.get_sentence_embedding_dimension()
+    model_dimension = model.get_embedding_dimension()
     if model_dimension is not None and vectors.shape[1] != model_dimension:
         raise ValueError(
             "Embedding model returned vectors with an unexpected dimension: "
@@ -189,7 +189,7 @@ class SemanticRetriever:
                 "Embedding index is stale. Rebuild it with `python -m src.retrieval.index --build`."
             )
         self.model = _load_model(model_name)
-        model_dimension = self.model.get_sentence_embedding_dimension()
+        model_dimension = self.model.get_embedding_dimension()
         if model_dimension is not None and self.vectors.shape[1] != model_dimension:
             raise ValueError(
                 "Embedding index dimension is incompatible with the configured model: "

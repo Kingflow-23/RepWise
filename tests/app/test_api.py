@@ -57,10 +57,14 @@ class FakeGenerator:
 
 def test_api_saves_profile_and_completed_plan(tmp_path, monkeypatch):
     monkeypatch.setattr(api_module, "read_access_token", lambda token, secret: token)
+    repository = StudentRepository(str(tmp_path / "repwise.sqlite3"))
+    repository.initialize()
+    repository.create_user("alex", "test-hash")
     app = create_app(
         AppConfig(
             database_path=str(tmp_path / "repwise.sqlite3"), auth_secret="test-secret"
         ),
+        repository=repository,
         retriever=FakeRetriever(),
         generator=FakeGenerator(),
     )
@@ -88,6 +92,11 @@ def test_api_saves_profile_and_completed_plan(tmp_path, monkeypatch):
     assert response.json()["status"] == "completed"
     records = client.get("/api/v1/students/alex/plans", headers=headers).json()
     assert len(records) == 1
+    assert records[0]["request"]["focus"] == "Build a simple routine"
+    assert records[0]["request"]["profile"]["goal"] == "general strength"
+    assert records[0]["sources"][0]["evidence_text"] == (
+        "Use controlled repetitions and progress gradually."
+    )
     plan_id = records[0]["id"]
     saved_plan = records[0]["plan"]
     assert (
