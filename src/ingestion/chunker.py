@@ -171,7 +171,12 @@ def save_chunk(records: list, out_dir: str | Path | None = None):
 
 def main():
     """Build chunk files for all videos in the cleaned corpus."""
-    corpus_dir = REPO / "data" / "corpus"
+    return build_chunks(REPO / "data" / "corpus")
+
+
+def build_chunks(corpus_dir: str | Path):
+    """Build chunks using one corpus directory (also used by fast fixture tests)."""
+    corpus_dir = Path(corpus_dir)
     manifest_path = corpus_dir / "manifest.csv"
     coverage_path = corpus_dir / "coverage_matrix.csv"
     passages_dir = corpus_dir / "passages"

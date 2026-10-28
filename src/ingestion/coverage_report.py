@@ -22,50 +22,52 @@ REPO = Path(__file__).resolve().parents[2]
 CORPUS = REPO / "data" / "corpus"
 
 
-def main() -> None:
-    lex = json.loads(
-        (REPO / "config" / "topic_lexicon.json").read_text(encoding="utf-8")
-    )["topics"]
+def main(corpus: Path = CORPUS, lexicon_path: Path | None = None) -> None:
+    corpus = Path(corpus)
+    lexicon_path = lexicon_path or REPO / "config" / "topic_lexicon.json"
+    lex = json.loads(lexicon_path.read_text(encoding="utf-8"))["topics"]
     rx = {
         t: re.compile("|".join(f"(?:{p})" for p in v["patterns"]), re.I)
         for t, v in lex.items()
     }
     titles = {}
-    with open(CORPUS / "manifest.csv", encoding="utf-8") as f:
+    with open(corpus / "manifest.csv", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             titles[row["video_id"]] = row["title"]
 
     matrix = {vid: defaultdict(int) for vid in titles}
     hits = []
     for vid in titles:
-        for line in open(CORPUS / "passages" / f"{vid}.jsonl", encoding="utf-8"):
-            p = json.loads(line)
-            if "sponsor" in p["flags"]:
-                continue
-            for topic, r in rx.items():
-                m = r.search(p["text"])
-                if m:
-                    matrix[vid][topic] += 1
-                    hits.append(
-                        {
-                            "topic": topic,
-                            "video_id": vid,
-                            "title": titles[vid],
-                            "start": p["start"],
-                            "url_t": p["url_t"],
-                            "match": m.group(0),
-                            "text": p["text"],
-                        }
-                    )
+        with open(corpus / "passages" / f"{vid}.jsonl", encoding="utf-8") as stream:
+            for line in stream:
+                p = json.loads(line)
+                if "sponsor" in p["flags"]:
+                    continue
+                for topic, r in rx.items():
+                    m = r.search(p["text"])
+                    if m:
+                        matrix[vid][topic] += 1
+                        hits.append(
+                            {
+                                "topic": topic,
+                                "video_id": vid,
+                                "title": titles[vid],
+                                "start": p["start"],
+                                "url_t": p["url_t"],
+                                "match": m.group(0),
+                                "text": p["text"],
+                            }
+                        )
 
     topics = list(lex)
-    with open(CORPUS / "coverage_matrix.csv", "w", encoding="utf-8", newline="") as f:
+    with open(corpus / "coverage_matrix.csv", "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         w.writerow(["video_id", "title", *topics])
         for vid, counts in matrix.items():
             w.writerow([vid, titles[vid], *[counts[t] for t in topics]])
-    with open(CORPUS / "coverage_hits.csv", "w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(hits[0]))
+    hit_fields = ["topic", "video_id", "title", "start", "url_t", "match", "text"]
+    with open(corpus / "coverage_hits.csv", "w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=hit_fields)
         w.writeheader()
         w.writerows(hits)
 
@@ -87,7 +89,7 @@ def main() -> None:
         lines.append(
             f"| {lex[t]['label']} | {total} | {len(per_vid)} | {strong} | {top} |"
         )
-    (CORPUS / "coverage_summary.md").write_text(
+    (corpus / "coverage_summary.md").write_text(
         "\n".join(lines) + "\n", encoding="utf-8"
     )
     print("\n".join(lines))

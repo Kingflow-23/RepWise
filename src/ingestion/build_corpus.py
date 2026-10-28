@@ -291,7 +291,7 @@ def match_files(
     return matched, issues
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -305,7 +305,7 @@ def main() -> None:
     )
     ap.add_argument("--out", type=Path, default=REPO / "data" / "corpus")
     ap.add_argument("--corpus-version", default=f"v1-{date.today().isoformat()}")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     titles = parse_title_map(args.titles)
     refs = parse_refs(args.refs)
@@ -377,8 +377,27 @@ def main() -> None:
             }
         )
 
+    manifest_fields = [
+        "video_id",
+        "url",
+        "title",
+        "source_file",
+        "raw_sha256",
+        "upload_date",
+        "duration_s",
+        "caption_layout",
+        "punctuated",
+        "n_passages",
+        "n_words",
+        "n_corrections",
+        "sponsor_passages",
+        "scientific_references",
+        "n_references",
+        "reference_review_status",
+        "corpus_version",
+    ]
     with open(args.out / "manifest.csv", "w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(manifest[0]))
+        w = csv.DictWriter(f, fieldnames=manifest_fields)
         w.writeheader()
         w.writerows(manifest)
     with open(args.out / "corrections_log.csv", "w", encoding="utf-8", newline="") as f:

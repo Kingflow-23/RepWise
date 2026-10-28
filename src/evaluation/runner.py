@@ -143,7 +143,9 @@ def plan_schema_errors(plan) -> list[str]:
     return errors
 
 
-def evaluate_generation(cases, planner, corpus: dict[str, str] | None) -> SuiteResult:
+def evaluate_generation(
+    cases, planner, corpus: dict[str, str] | None, llm_mode: str = "mocked"
+) -> SuiteResult:
     res = SuiteResult("generation")
     outcomes, latencies = [], []
     released = schema_ok = 0
@@ -255,6 +257,7 @@ def evaluate_generation(cases, planner, corpus: dict[str, str] | None) -> SuiteR
     res.extra = {
         "fabricated_citations": fabricated,
         "grounding_evaluated": corpus is not None,
+        "llm_mode": llm_mode,
         "latency_ms_median": statistics.median(latencies) if latencies else None,
         "latency_ms_p95": _percentile(latencies, 0.95),
     }
@@ -385,7 +388,12 @@ def run_evaluation(
                 planner_chunks_dir,
                 fixed_evidence=(suite == "generation" and planner_name == "ollama"),
             )
-        results["generation"] = evaluate_generation(cases, planner, corpus)
+        results["generation"] = evaluate_generation(
+            cases,
+            planner,
+            corpus,
+            llm_mode="real Ollama" if planner_name == "ollama" else "mocked",
+        )
 
     gates = release_gates(results)
     runtime_settings = AppConfig.from_environment()
