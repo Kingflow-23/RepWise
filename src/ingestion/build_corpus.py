@@ -31,11 +31,11 @@ WHAT THIS SCRIPT DOES
          raw file hash, duration, caption quality, linked scientific papers.
 
 INPUT FILES
-    ../corpus/*.txt                 raw transcripts, one per video
+    data/corpus/video_transcripts/*.txt                 raw transcripts, one per video
                                     (outside the repo, never committed)
-    ../dictionnary_links.txt        "video url : title" for each video,
+    data/dictionnary_links.txt        "video url : title" for each video,
                                     used to match each file to its video id
-    ../links.txt                    video urls with the scientific papers
+    data/links.txt                    video urls with the scientific papers
                                     linked to each video (tab-indented)
     config/term_corrections.json    speech recognition correction map
                                     (edit it when we find new errors)
@@ -96,9 +96,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / "data"
 
-TS_LINE = re.compile(r"^\s*(?:(\d+):)?(\d{1,3}):(\d{2})\s?(.*)$")
-SOUND_TAG = re.compile(r"\[[^\]]*\]")
-SENT_END = re.compile(r"[.?!…]$")
+TS_LINE = re.compile(
+    r"^\s*(?:(\d+):)?(\d{1,3}):(\d{2})\s?(.*)$"
+)  # match lines like "1:23:45 text" or "12:34 text" or "123:45 text"
+SOUND_TAG = re.compile(r"\[[^\]]*\]")  # match sound tags like [Musique], [Rires], etc.
+SENT_END = re.compile(r"[.?!…]$")  # match sentences that end with punctuation
 SPONSOR = re.compile(
     r"sponsoris|code promo|mon code|premier lien|partenaire de (?:la|cette) vidéo|"
     r"\d+\s?% de réduction|-\s?\d+\s?% (?:avec|sur)",
@@ -116,6 +118,7 @@ MIN_SENT_WORDS = 8  # do not close a passage on a very short sentence
 
 
 def nfc(s: str) -> str:
+    """Normalize accents and apostrophes, replace non-breaking spaces. NFC means Normalization Form C, which composes characters (é) instead of decomposing them (e + ´)."""
     return unicodedata.normalize("NFC", s).replace("’", "'").replace(" ", " ")
 
 
@@ -126,6 +129,7 @@ def key(s: str) -> str:
 
 
 def fmt_ts(sec: int) -> str:
+    """Format seconds as H:MM:SS or M:SS."""
     h, rem = divmod(int(sec), 3600)
     m, s = divmod(rem, 60)
     return f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
@@ -207,6 +211,7 @@ def correct_fragments(frags: list[dict], rules, counter: Counter) -> list[dict]:
 
 
 def to_passages(frags: list[dict], punctuated: bool) -> list[dict]:
+    """Group caption fragments into passages of a few sentences, keeping start and end timestamps."""
     passages, buf, start = [], [], None
     prev = None
     for i, f in enumerate(frags):
@@ -271,6 +276,7 @@ def parse_refs(path: Path) -> dict[str, list[str]]:
 def match_files(
     titles: dict[str, str], files: list[Path]
 ) -> tuple[dict[str, Path], list[str]]:
+    """Match each video id to its transcript file, using the title map. Returns a dict of matched files and a list of issues (missing files, fuzzy matches, unused files)."""
     by_key = {key(f.stem): f for f in files}
     matched, issues = {}, []
     for vid, title in titles.items():

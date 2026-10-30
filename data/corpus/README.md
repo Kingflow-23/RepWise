@@ -233,7 +233,7 @@ A header with the title and the link, then one passage per line with its time an
 
 | Input | Location (from the RepWise folder) | Shared through |
 |---|---|---|
-| Raw transcripts | `../corpus/*.txt` | private zip, never git |
+| Raw transcripts | `video_transcripts/*.txt` | private zip, never git |
 | Video id ↔ title | `../dictionnary_links.txt` | private zip |
 | Video ↔ papers | `../links.txt` | private zip |
 | Correction map | `config/term_corrections.json` | git |

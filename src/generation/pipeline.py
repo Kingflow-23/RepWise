@@ -41,7 +41,9 @@ class PlanPipeline:
         user_prompt = make_user_prompt(request, evidence)
         plan = None
         last_error: Exception | None = None
-        for attempt in range(2):
+        for attempt in range(
+            3
+        ):  # Allow two correction attempts after the initial generation
             try:
                 if attempt:
                     user_prompt += (

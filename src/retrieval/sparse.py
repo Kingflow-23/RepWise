@@ -20,7 +20,9 @@ def terms(text: str) -> list[str]:
 
 
 class BM25Retriever:
-    """Rank text with BM25 (k1=1.5, b=0.75), a lexical baseline."""
+    """Rank text with BM25 (k1=1.5, b=0.75), a lexical baseline.
+    k1 controls the term frequency saturation, and b controls the length normalization.
+    """
 
     def __init__(self, chunks: list[RetrievedChunk], k1: float = 1.5, b: float = 0.75):
         # Commercial passages should never be candidate evidence.
