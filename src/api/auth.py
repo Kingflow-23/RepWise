@@ -23,20 +23,20 @@ def verify_password(password: str, password_hash: str) -> bool:
     return PasswordHash.recommended().verify(password, password_hash)
 
 
-def create_access_token(username: str, secret: str, lifetime_minutes: int = 60) -> str:
+def create_access_token(user_id: str, secret: str, lifetime_minutes: int = 60) -> str:
     """Sign a short-lived JWT access token using the configured application secret."""
     import jwt
 
     expires_at = datetime.now(UTC) + timedelta(minutes=lifetime_minutes)
-    return jwt.encode({"sub": username, "exp": expires_at}, secret, algorithm="HS256")
+    return jwt.encode({"sub": user_id, "exp": expires_at}, secret, algorithm="HS256")
 
 
 def read_access_token(token: str, secret: str) -> str:
-    """Return the username from a valid, unexpired access token."""
+    """Return the internal user ID from a valid, unexpired access token."""
     import jwt
 
     payload = jwt.decode(token, secret, algorithms=["HS256"])
-    username = payload.get("sub")
-    if not isinstance(username, str) or not username:
+    user_id = payload.get("sub")
+    if not isinstance(user_id, str) or not user_id:
         raise ValueError("Access token has no account identity.")
-    return username
+    return user_id

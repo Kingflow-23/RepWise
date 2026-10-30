@@ -94,9 +94,9 @@ def create_app(
                 status_code=401, detail="Invalid or expired access token"
             ) from error
 
-    def check_owner(student_id: str, username: str) -> None:
+    def check_owner(student_id: str, user_id: str) -> None:
         """Bind the URL identity to the signed-in account, never to client claims."""
-        if student_id != username:
+        if student_id != user_id:
             raise HTTPException(
                 status_code=403,
                 detail="You can only access your own saved training data",
@@ -110,15 +110,17 @@ def create_app(
                 status_code=503, detail="Set REPWISE_AUTH_SECRET before registering"
             )
         try:
-            repository.create_user(
-                credentials.username, hash_password(credentials.password)
+            user_id = repository.create_user(
+                credentials.full_name, hash_password(credentials.password)
             )
         except sqlite3.IntegrityError as error:
             raise HTTPException(
-                status_code=409, detail="That username is already registered"
+                status_code=409, detail="That full name is already registered"
             ) from error
         return AccessToken(
-            access_token=create_access_token(credentials.username, config.auth_secret)
+            access_token=create_access_token(user_id, config.auth_secret),
+            user_id=user_id,
+            full_name=credentials.full_name,
         )
 
     @app.post("/api/v1/auth/login", response_model=AccessToken)
@@ -128,11 +130,14 @@ def create_app(
             raise HTTPException(
                 status_code=503, detail="Set REPWISE_AUTH_SECRET before signing in"
             )
-        saved_hash = repository.get_password_hash(credentials.username)
-        if not saved_hash or not verify_password(credentials.password, saved_hash):
-            raise HTTPException(status_code=401, detail="Invalid username or password")
+        account = repository.get_account_by_name(credentials.full_name)
+        if not account or not verify_password(credentials.password, account[1]):
+            raise HTTPException(status_code=401, detail="Invalid name or password")
+        user_id, _, full_name = account
         return AccessToken(
-            access_token=create_access_token(credentials.username, config.auth_secret)
+            access_token=create_access_token(user_id, config.auth_secret),
+            user_id=user_id,
+            full_name=full_name,
         )
 
     @app.get("/api/v1/health")
@@ -154,19 +159,19 @@ def create_app(
 
     @app.put("/api/v1/students/{student_id}/profile", response_model=UserProfile)
     def save_profile(
-        student_id: str, profile: UserProfile, username: str = Depends(require_account)
+        student_id: str, profile: UserProfile, user_id: str = Depends(require_account)
     ) -> UserProfile:
         """Save the student details explicitly provided for future plans."""
-        check_owner(student_id, username)
+        check_owner(student_id, user_id)
         repository.save_profile(student_id, profile)
         return profile
 
     @app.get("/api/v1/students/{student_id}/profile", response_model=UserProfile)
     def get_profile(
-        student_id: str, username: str = Depends(require_account)
+        student_id: str, user_id: str = Depends(require_account)
     ) -> UserProfile:
         """Read one saved profile."""
-        check_owner(student_id, username)
+        check_owner(student_id, user_id)
         profile = repository.get_profile(student_id)
         if profile is None:
             raise HTTPException(status_code=404, detail="Student profile not found")
@@ -174,10 +179,10 @@ def create_app(
 
     @app.post("/api/v1/students/{student_id}/plans")
     def create_plan(
-        student_id: str, options: PlanOptions, username: str = Depends(require_account)
+        student_id: str, options: PlanOptions, user_id: str = Depends(require_account)
     ) -> dict[str, object]:
         """Create and save a plan from a stored profile and current request."""
-        check_owner(student_id, username)
+        check_owner(student_id, user_id)
         profile = repository.get_profile(student_id)
         if profile is None:
             raise HTTPException(
@@ -196,10 +201,10 @@ def create_app(
     def list_plans(
         student_id: str,
         limit: int = Query(20, ge=1, le=100),
-        username: str = Depends(require_account),
+        user_id: str = Depends(require_account),
     ) -> list[dict[str, object]]:
         """List plans previously created for one student."""
-        check_owner(student_id, username)
+        check_owner(student_id, user_id)
         return repository.list_plans(student_id, limit)
 
     @app.put("/api/v1/students/{student_id}/plans/{plan_id}")
@@ -207,10 +212,10 @@ def create_app(
         student_id: str,
         plan_id: str,
         plan: TrainingPlan,
-        username: str = Depends(require_account),
+        user_id: str = Depends(require_account),
     ) -> dict[str, object]:
         """Replace one of the signed-in student's saved plans."""
-        check_owner(student_id, username)
+        check_owner(student_id, user_id)
         if not repository.update_plan(student_id, plan_id, plan):
             raise HTTPException(status_code=404, detail="Saved plan not found")
         return {"id": plan_id, "plan": plan.model_dump()}
@@ -219,10 +224,10 @@ def create_app(
     def delete_plan(
         student_id: str,
         plan_id: str,
-        username: str = Depends(require_account),
+        user_id: str = Depends(require_account),
     ) -> Response:
         """Delete one of the signed-in student's saved plans."""
-        check_owner(student_id, username)
+        check_owner(student_id, user_id)
         if not repository.delete_plan(student_id, plan_id):
             raise HTTPException(status_code=404, detail="Saved plan not found")
         return Response(status_code=204)

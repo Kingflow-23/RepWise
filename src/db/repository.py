@@ -25,20 +25,44 @@ class StudentRepository:
         self.database_path = str(database_path)
 
     def initialize(self) -> None:
-        """Create tables explicitly when the application starts."""
+        """Create tables and migrate username-owned rows to generated account IDs."""
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.executescript("""
                 CREATE TABLE IF NOT EXISTS users (
-                    username TEXT PRIMARY KEY,
+                    full_name TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL UNIQUE,
                     password_hash TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+            """)
+            user_columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(users)")
+            }
+            if "username" in user_columns and "full_name" not in user_columns:
+                connection.execute(
+                    "ALTER TABLE users RENAME COLUMN username TO full_name"
+                )
+                user_columns.remove("username")
+                user_columns.add("full_name")
+            if "user_id" not in user_columns:
+                connection.execute("ALTER TABLE users ADD COLUMN user_id TEXT")
+            for (full_name,) in connection.execute(
+                "SELECT full_name FROM users WHERE user_id IS NULL OR user_id=''"
+            ).fetchall():
+                connection.execute(
+                    "UPDATE users SET user_id=? WHERE full_name=?",
+                    (str(uuid.uuid4()), full_name),
+                )
+            connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS users_by_id ON users(user_id)"
+            )
+            connection.executescript("""
                 CREATE TABLE IF NOT EXISTS student_profiles (
                     student_id TEXT PRIMARY KEY,
                     profile_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    FOREIGN KEY(student_id) REFERENCES users(username) ON DELETE CASCADE
+                    FOREIGN KEY(student_id) REFERENCES users(user_id) ON DELETE CASCADE
                 );
                 CREATE TABLE IF NOT EXISTS training_plans (
                     id TEXT PRIMARY KEY,
@@ -55,17 +79,18 @@ class StudentRepository:
                 "PRAGMA foreign_key_list(student_profiles)"
             ).fetchall()
             if not any(
-                row[2] == "users" and row[3] == "student_id" and row[4] == "username"
+                row[2] == "users" and row[3] == "student_id" and row[4] == "user_id"
                 for row in profile_foreign_keys
             ):
-                self._migrate_profile_owner_constraint(connection)
+                connection.commit()
+                self._migrate_profile_owner_ids(connection)
 
-    def _migrate_profile_owner_constraint(self, connection: sqlite3.Connection) -> None:
-        """Add account ownership to legacy profile tables without dropping data."""
+    def _migrate_profile_owner_ids(self, connection: sqlite3.Connection) -> None:
+        """Preserve old account data while replacing username ownership with user IDs."""
         orphan_profiles = connection.execute("""
             SELECT COUNT(*) FROM student_profiles p
-            LEFT JOIN users u ON u.username=p.student_id
-            WHERE u.username IS NULL
+            LEFT JOIN users u ON u.full_name=p.student_id
+            WHERE u.user_id IS NULL
             """).fetchone()[0]
         orphan_plans = connection.execute("""
             SELECT COUNT(*) FROM training_plans t
@@ -82,6 +107,7 @@ class StudentRepository:
         connection.execute("PRAGMA foreign_keys=OFF")
         try:
             connection.execute("BEGIN IMMEDIATE")
+            connection.execute("DROP INDEX IF EXISTS plans_by_student")
             connection.execute(
                 "ALTER TABLE training_plans RENAME TO training_plans_legacy"
             )
@@ -93,7 +119,7 @@ class StudentRepository:
                     student_id TEXT PRIMARY KEY,
                     profile_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    FOREIGN KEY(student_id) REFERENCES users(username) ON DELETE CASCADE
+                    FOREIGN KEY(student_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
             """)
             connection.execute("""
@@ -109,14 +135,20 @@ class StudentRepository:
             """)
             connection.execute("""
                 INSERT INTO student_profiles(student_id, profile_json, updated_at)
-                SELECT student_id, profile_json, updated_at FROM student_profiles_legacy
+                SELECT u.user_id, p.profile_json, p.updated_at
+                FROM student_profiles_legacy p
+                JOIN users u ON u.full_name=p.student_id
             """)
             connection.execute("""
                 INSERT INTO training_plans(
                     id, student_id, request_json, plan_json, sources_json, created_at
                 )
-                SELECT id, student_id, request_json, plan_json, sources_json, created_at
-                FROM training_plans_legacy
+                SELECT t.id, p.student_id, t.request_json, t.plan_json,
+                    t.sources_json, t.created_at
+                FROM training_plans_legacy t
+                JOIN student_profiles_legacy old_p ON old_p.student_id=t.student_id
+                JOIN users u ON u.full_name=old_p.student_id
+                JOIN student_profiles p ON p.student_id=u.user_id
             """)
             connection.execute("DROP TABLE training_plans_legacy")
             connection.execute("DROP TABLE student_profiles_legacy")
@@ -138,21 +170,33 @@ class StudentRepository:
         finally:
             connection.execute("PRAGMA foreign_keys=ON")
 
-    def create_user(self, username: str, password_hash: str) -> None:
-        """Create one account; uniqueness is enforced by SQLite."""
+    def create_user(self, full_name: str, password_hash: str) -> str:
+        """Create a named account and return its generated internal ID."""
+        user_id = str(uuid.uuid4())
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO users(username, password_hash, created_at) VALUES (?, ?, ?)",
-                (username, password_hash, now()),
+                "INSERT INTO users(full_name, user_id, password_hash, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (full_name, user_id, password_hash, now()),
             )
+        return user_id
 
-    def get_password_hash(self, username: str) -> str | None:
+    def get_password_hash(self, full_name: str) -> str | None:
         """Return the stored hash for login verification, if the account exists."""
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT password_hash FROM users WHERE username=?", (username,)
+                "SELECT password_hash FROM users WHERE full_name=?", (full_name,)
             ).fetchone()
         return row[0] if row else None
+
+    def get_account_by_name(self, full_name: str) -> tuple[str, str, str] | None:
+        """Return the internal ID, password hash, and stored name for login."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT user_id, password_hash, full_name FROM users WHERE full_name=?",
+                (full_name,),
+            ).fetchone()
+        return tuple(row) if row else None
 
     def save_profile(self, student_id: str, profile: UserProfile) -> None:
         """Create or replace the profile deliberately supplied by a student."""

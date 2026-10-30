@@ -80,8 +80,9 @@ def test_repository_rolls_back_and_closes_connections_on_failure(tmp_path, monke
     with pytest.raises(RuntimeError, match="forced failure"):
         with repository._connect() as connection:
             connection.execute(
-                "INSERT INTO users(username, password_hash, created_at) VALUES (?, ?, ?)",
-                ("rolled-back", "hash", "now"),
+                "INSERT INTO users(full_name, user_id, password_hash, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                ("rolled-back", "rollback-id", "hash", "now"),
             )
             raise RuntimeError("forced failure")
 
@@ -98,8 +99,8 @@ def test_profiles_and_plans_require_their_account_and_profile(tmp_path):
     with pytest.raises(sqlite3.IntegrityError):
         repository.save_profile("missing-user", profile())
 
-    repository.create_user("alex", "hash")
-    repository.save_profile("alex", profile())
+    user_id = repository.create_user("alex", "hash")
+    repository.save_profile(user_id, profile())
     with repository._connect() as connection:
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
@@ -114,7 +115,7 @@ def test_profiles_and_plans_require_their_account_and_profile(tmp_path):
     profile_foreign_keys = repository._connect()
     with profile_foreign_keys as connection:
         assert any(
-            row[2] == "users"
+            row[2] == "users" and row[4] == "user_id"
             for row in connection.execute("PRAGMA foreign_key_list(student_profiles)")
         )
         assert any(
@@ -126,9 +127,9 @@ def test_profiles_and_plans_require_their_account_and_profile(tmp_path):
 def test_saved_plan_retains_full_request_plan_and_source_snapshot(tmp_path):
     repository = StudentRepository(tmp_path / "repwise.sqlite3")
     repository.initialize()
-    repository.create_user("alex", "hash")
+    user_id = repository.create_user("alex", "hash")
     original_profile = profile()
-    repository.save_profile("alex", original_profile)
+    repository.save_profile(user_id, original_profile)
     request = PlanRequest(
         profile=original_profile,
         focus="Build a simple routine",
@@ -151,7 +152,7 @@ def test_saved_plan_retains_full_request_plan_and_source_snapshot(tmp_path):
         evidence_text="Complete normalized evidence text used in the prompt.",
     )
     plan_id = repository.save_plan(
-        "alex",
+        user_id,
         request,
         PlanResult(
             status="completed",
@@ -162,10 +163,10 @@ def test_saved_plan_retains_full_request_plan_and_source_snapshot(tmp_path):
     )
 
     repository.save_profile(
-        "alex",
+        user_id,
         original_profile.model_copy(update={"goal": "a different later goal"}),
     )
-    saved = repository.list_plans("alex")[0]
+    saved = repository.list_plans(user_id)[0]
 
     assert saved["id"] == plan_id
     assert PlanRequest.model_validate(saved["request"]) == request
@@ -196,7 +197,8 @@ def test_initialize_migrates_existing_profile_and_plan_tables(tmp_path):
             CREATE TABLE student_profiles (
                 student_id TEXT PRIMARY KEY,
                 profile_json TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(student_id) REFERENCES users(username) ON DELETE CASCADE
             );
             CREATE TABLE training_plans (
                 id TEXT PRIMARY KEY,
@@ -226,6 +228,11 @@ def test_initialize_migrates_existing_profile_and_plan_tables(tmp_path):
 
     repository = StudentRepository(database_path)
     repository.initialize()
+    account = repository.get_account_by_name("alex")
+    assert account is not None
+    user_id = account[0]
+    assert account[1:] == ("hash", "alex")
+    assert repository.get_profile(user_id) == profile()
 
     with repository._connect() as migrated:
         profile_fks = migrated.execute(
@@ -234,7 +241,9 @@ def test_initialize_migrates_existing_profile_and_plan_tables(tmp_path):
         plan_fks = migrated.execute(
             "PRAGMA foreign_key_list(training_plans)"
         ).fetchall()
-        assert any(row[2] == "users" for row in profile_fks)
+        assert any(
+            row[2] == "users" and row[4] == "user_id" for row in profile_fks
+        )
         assert any(row[2] == "student_profiles" for row in plan_fks)
         assert (
             migrated.execute(
@@ -242,18 +251,24 @@ def test_initialize_migrates_existing_profile_and_plan_tables(tmp_path):
             ).fetchone()[0]
             == 1
         )
+        assert migrated.execute(
+            "SELECT student_id FROM student_profiles"
+        ).fetchone()[0] == user_id
+        assert migrated.execute(
+            "SELECT student_id FROM training_plans WHERE id='plan-1'"
+        ).fetchone()[0] == user_id
         assert migrated.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
 def test_only_completed_results_can_be_saved(tmp_path):
     repository = StudentRepository(tmp_path / "repwise.sqlite3")
     repository.initialize()
-    repository.create_user("alex", "hash")
-    repository.save_profile("alex", profile())
+    user_id = repository.create_user("alex", "hash")
+    repository.save_profile(user_id, profile())
 
     with pytest.raises(ValueError, match="only completed plans"):
         repository.save_plan(
-            "alex",
+            user_id,
             PlanRequest(profile=profile(), focus="Build a routine", weeks=1),
             PlanResult(status="generation_error", message="Not completed."),
         )

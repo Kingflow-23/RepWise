@@ -1,6 +1,6 @@
 # Evaluation metrics
 
-The runner reports separate retrieval and generation results. Every rate includes its numerator and denominator; a zero denominator is `N/A`, not a perfect score. Metric formulas are in `src/evaluation/metrics/`.
+The runner reports retrieval, generation, and (in comparison mode) ranked results. Every rate includes its numerator and denominator; a zero denominator is `N/A`, not a perfect score. Metric formulas are in `src/evaluation/metrics/`.
 
 ## Retrieval
 
@@ -26,6 +26,12 @@ Labels are video time ranges rather than chunk IDs, so the same relevance judgme
 | Median and p95 latency | Time spent in the evaluated generation call. |
 
 Generation reports must identify `mocked` versus `real Ollama`, retrieval strategy, embedding model, and generation model. Mock planners are small simulations for runner tests and deliberate failure examples, not performance evidence for the application.
+
+## Controlled comparison
+
+Comparison mode ranks BM25, semantic, and hybrid using Recall@5, MRR, and median retrieval latency (in that priority order). It then runs the same nominal cases against model A + RAG, model B + RAG, and model A without RAG. Both RAG arms share the selected retriever and its evidence-selection path; the no-RAG arm gets no retrieved passages. Generation ranking is by case pass rate, request-constraint compliance, schema validity, and median latency, in that priority order.
+
+Citation ID validity is N/A for the no-RAG arm because no sources are available or required. This is intentional and is not interpreted as either a perfect citation score or a failure. The comparison is descriptive and fixed-dataset only; it has no confidence intervals or significance tests.
 
 ## What the metrics cannot establish
 

@@ -63,16 +63,12 @@ def evaluate_retrieval(cases, retriever, ks=None, main_k=None) -> SuiteResult:
 
     for case in cases:
         res.case_ids.add(case.id)
-        t0 = time.perf_counter()
-        ranking = (
-            retriever(case.query, max(max(ks), config.RETRIEVAL_DEPTH))
-            if case.answerable
-            else []
-        )
-        latencies.append((time.perf_counter() - t0) * 1000)
         if not case.answerable:
             # No relevance labels exist for these cases; generation checks abstention.
             continue
+        t0 = time.perf_counter()
+        ranking = retriever(case.query, max(max(ks), config.RETRIEVAL_DEPTH))
+        latencies.append((time.perf_counter() - t0) * 1000)
         res.n_cases += 1
         j = judge_ranking(case.spans, ranking)
         for k in ks:
@@ -146,9 +142,13 @@ def plan_schema_errors(plan) -> list[str]:
 def evaluate_generation(
     cases, planner, corpus: dict[str, str] | None, llm_mode: str = "mocked"
 ) -> SuiteResult:
+    from ..generation.pipeline import validate_plan
+    from ..schemas.models import PlanRequest, TrainingPlan, UserProfile
+
     res = SuiteResult("generation")
     outcomes, latencies = [], []
     released = schema_ok = 0
+    constraint_compliant = constraint_evaluated = 0
     valid_citations = total_citations = 0
     grounding = {"citation_precision": [], "faithfulness": []}
     fabricated = 0
@@ -205,11 +205,30 @@ def evaluate_generation(
                 fail("schema_invalid", "; ".join(errors))
             else:
                 schema_ok += 1
+            if "available_days" in case.profile:
+                try:
+                    request = PlanRequest(
+                        focus=case.request,
+                        weeks=case.weeks,
+                        extra_constraints=case.extra_constraints,
+                        profile=UserProfile.model_validate(case.profile),
+                    )
+                    validate_plan(
+                        TrainingPlan.model_validate(plan),
+                        request,
+                        set(out.get("available_source_ids") or []),
+                        require_citations=out.get("rag_enabled", True),
+                    )
+                    constraint_compliant += 1
+                except (TypeError, ValueError) as validation_error:
+                    fail("request_constraint", str(validation_error))
+                constraint_evaluated += 1
             available_sources = set(out.get("available_source_ids") or [])
+            citations_required = out.get("rag_enabled", True)
             for session in plan.get("sessions") or []:
                 for exercise in session.get("exercises") or []:
                     citations = exercise.get("source_ids") or []
-                    if not citations:
+                    if citations_required and not citations:
                         fail(
                             "missing_citation",
                             f"{exercise.get('name', 'exercise')} has no source ID",
@@ -250,6 +269,9 @@ def evaluate_generation(
     res.metrics = {
         **abstention_metrics(outcomes),
         "output_schema_validity": Ratio(schema_ok, released),
+        "request_constraint_compliance": Ratio(
+            constraint_compliant, constraint_evaluated
+        ),
         "citation_id_validity": Ratio(valid_citations, total_citations),
         "citation_precision": mean_ratio(grounding["citation_precision"]),
         "faithfulness": mean_ratio(grounding["faithfulness"]),
@@ -272,7 +294,7 @@ def release_gates(results: dict[str, SuiteResult]) -> list[dict]:
     gates = []
     gen = results.get("generation")
     if gen:
-        generation_cases = datasets.load_generation_cases()
+        safety_cases = datasets.load_red_team_cases()
         validity = gen.metrics["output_schema_validity"]
         gates.append(
             {
@@ -286,16 +308,25 @@ def release_gates(results: dict[str, SuiteResult]) -> list[dict]:
             }
         )
         unsafe = [f for f in gen.failures if f.category == "unsafe_release"]
-        safety_case_ids = {
-            case.id
-            for case in generation_cases
-            if case.id.startswith("RT") or case.id in {"S006", "S007"}
-        }
-        unsafe_case_ids = {failure.case_id for failure in unsafe}
+        safety_case_ids = {case.id for case in safety_cases}
+        unsafe_failures = [
+            failure
+            for failure in gen.failures
+            if failure.case_id in safety_case_ids
+            and failure.category
+            in {
+                "unsafe_release",
+                "forbidden_output",
+                "invalid_citation",
+                "fabricated_citation",
+                "unsupported_claim",
+            }
+        ]
+        unsafe_case_ids = {failure.case_id for failure in unsafe_failures}
         safety_status = (
             "not measured"
             if not safety_case_ids.issubset(gen.case_ids)
-            else ("fail" if unsafe else "pass")
+            else ("fail" if unsafe_failures else "pass")
         )
         gates.append(
             {
@@ -318,7 +349,7 @@ def parse_args(argv=None):
         "--mode",
         "--suite",
         dest="suite",
-        choices=["retrieval", "generation", "all"],
+        choices=["retrieval", "generation", "red-team", "all", "compare"],
         default="all",
         help="evaluate retrieval, generation, or both (default: all)",
     )
@@ -333,15 +364,21 @@ def parse_args(argv=None):
     )
     p.add_argument(
         "--llm",
-        choices=["mock", "ollama"],
+        choices=["mock", "ollama", "compare"],
         default="mock",
-        help="mocked generation for deterministic cases, or the real local Ollama pipeline",
+        help="mock, one real Ollama RAG run, or the two-model RAG/no-RAG comparison",
     )
+    p.add_argument("--model-a", default=None, help="Ollama model A for compare mode")
+    p.add_argument("--model-b", default=None, help="Ollama model B for compare mode")
     return p.parse_args(argv)
 
 
 def run_evaluation(
-    suite: str, retriever_name: str, planner_name: str, label: str = ""
+    suite: str,
+    retriever_name: str,
+    planner_name: str,
+    label: str = "",
+    generation_model: str | None = None,
 ) -> dict:
     """Evaluate one retriever / planner pair on the benchmark cases.
 
@@ -356,7 +393,7 @@ def run_evaluation(
         print(f"[warn] {message}", file=sys.stderr)
 
     corpus = None
-    if suite != "generation" or planner_name == "ollama":
+    if suite != "generation" or planner_name in {"ollama-rag", "ollama-no-rag"}:
         try:
             corpus = {
                 c["chunk_id"]: c.get("text", "")
@@ -373,8 +410,12 @@ def run_evaluation(
             retriever = adapters.build_retriever(retriever_name, config.CHUNKS_DIR)
             results["retrieval"] = evaluate_retrieval(cases, retriever)
 
-    if suite in ("generation", "all"):
-        cases = datasets.load_generation_cases()
+    if suite in ("generation", "red-team", "all"):
+        cases = (
+            datasets.load_red_team_cases()
+            if suite == "red-team"
+            else datasets.load_generation_cases()
+        )
         planner_chunks_dir = config.CHUNKS_DIR
         if planner_name == "mock-naive":
             try:
@@ -383,26 +424,35 @@ def run_evaluation(
                 chunks = []
             planner = adapters.make_mock_naive(chunks)
         else:
+            runtime_settings = AppConfig.from_environment()
             planner = adapters.build_planner(
                 planner_name,
                 planner_chunks_dir,
-                fixed_evidence=(suite == "generation" and planner_name == "ollama"),
+                model_name=generation_model or runtime_settings.ollama_model,
+                retriever_name=retriever_name,
             )
         results["generation"] = evaluate_generation(
             cases,
             planner,
             corpus,
-            llm_mode="real Ollama" if planner_name == "ollama" else "mocked",
+            llm_mode=(
+                "real Ollama"
+                if planner_name in {"ollama-rag", "ollama-no-rag"}
+                else "mocked"
+            ),
         )
 
     gates = release_gates(results)
     runtime_settings = AppConfig.from_environment()
     effective_retriever = (
         config.RETRIEVER
-        if suite != "retrieval" and planner_name == "ollama"
+        if suite != "retrieval" and planner_name == "ollama-rag"
         else retriever_name
     )
-    if suite == "generation" and planner_name != "ollama":
+    if suite == "generation" and planner_name not in {
+        "ollama-rag",
+        "ollama-no-rag",
+    }:
         effective_retriever = "fixed mock evidence"
     meta = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
@@ -414,7 +464,9 @@ def run_evaluation(
         "llm_mode": (
             "not used"
             if suite == "retrieval"
-            else "real Ollama" if planner_name == "ollama" else "mocked"
+            else "real Ollama"
+            if planner_name in {"ollama-rag", "ollama-no-rag"}
+            else "mocked"
         ),
         "embedding_model": (
             runtime_settings.embedding_model
@@ -422,8 +474,9 @@ def run_evaluation(
             else None
         ),
         "generation_model": (
-            runtime_settings.ollama_model
-            if suite != "retrieval" and planner_name == "ollama"
+            generation_model or runtime_settings.ollama_model
+            if suite != "retrieval"
+            and planner_name in {"ollama-rag", "ollama-no-rag"}
             else None
         ),
         "n_corpus_chunks": len(corpus) if corpus is not None else 0,
@@ -456,16 +509,165 @@ def run_evaluation(
     return {"run_dir": run_dir, "payload": payload, "results": results, "gates": gates}
 
 
+def _serialize_result(result: SuiteResult) -> dict:
+    return {
+        "n_cases": result.n_cases,
+        "n_passed": result.n_passed,
+        "pass_rate": result.pass_rate.to_dict(),
+        "metrics": {key: value.to_dict() for key, value in result.metrics.items()},
+        "extra": result.extra,
+        "failures": [asdict(failure) for failure in result.failures],
+    }
+
+
+def run_comparison(
+    requested_retriever: str | None = None,
+    model_a: str | None = None,
+    model_b: str | None = None,
+    label: str = "",
+) -> dict:
+    """Rank retrievers, then compare two RAG models against model A without RAG."""
+    settings = AppConfig.from_environment()
+    model_a = model_a or settings.ollama_model
+    model_b = model_b or settings.ollama_comparison_model
+    if model_a == model_b:
+        raise ValueError("Model A and model B must be different Ollama model IDs.")
+
+    chunks = adapters.load_chunks(config.CHUNKS_DIR)
+    corpus = {chunk["chunk_id"]: chunk.get("text", "") for chunk in chunks}
+    retrieval_cases = datasets.load_retrieval_cases()
+    retrieval_results = {}
+    strategies = ["bm25", "semantic", "hybrid"]
+    for strategy in strategies:
+        retriever = adapters.build_retriever(strategy, config.CHUNKS_DIR)
+        retrieval_results[strategy] = evaluate_retrieval(
+            retrieval_cases, retriever
+        )
+
+    def retrieval_rank(strategy: str) -> tuple[float, float, float]:
+        result = retrieval_results[strategy]
+        recall = result.metrics.get(f"recall@{config.MAIN_K}")
+        mrr = result.metrics.get("mrr")
+        latency = result.extra.get("latency_ms_median")
+        return (
+            recall.value if recall and recall.value is not None else -1.0,
+            mrr.value if mrr and mrr.value is not None else -1.0,
+            -(latency if latency is not None else float("inf")),
+        )
+
+    ranked_retrievers = sorted(strategies, key=retrieval_rank, reverse=True)
+    best_retriever = requested_retriever or ranked_retrievers[0]
+    if best_retriever not in strategies:
+        raise ValueError(f"Unknown comparison retriever: {best_retriever}")
+
+    generation_cases = datasets.load_generation_cases()
+    generation_results = {}
+    generation_arms = [
+        (f"{model_a} + RAG", "ollama-rag", model_a),
+        (f"{model_b} + RAG", "ollama-rag", model_b),
+        (f"{model_a} without RAG", "ollama-no-rag", model_a),
+    ]
+    shared_retriever = adapters.build_retriever(
+        best_retriever, config.CHUNKS_DIR
+    )
+    for arm, planner_name, model_name in generation_arms:
+        planner = adapters.build_planner(
+            planner_name,
+            config.CHUNKS_DIR,
+            model_name=model_name,
+            retriever_name=best_retriever,
+            retriever=shared_retriever,
+        )
+        generation_results[arm] = evaluate_generation(
+            generation_cases,
+            planner,
+            corpus,
+            llm_mode="real Ollama",
+        )
+
+    def generation_rank(arm: str) -> tuple[float, float, float, float]:
+        result = generation_results[arm]
+
+        def metric(name: str) -> float:
+            ratio = result.metrics.get(name)
+            return ratio.value if ratio and ratio.value is not None else -1.0
+
+        latency = result.extra.get("latency_ms_median")
+        return (
+            result.pass_rate.value or 0.0,
+            metric("request_constraint_compliance"),
+            metric("output_schema_validity"),
+            -(latency if latency is not None else float("inf")),
+        )
+
+    ranked_arms = sorted(generation_results, key=generation_rank, reverse=True)
+    timestamp = datetime.now().isoformat(timespec="seconds")
+    meta = {
+        "timestamp": timestamp,
+        "suite": "retrieval and generation comparison",
+        "label": label,
+        "retrieval_ranking": ranked_retrievers,
+        "selected_retriever": best_retriever,
+        "retrieval_selection_override": requested_retriever is not None,
+        "model_a": model_a,
+        "model_b": model_b,
+        "generation_ranking": ranked_arms,
+        "chunks_dir": str(config.CHUNKS_DIR),
+        "n_corpus_chunks": len(chunks),
+        "embedding_model": settings.embedding_model,
+        "ollama_url": settings.ollama_url,
+        "generation_case_ids": [case.id for case in generation_cases],
+    }
+    results = {
+        **{f"retrieval/{name}": result for name, result in retrieval_results.items()},
+        **{f"generation/{name}": result for name, result in generation_results.items()},
+    }
+    markdown = report.render_comparison(meta, retrieval_results, generation_results)
+    run_dir = (
+        config.OUT_DIR
+        / f"{datetime.now():%Y%m%d-%H%M%S}{'_' + label if label else ''}"
+    )
+    run_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "meta": meta,
+        "retrieval_ranking": ranked_retrievers,
+        "generation_ranking": ranked_arms,
+        "suites": {name: _serialize_result(result) for name, result in results.items()},
+    }
+    (run_dir / "results.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (run_dir / "report.md").write_text(markdown, encoding="utf-8")
+    return {"run_dir": run_dir, "payload": payload, "results": results, "report": markdown}
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
-    planner_name = "ollama" if args.llm == "ollama" else config.PLANNER
+    if args.suite == "compare" or args.llm == "compare":
+        run = run_comparison(
+            args.retriever,
+            args.model_a,
+            args.model_b,
+            args.label,
+        )
+        print(run["report"])
+        print(f"\nFull report: {run['run_dir'] / 'report.md'}")
+        return 0
+
+    planner_name = "ollama-rag" if args.llm == "ollama" else config.PLANNER
+    if args.suite == "red-team" and args.llm != "ollama":
+        raise ValueError("Red-team mode requires --llm ollama.")
     run = run_evaluation(
-        args.suite, args.retriever or config.RETRIEVER, planner_name, args.label
+        args.suite,
+        args.retriever or config.RETRIEVER,
+        planner_name,
+        args.label,
+        generation_model=args.model_a,
     )
     print(report.render_console(run["results"], run["gates"]))
     print(f"\nFull report: {run['run_dir'] / 'report.md'}")
 
-    if config.FAIL_ON_GATES and any(g["status"] == "fail" for g in run["gates"]):
+    if config.FAIL_ON_GATES and any(g["status"] != "pass" for g in run["gates"]):
         return 1
     return 0
 

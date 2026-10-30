@@ -81,6 +81,25 @@ def test_retrieval_suite_metrics_and_failures(chunks_dir):
     assert res.extra["n_unanswerable_skipped"] == 1
 
 
+def test_no_rag_generation_does_not_require_citations():
+    case = GenerationCase("G1", "simple request", ["ok"])
+    planner = lambda _case: {
+        "status": "ok",
+        "message": "Plan generated without retrieved evidence.",
+        "plan": {
+            "sessions": [{"name": "Day 1", "exercises": [{"name": "Squat"}]}]
+        },
+        "rag_enabled": False,
+        "available_source_ids": [],
+    }
+
+    result = runner.evaluate_generation([case], planner, corpus=None)
+
+    assert result.n_passed == 1
+    assert not result.failures
+    assert result.metrics["citation_id_validity"].value is None
+
+
 def gen_case(cid, expected, **kw):
     return GenerationCase(
         id=cid,
@@ -152,10 +171,110 @@ def test_cli_without_corpus_skips_retrieval_and_says_so(tmp_path, monkeypatch):
 
 
 def test_fail_on_gates_returns_error_code(chunks_dir, tmp_path, monkeypatch):
-    """A test planner that releases a plan when evidence is expected to be absent fails the gate."""
+    """Fail closed when required red-team gates were not measured."""
     monkeypatch.setattr(config, "CHUNKS_DIR", chunks_dir)
     monkeypatch.setattr(config, "OUT_DIR", tmp_path)
     monkeypatch.setattr(config, "FAIL_ON_GATES", True)
     monkeypatch.setattr(config, "PLANNER", "mock-naive")
     code = runner.main(["--mode", "generation", "--llm", "mock"])
     assert code == 1
+
+
+def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
+    tmp_path, monkeypatch
+):
+    from src.evaluation.metrics.common import Ratio
+
+    monkeypatch.setattr(config, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(
+        runner.adapters,
+        "load_chunks",
+        lambda _path: [{"chunk_id": "c1", "video_id": "v1", "text": "source"}],
+    )
+    monkeypatch.setattr(
+        runner.datasets,
+        "load_retrieval_cases",
+        lambda: [RetrievalCase("R1", "query", True, spans=[Span("v1", 0, 10)])],
+    )
+    monkeypatch.setattr(
+        runner.datasets,
+        "load_generation_cases",
+        lambda: [gen_case("G1", ["ok"])],
+    )
+    monkeypatch.setattr(
+        runner.adapters,
+        "build_retriever",
+        lambda strategy, _path: strategy,
+    )
+    monkeypatch.setattr(
+        runner,
+        "evaluate_retrieval",
+        lambda _cases, strategy: runner.SuiteResult(
+            "retrieval",
+            n_cases=1,
+            n_passed=1,
+            metrics={
+                "recall@5": Ratio({"bm25": 0.5, "semantic": 0.4, "hybrid": 0.8}[strategy], 1),
+                "mrr": Ratio(0.5, 1),
+                "hit@1": Ratio(1, 1),
+            },
+            extra={"latency_ms_median": 1.0},
+        ),
+    )
+    planner_calls = []
+    monkeypatch.setattr(
+        runner.adapters,
+        "build_planner",
+        lambda planner_name, _path, *, model_name, retriever_name, retriever: planner_calls.append(
+            (planner_name, model_name, retriever_name, retriever)
+        )
+        or (lambda _case: {}),
+    )
+    monkeypatch.setattr(
+        runner,
+        "evaluate_generation",
+        lambda _cases, _planner, _corpus, llm_mode: runner.SuiteResult(
+            "generation",
+            n_cases=1,
+            n_passed=1,
+            metrics={
+                "request_constraint_compliance": Ratio(1, 1),
+                "output_schema_validity": Ratio(1, 1),
+                "citation_id_validity": Ratio(1, 1),
+            },
+            extra={"latency_ms_median": 1.0},
+        ),
+    )
+
+    run = runner.run_comparison(
+        model_a="model-a",
+        model_b="model-b",
+        label="test",
+    )
+    assert run["payload"]["meta"]["selected_retriever"] == "hybrid"
+    assert run["payload"]["meta"]["generation_ranking"] == [
+        "model-a + RAG",
+        "model-b + RAG",
+        "model-a without RAG",
+    ]
+    assert len(planner_calls) == 3
+    assert {call[2] for call in planner_calls} == {"hybrid"}
+    assert sum(call[1] == "model-a" for call in planner_calls) == 2
+    assert len({id(call[3]) for call in planner_calls}) == 1
+
+
+def test_no_rag_planner_does_not_construct_retriever(monkeypatch, tmp_path):
+    from src.llm import ollama
+
+    monkeypatch.setattr(
+        adapters,
+        "build_retriever",
+        lambda *_args, **_kwargs: pytest.fail("no-RAG baseline built a retriever"),
+    )
+    monkeypatch.setattr(ollama, "OllamaGenerator", lambda *_args: object())
+
+    planner = adapters.build_planner(
+        "ollama-no-rag", tmp_path, model_name="test-model"
+    )
+
+    assert callable(planner)

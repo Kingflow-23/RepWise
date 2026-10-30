@@ -240,119 +240,135 @@ def build_retriever(name: str, chunks_dir: Path) -> Retriever:
     return load_callable(name)
 
 
-def build_planner(name: str, chunks_dir: Path, fixed_evidence: bool = False) -> Planner:
+def build_planner(
+    name: str,
+    chunks_dir: Path,
+    *,
+    model_name: str | None = None,
+    retriever_name: str | None = None,
+    retriever: Retriever | None = None,
+) -> Planner:
     if name == "mock-naive":
         return make_mock_naive(load_chunks(chunks_dir))
     if name == "mock-abstain":
         return mock_abstain
-    if name == "ollama":
-        return build_real_pipeline_planner(chunks_dir, fixed_evidence)
+    if name in {"ollama-rag", "ollama-no-rag"}:
+        return build_real_pipeline_planner(
+            chunks_dir,
+            model_name=model_name,
+            retriever_name=retriever_name,
+            retriever=retriever,
+            use_rag=name == "ollama-rag",
+        )
     return load_callable(name)
 
 
 def build_real_pipeline_planner(
-    chunks_dir: Path, fixed_evidence: bool = False
+    chunks_dir: Path,
+    *,
+    model_name: str | None = None,
+    retriever_name: str | None = None,
+    retriever: Retriever | None = None,
+    use_rag: bool = True,
 ) -> Planner:
-    """Adapt a labelled scenario to the application's real retrieval/generation pipeline."""
-    import re
-
+    """Run a benchmark case through RepWise RAG or the matched no-RAG baseline."""
     from config import evaluation_config
     from config.config import AppConfig
     from ..generation.pipeline import PlanPipeline
     from ..llm.ollama import OllamaGenerator
-    from ..schemas.models import PlanRequest, RetrievedChunk, UserProfile
+    from ..rag.prompt import load_system_prompt, make_user_prompt
+    from ..schemas.models import (
+        PlanRequest,
+        RetrievedChunk,
+        UserProfile,
+    )
 
     settings = AppConfig.from_environment()
-    retrieval_name = evaluation_config.RETRIEVER
-    if fixed_evidence:
-        fixture_path = (
-            Path(__file__).resolve().parents[2]
-            / "evals"
-            / "fixtures"
-            / "generation_evidence.jsonl"
+    generation_model = model_name or settings.ollama_model
+    generator = OllamaGenerator(generation_model, settings.ollama_url)
+    pipeline = None
+    if use_rag:
+        selected_retriever = retriever or build_retriever(
+            retriever_name or evaluation_config.RETRIEVER, chunks_dir
         )
-        fixed_chunks = [
-            RetrievedChunk.model_validate(json.loads(line))
-            for line in fixture_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
 
-        class PipelineRetriever:
-            def search(self, query: str, top_k: int):
-                return fixed_chunks[:top_k]
-
-    else:
-        retriever = build_retriever(retrieval_name, chunks_dir)
-
-        # Evaluation adapters return dictionaries; the application expects Pydantic chunks.
         class PipelineRetriever:
             def search(self, query: str, top_k: int):
                 return [
                     RetrievedChunk.model_validate(row)
-                    for row in retriever(query, top_k)
+                    for row in selected_retriever(query, top_k)
                 ]
 
-    pipeline = PlanPipeline(
-        PipelineRetriever(),
-        OllamaGenerator(settings.ollama_model, settings.ollama_url),
-        settings.top_k,
-    )
+        pipeline = PlanPipeline(PipelineRetriever(), generator, settings.top_k)
 
     def plan(case: dict) -> dict:
-        """Build one real PlanRequest, then translate the result for shared scoring."""
-        raw_profile = case.get("profile") or {}
-        day_count = max(1, min(int(raw_profile.get("days_per_week", 3)), 7))
-        weekdays = [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
-        ]
-        week_match = re.search(
-            r"(\d+)\s*(?:semaines?|weeks?)", case["request"], re.IGNORECASE
+        """Use identical case inputs and normalize the result for common scoring."""
+        profile = UserProfile.model_validate(case["profile"])
+        request = PlanRequest(
+            focus=case["request"],
+            weeks=case.get("weeks", 4),
+            profile=profile,
+            extra_constraints=case.get("extra_constraints", []),
         )
-        weeks = max(1, min(int(week_match.group(1)), 12)) if week_match else 4
-        profile = UserProfile(
-            experience=raw_profile.get("experience", "beginner"),
-            goal=raw_profile.get("goal", "Build general strength"),
-            available_days=weekdays[:day_count],
-            session_minutes=int(raw_profile.get("max_session_min", 45)),
-            equipment=raw_profile.get("equipment", []),
-        )
-        request = PlanRequest(focus=case["request"], weeks=weeks, profile=profile)
-        result = pipeline.create_plan(request)
+        if use_rag:
+            result = pipeline.create_plan(request)
+            plan_model = result.plan
+            sources = result.sources
+            message = result.message
+            result_status = result.status
+        else:
+            from ..generation.pipeline import validate_plan
+
+            rag_system_prompt = load_system_prompt()
+            system_prompt = rag_system_prompt.replace(
+                "Every exercise must cite at least one supplied source ID. Use only IDs in the evidence block.",
+                "No reference sources are provided in this baseline. Leave source_ids empty and do not invent citations.",
+            )
+            if system_prompt == rag_system_prompt:
+                raise RuntimeError(
+                    "The system prompt no longer has the citation instruction expected by the no-RAG baseline."
+                )
+            plan_model = generator.generate(
+                system_prompt, make_user_prompt(request, "")
+            )
+            validate_plan(plan_model, request, set(), require_citations=False)
+            sources = []
+            message = "Generated without retrieved reference evidence."
+            result_status = "completed"
+
         status = {
             "completed": "ok",
             "insufficient_evidence": "abstain",
-            "retrieval_error": "blocked",
-            "generation_error": "blocked",
-        }.get(result.status, "blocked")
+            "retrieval_error": "error",
+            "generation_error": "error",
+        }.get(result_status, "error")
         plan_data = None
-        if result.plan is not None:
+        if plan_model is not None:
             plan_data = {
+                **plan_model.model_dump(),
+                "weeks": plan_model.model_dump()["weeks"],
                 "sessions": [
                     {
                         "name": f"Week {week.number} · {workout.day}",
                         "exercises": [
                             exercise.model_dump() for exercise in workout.exercises
                         ],
+                        "estimated_minutes": workout.estimated_minutes,
                     }
-                    for week in result.plan.weeks
+                    for week in plan_model.weeks
                     for workout in week.workouts
                 ]
             }
         return {
             "status": status,
-            "message": result.message,
+            "message": message,
             "plan": plan_data,
             "claims": [],
             "retrieved_ids": [
-                source.chunk_id for source in result.sources if source.chunk_id
+                source.chunk_id for source in sources if source.chunk_id
             ],
-            "available_source_ids": [source.source_id for source in result.sources],
+            "available_source_ids": [source.source_id for source in sources],
+            "rag_enabled": use_rag,
         }
 
     return plan
@@ -363,9 +379,24 @@ def answer_text(output: dict) -> str:
     parts = [output.get("message") or ""]
     parts += [c.get("text", "") for c in output.get("claims") or []]
     plan = output.get("plan") or {}
-    for s in plan.get("sessions") or []:
-        parts.append(s.get("name", ""))
-        parts += [ex.get("name", "") for ex in s.get("exercises") or []]
+    for key in ("title", "summary", "safety_note"):
+        if plan.get(key):
+            parts.append(plan[key])
+    parts.extend(plan.get("assumptions") or [])
+    for week in plan.get("weeks") or []:
+        parts.extend((week.get("objective") or "",))
+        for workout in week.get("workouts") or []:
+            parts.append(workout.get("focus", ""))
+            for exercise in workout.get("exercises") or []:
+                parts.extend(
+                    (
+                        exercise.get("name", ""),
+                        exercise.get("coaching_note", ""),
+                    )
+                )
+    for session in plan.get("sessions") or []:
+        parts.append(session.get("name", ""))
+        parts += [ex.get("name", "") for ex in session.get("exercises") or []]
     return "\n".join(parts)
 
 

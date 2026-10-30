@@ -27,7 +27,7 @@ class UserProfile(Model):
 class AccountCredentials(Model):
     """Credentials accepted only by the local account registration and login routes."""
 
-    username: str = Field(min_length=3, max_length=100, pattern=r"^[A-Za-z0-9_.-]+$")
+    full_name: str = Field(min_length=3, max_length=100)
     password: str = Field(min_length=8, max_length=200)
 
 
@@ -35,6 +35,8 @@ class AccessToken(Model):
     """Standard bearer token response returned after successful login."""
 
     access_token: str
+    user_id: str
+    full_name: str
     token_type: str = "bearer"
 
 

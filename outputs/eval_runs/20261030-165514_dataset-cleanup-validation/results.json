@@ -1,0 +1,321 @@
+{
+  "meta": {
+    "timestamp": "2026-10-30T16:55:14",
+    "suite": "retrieval",
+    "retriever": "bm25",
+    "planner": "mock-abstain",
+    "chunks_dir": "C:\\Users\\flori\\OneDrive - aivancity\\5th year\\Generative AI\\Project\\RepWise\\data\\corpus\\chunks",
+    "label": "dataset-cleanup-validation",
+    "llm_mode": "not used",
+    "embedding_model": null,
+    "generation_model": null,
+    "n_corpus_chunks": 603,
+    "warnings": []
+  },
+  "gates": [],
+  "suites": {
+    "retrieval": {
+      "n_cases": 128,
+      "n_passed": 89,
+      "pass_rate": {
+        "value": 0.6953125,
+        "num": 89,
+        "den": 128
+      },
+      "metrics": {
+        "recall@1": {
+          "value": 0.3671875,
+          "num": 47.0,
+          "den": 128
+        },
+        "precision@1": {
+          "value": 0.4140625,
+          "num": 53.0,
+          "den": 128
+        },
+        "recall@3": {
+          "value": 0.5807291666666666,
+          "num": 74.33333333333333,
+          "den": 128
+        },
+        "precision@3": {
+          "value": 0.27604166666666663,
+          "num": 35.33333333333333,
+          "den": 128
+        },
+        "recall@5": {
+          "value": 0.7421875,
+          "num": 95.0,
+          "den": 128
+        },
+        "precision@5": {
+          "value": 0.22031250000000002,
+          "num": 28.200000000000003,
+          "den": 128
+        },
+        "recall@10": {
+          "value": 0.79296875,
+          "num": 101.5,
+          "den": 128
+        },
+        "precision@10": {
+          "value": 0.125,
+          "num": 16.0,
+          "den": 128
+        },
+        "hit@1": {
+          "value": 0.4140625,
+          "num": 53.0,
+          "den": 128
+        },
+        "mrr": {
+          "value": 0.556908363347162,
+          "num": 71.28427050843673,
+          "den": 128
+        }
+      },
+      "extra": {
+        "main_k": 5,
+        "n_unanswerable_skipped": 22,
+        "latency_ms_median": 6.9344500079751015,
+        "latency_ms_p95": 9.244600078091025
+      },
+      "failures": [
+        {
+          "case_id": "R003",
+          "layer": "retrieval",
+          "category": "partial_recall",
+          "detail": "recall@5=0.50, first relevant at rank 3. Top 3: Jd6jgL2s2F4@646s, Jd6jgL2s2F4@846s, qcs8utwv9WE@521s. Query: J'ai seulement 45 minutes par séance, est-ce que je peux raccourcir mes temps de pause ?"
+        },
+        {
+          "case_id": "R011",
+          "layer": "retrieval",
+          "category": "partial_recall",
+          "detail": "recall@5=0.50, first relevant at rank 4. Top 3: HHpEn-HlCkM@274s, LWhrWQRzyos@368s, 05WPpiDdC78@89s. Query: Combien de séries par muscle et par semaine pour l'hypertrophie ?"
+        },
+        {
+          "case_id": "R013",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 50 (k=5). Top 3: BksiVi6lTWI@0s, HHpEn-HlCkM@274s, kKr_d1duFHs@247s. Query: Pour progresser, vaut-il mieux rajouter des reps ou mettre plus lourd ?"
+        },
+        {
+          "case_id": "R022",
+          "layer": "retrieval",
+          "category": "partial_recall",
+          "detail": "recall@5=0.50, first relevant at rank 1. Top 3: XFsbtGB1TXQ@241s, LWhrWQRzyos@1127s, LWhrWQRzyos@1004s. Query: Si je fais pecs et dos dans la même séance, est-ce que le dos va fatiguer mes pecs ?"
+        },
+        {
+          "case_id": "R024",
+          "layer": "retrieval",
+          "category": "not_retrieved",
+          "detail": "no labelled span in the top 50. Top 3: A2DqNIw2VPU@455s, Jd6jgL2s2F4@86s, Yhyk5waoob8@295s. Query: Quel rythme hebdomadaire l'auteur présente-t-il comme son rythme idéal d'entraînement ?"
+        },
+        {
+          "case_id": "R027",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 6 (k=5). Top 3: uTOc6d4NoVE@535s, uTOc6d4NoVE@423s, e2jbgVfqFEY@201s. Query: Ma salle n'a pas de hack squat, je le remplace par quoi ?"
+        },
+        {
+          "case_id": "R028",
+          "layer": "retrieval",
+          "category": "partial_recall",
+          "detail": "recall@5=0.50, first relevant at rank 3. Top 3: LfHhA_6n1zI@346s, yL9W6I8WBOA@576s, XFsbtGB1TXQ@325s. Query: Quelle fourchette de répétitions pour le premier exercice de ma séance ?"
+        },
+        {
+          "case_id": "R029",
+          "layer": "retrieval",
+          "category": "partial_recall",
+          "detail": "recall@5=0.50, first relevant at rank 1. Top 3: 45l6bl8Uyr4@0s, -yB8TWvU83g@92s, TnKwgVrCtl8@441s. Query: Comment bien définir mon objectif avant de construire mon programme ?"
+        },
+        {
+          "case_id": "R031",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 6 (k=5). Top 3: 45l6bl8Uyr4@822s, 45l6bl8Uyr4@713s, 45l6bl8Uyr4@917s. Query: C'est quoi la différence entre macrocycle, mésocycle et microcycle ?"
+        },
+        {
+          "case_id": "R036",
+          "layer": "retrieval",
+          "category": "not_retrieved",
+          "detail": "no labelled span in the top 50. Top 3: BBzZktps5D4@555s, cvfTTuOZKV8@343s, cvfTTuOZKV8@449s. Query: En sèche, comment je fais évoluer mes séances semaine après semaine ?"
+        },
+        {
+          "case_id": "R037",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 8 (k=5). Top 3: Dx0O5iGNoAQ@359s, 45l6bl8Uyr4@176s, 45l6bl8Uyr4@272s. Query: Est-ce qu'on peut progresser en gardant exactement le même programme pendant 6 mois ?"
+        },
+        {
+          "case_id": "R039",
+          "layer": "retrieval",
+          "category": "partial_recall",
+          "detail": "recall@5=0.50, first relevant at rank 3. Top 3: 45l6bl8Uyr4@0s, 45l6bl8Uyr4@176s, 45l6bl8Uyr4@362s. Query: Je veux prendre du muscle, perdre du gras et gagner en force en même temps, c'est possible ?"
+        },
+        {
+          "case_id": "R045",
+          "layer": "retrieval",
+          "category": "not_retrieved",
+          "detail": "no labelled span in the top 50. Top 3: OwPD4u0qOvs@292s, e2jbgVfqFEY@747s, ucMKYB8XeRI@657s. Query: Comment on calcule le volume d'entraînement ?"
+        },
+        {
+          "case_id": "R050",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 34 (k=5). Top 3: HHpEn-HlCkM@93s, t4XKBDDjLKE@710s, drdNo6yfAUI@158s. Query: À quel pourcentage de mon max je dois travailler quand je débute ?"
+        },
+        {
+          "case_id": "R055",
+          "layer": "retrieval",
+          "category": "not_retrieved",
+          "detail": "no labelled span in the top 50. Top 3: BuujftJEACA@273s, XFsbtGB1TXQ@774s, pA-q30r2EzI@452s. Query: Si je rajoute toujours plus de séries, je prends toujours plus de muscle ?"
+        },
+        {
+          "case_id": "R057",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 16 (k=5). Top 3: cvfTTuOZKV8@88s, LfHhA_6n1zI@218s, -m8uXyMD0n4@1201s. Query: Comment savoir si ma récupération me permet de faire beaucoup de volume ?"
+        },
+        {
+          "case_id": "R059",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 12 (k=5). Top 3: HHpEn-HlCkM@435s, HHpEn-HlCkM@354s, ucMKYB8XeRI@559s. Query: Deux séries par exercice, c'est suffisant si je m'entraîne dur ?"
+        },
+        {
+          "case_id": "R064",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 6 (k=5). Top 3: DJEi-FifTtg@264s, drdNo6yfAUI@239s, qcs8utwv9WE@168s. Query: Mieux dormir permet-il de prendre plus de muscle à entraînement égal ?"
+        },
+        {
+          "case_id": "R066",
+          "layer": "retrieval",
+          "category": "not_retrieved",
+          "detail": "no labelled span in the top 50. Top 3: DJEi-FifTtg@709s, ld5_Z0ua278@358s, ucMKYB8XeRI@368s. Query: Pourquoi la vidéo recommande-t-elle d'éviter les écrans avant de dormir ?"
+        },
+        {
+          "case_id": "R069",
+          "layer": "retrieval",
+          "category": "partial_recall",
+          "detail": "recall@5=0.50, first relevant at rank 1. Top 3: -m8uXyMD0n4@0s, -m8uXyMD0n4@605s, -m8uXyMD0n4@85s. Query: Quelles erreurs éviter pendant ma première année de musculation ?"
+        },
+        {
+          "case_id": "R073",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 26 (k=5). Top 3: 8Upe8QgpYps@701s, A2DqNIw2VPU@605s, Yhyk5waoob8@95s. Query: Quel intérêt la vidéo attribue-t-elle au cardio en complément de la musculation ?"
+        },
+        {
+          "case_id": "R074",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 47 (k=5). Top 3: -yB8TWvU83g@882s, A2DqNIw2VPU@922s, 45l6bl8Uyr4@88s. Query: Qu'est-ce qui fait vraiment la différence sur le long terme en musculation ?"
+        },
+        {
+          "case_id": "R075",
+          "layer": "retrieval",
+          "category": "partial_recall",
+          "detail": "recall@5=0.50, first relevant at rank 1. Top 3: -m8uXyMD0n4@0s, _-XnY-bwD4A@158s, C6F0U3Be0QU@376s. Query: Pourquoi ne pas travailler seulement les pecs, les bras et les quadriceps ?"
+        },
+        {
+          "case_id": "R083",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 11 (k=5). Top 3: kkRJgNDBCHg@296s, 2Fv0yyCLrW8@485s, kkRJgNDBCHg@442s. Query: Est-ce qu'il faut descendre les fesses jusqu'au sol au squat pour prendre du muscle ?"
+        },
+        {
+          "case_id": "R086",
+          "layer": "retrieval",
+          "category": "partial_recall",
+          "detail": "recall@5=0.50, first relevant at rank 1. Top 3: TnKwgVrCtl8@167s, cXNeX_t08wQ@564s, C6F0U3Be0QU@182s. Query: Les exercices en étirement sont-ils toujours les meilleurs pour l'hypertrophie ?"
+        },
+        {
+          "case_id": "R087",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 12 (k=5). Top 3: TnKwgVrCtl8@167s, TnKwgVrCtl8@0s, TnKwgVrCtl8@340s. Query: Comment bien exécuter les élévations latérales à la poulie basse ?"
+        },
+        {
+          "case_id": "R090",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 17 (k=5). Top 3: BksiVi6lTWI@558s, XFsbtGB1TXQ@325s, BksiVi6lTWI@443s. Query: Est-ce que je peux faire des petites pauses entre les répétitions d'une même série ?"
+        },
+        {
+          "case_id": "R095",
+          "layer": "retrieval",
+          "category": "partial_recall",
+          "detail": "recall@5=0.50, first relevant at rank 2. Top 3: C6F0U3Be0QU@470s, qq_bX5iw0HY@471s, qq_bX5iw0HY@0s. Query: S'il ne fallait garder qu'un seul exercice pour les pectoraux, ce serait lequel ?"
+        },
+        {
+          "case_id": "R098",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 13 (k=5). Top 3: DeHRm_3AcAI@279s, nkyrc-iBXq8@1261s, _-XnY-bwD4A@249s. Query: Comment exécuter le rowing à un bras pour cibler le grand dorsal ?"
+        },
+        {
+          "case_id": "R101",
+          "layer": "retrieval",
+          "category": "not_retrieved",
+          "detail": "no labelled span in the top 50. Top 3: Ibr1O8UxU3E@386s, Ibr1O8UxU3E@185s, nkyrc-iBXq8@1261s. Query: Quel est le meilleur exercice pour le grand dorsal ?"
+        },
+        {
+          "case_id": "R105",
+          "layer": "retrieval",
+          "category": "not_retrieved",
+          "detail": "no labelled span in the top 50. Top 3: 4Y6VKipZcyQ@0s, gOViaSi6y38@107s, KhpYqbZNW60@94s. Query: Développé au-dessus de la tête debout ou développé militaire pour les épaules ?"
+        },
+        {
+          "case_id": "R106",
+          "layer": "retrieval",
+          "category": "not_retrieved",
+          "detail": "no labelled span in the top 50. Top 3: A2DqNIw2VPU@521s, 05WPpiDdC78@942s, LWhrWQRzyos@368s. Query: Je ne prends plus de muscle alors que je m'entraîne énormément, je fais trop de volume ?"
+        },
+        {
+          "case_id": "R108",
+          "layer": "retrieval",
+          "category": "not_retrieved",
+          "detail": "no labelled span in the top 50. Top 3: 7b0irWZcfu0@354s, 05WPpiDdC78@473s, 4Y6VKipZcyQ@106s. Query: Comment savoir si je m'entraîne vraiment assez dur ?"
+        },
+        {
+          "case_id": "R109",
+          "layer": "retrieval",
+          "category": "not_retrieved",
+          "detail": "no labelled span in the top 50. Top 3: Dx0O5iGNoAQ@452s, -m8uXyMD0n4@334s, 1OsDiVvQT7k@289s. Query: Je progresse beaucoup moins vite qu'un pote qui suit le même programme, c'est normal ?"
+        },
+        {
+          "case_id": "R111",
+          "layer": "retrieval",
+          "category": "partial_recall",
+          "detail": "recall@5=0.50, first relevant at rank 2. Top 3: kkRJgNDBCHg@0s, LfHhA_6n1zI@0s, LfHhA_6n1zI@218s. Query: D'où vient un point faible musculaire et comment savoir si je peux le corriger ?"
+        },
+        {
+          "case_id": "R112",
+          "layer": "retrieval",
+          "category": "partial_recall",
+          "detail": "recall@5=0.50, first relevant at rank 1. Top 3: LfHhA_6n1zI@97s, LfHhA_6n1zI@346s, kkRJgNDBCHg@0s. Query: Pour rattraper un point faible, je commence par des exercices en contraction ou en étirement ?"
+        },
+        {
+          "case_id": "R120",
+          "layer": "retrieval",
+          "category": "not_retrieved",
+          "detail": "no labelled span in the top 50. Top 3: XFsbtGB1TXQ@774s, e2jbgVfqFEY@327s, XFsbtGB1TXQ@866s. Query: La presse à cuisse est-elle un bon exercice pour les quadriceps ?"
+        },
+        {
+          "case_id": "R126",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 24 (k=5). Top 3: e2jbgVfqFEY@0s, XFsbtGB1TXQ@169s, t4XKBDDjLKE@843s. Query: Seules mes jambes sont fatiguées, je dois faire un deload complet ?"
+        },
+        {
+          "case_id": "R128",
+          "layer": "retrieval",
+          "category": "missed_top_ranked",
+          "detail": "first relevant chunk at rank 19 (k=5). Top 3: 7--wCDtdGHM@190s, pA-q30r2EzI@182s, Yhyk5waoob8@95s. Query: Que dit l'auteur sur le niveau de preuve scientifique concernant l'efficacité des deloads ?"
+        }
+      ]
+    }
+  }
+}

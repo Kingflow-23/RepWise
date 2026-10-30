@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from ..llm.ollama import PlanGenerator
 from ..rag.context import make_query, select_evidence
 from ..rag.prompt import load_system_prompt, make_user_prompt
@@ -59,7 +61,7 @@ class PlanPipeline:
             assert last_error is not None
             return PlanResult(
                 status="generation_error",
-                message=f"The plan could not be validated after one correction attempt: {last_error}",
+                message=f"The plan could not be validated after two correction attempts: {last_error}",
                 sources=sources,
             )
 
@@ -72,7 +74,11 @@ class PlanPipeline:
 
 
 def validate_plan(
-    plan: TrainingPlan, request: PlanRequest, source_ids: set[str]
+    plan: TrainingPlan,
+    request: PlanRequest,
+    source_ids: set[str],
+    *,
+    require_citations: bool = True,
 ) -> None:
     """Check the plan against the student request and supplied evidence."""
     if len(plan.weeks) != request.weeks:
@@ -81,10 +87,54 @@ def validate_plan(
         raise ValueError("weeks must be numbered from 1 to the requested duration")
 
     available_days = set(request.profile.available_days)
-    available_equipment = {item.casefold() for item in request.profile.equipment}
+    equipment_aliases = {
+        "barbell": {"barbell", "barbells", "barre"},
+        "dumbbell": {
+            "dumbbell",
+            "dumbbells",
+            "halt\u00e8re",
+            "halt\u00e8res",
+            "haltere",
+            "halteres",
+        },
+        "kettlebell": {"kettlebell", "kettlebells"},
+        "machine": {"machine", "machines"},
+        "cable": {"cable", "cables", "poulie", "poulies"},
+        "bench": {"bench", "benches", "banc"},
+        "pull-up bar": {"pull-up bar", "barre de traction"},
+        "resistance band": {
+            "resistance band",
+            "resistance bands",
+            "\u00e9lastique",
+            "\u00e9lastiques",
+            "elastique",
+            "elastiques",
+        },
+    }
+
+    def canonical_equipment(items: list[str]) -> set[str]:
+        result = set()
+        for item in items:
+            folded = item.casefold()
+            result.add(
+                next(
+                    (
+                        canonical
+                        for canonical, aliases in equipment_aliases.items()
+                        if folded in aliases
+                    ),
+                    folded,
+                )
+            )
+        return result
+
+    available_equipment = canonical_equipment(request.profile.equipment)
     for week in plan.weeks:
         if len(week.workouts) > len(available_days):
             raise ValueError("a week has more workouts than available days")
+        workout_days = [workout.day for workout in week.workouts]
+        if len(workout_days) != len(set(workout_days)):
+            raise ValueError("a week cannot schedule more than one workout per day")
         for workout in week.workouts:
             if workout.day not in available_days:
                 raise ValueError(f"{workout.day} is not an available day")
@@ -93,17 +143,21 @@ def validate_plan(
                     "a workout is longer than the requested session duration"
                 )
             for exercise in workout.exercises:
-                required_equipment = {item.casefold() for item in exercise.equipment}
+                required_equipment = canonical_equipment(exercise.equipment)
+                name = exercise.name.casefold()
+                for equipment, terms in equipment_aliases.items():
+                    if any(re.search(rf"\b{re.escape(term)}\b", name) for term in terms):
+                        required_equipment.add(equipment)
                 unavailable = required_equipment - available_equipment - {"bodyweight"}
                 if unavailable and "full gym" not in available_equipment:
                     raise ValueError(
                         "an exercise requires equipment that is not in the student profile"
                     )
-                if not exercise.source_ids:
+                if require_citations and not exercise.source_ids:
                     raise ValueError(
                         "an exercise must cite at least one supplied source"
                     )
-                if set(exercise.source_ids) - source_ids:
+                if require_citations and set(exercise.source_ids) - source_ids:
                     raise ValueError(
                         "an exercise cites a source that was not retrieved"
                     )

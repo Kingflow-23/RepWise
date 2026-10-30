@@ -1,35 +1,68 @@
 # Evaluation protocol
 
-RepWise has one evaluation command and two datasets: retrieval questions with time-span relevance labels, and generation cases with a request, optional user profile, expected status, and targeted text constraints. The generation cases combine the former program scenarios and applicable safety cases. Cases describing an adaptation engine that does not exist are excluded rather than reported as if executed.
+RepWise evaluation has three distinct datasets and workflows:
 
-## Run the benchmark
+1. **Retrieval benchmark:** labelled questions and evidence time spans compare BM25, semantic, and hybrid retrieval.
+2. **Generation benchmark:** the same nominal requests compare model A with RAG, model B with RAG, and model A without RAG.
+3. **Red-team checks:** a separate set of robustness and safety requests exercises the real RAG generation path; it is not mixed into nominal model ranking.
+
+## Prepare models and corpus
+
+The corpus is local and is not committed. Prepare it as described in the README, including the chunk JSONL files and semantic index. Install Ollama and pull two different local models:
 
 ```powershell
-python -m pytest tests/evaluation
-python -m src.evaluation.runner --mode retrieval --retriever bm25
-python -m src.evaluation.runner --mode retrieval --retriever semantic
-python -m src.evaluation.runner --mode retrieval --retriever hybrid
-python -m src.evaluation.runner --mode generation --llm mock
-python -m src.evaluation.runner --mode generation --llm ollama
-python -m src.evaluation.runner --mode all --retriever hybrid --llm ollama
+ollama pull llama3.2
+ollama pull qwen2.5:7b
 ```
 
-Retrieval mode never calls an LLM. It evaluates the same labelled retrieval queries for BM25, semantic, or hybrid search. Generation mode exercises the application pipeline using the generation cases; `mock` is a deterministic simulation, while `ollama` uses the configured local model. All mode runs both suites and uses the configured retriever for the generation pipeline. Runs write `report.md` and `results.json` under `outputs/eval_runs/`.
+Set `OLLAMA_MODEL` to model A and `OLLAMA_COMPARISON_MODEL` to model B in `.env`, or pass both explicitly to the runner. The defaults are `llama3.2` and `qwen2.5:7b`. The comparison requires both models to be available from the configured Ollama service. Semantic and hybrid retrieval also need the configured embedding model and current local index.
 
-The retrieval corpus is local and is not committed. Without it, retrieval cannot run. Semantic and hybrid modes also require the local embedding model and a current semantic index. Generation with Ollama requires Ollama and the configured model. The deterministic mock is useful for runner checks, but its scores do not represent model quality.
+## Run the evaluation
 
-## Datasets
+```powershell
+python -m pytest tests\evaluation tests\generation tests\retrieval -q
 
-- `evals/retrieval/retrieval_test_cases.jsonl` contains query text, answerability, and a topic label. No split field is used.
-- `evals/expected_evidence/relevance_judgments.jsonl` links answerable query IDs to relevant video time spans.
-- `evals/benchmark_cases.jsonl` contains executable generation cases. Profiles are stored inline only when required by the request; missing profiles are valid inputs for clarification cases.
+# Rank all three retrieval strategies and run the three generation arms.
+python -m src.evaluation.runner --mode compare
 
-Add cases as one JSON object per line. Retrieval cases marked answerable must have at least one relevance judgment; unanswerable cases must have none. Generation cases must include a unique ID, request, and one or more expected statuses. Optional regex checks are applied to normalized user-visible output.
+# Optionally pin the retrieval strategy used by the RAG generation arms.
+python -m src.evaluation.runner --mode compare --retriever hybrid --model-a llama3.2 --model-b qwen2.5:7b
 
-## Metrics
+# Run the separate safety/robustness set against the real RAG pipeline.
+python -m src.evaluation.runner --mode red-team --llm ollama --retriever hybrid
 
-Retrieval reports Recall@k, Precision@k, Hit@1, MRR, and latency. A retrieved chunk is relevant when it overlaps a labelled time span in the same video. Unanswerable requests are excluded from ranking metrics because they have no relevant span; generation cases cover abstention and out-of-scope behavior.
+# Run individual diagnostic suites.
+python -m src.evaluation.runner --mode retrieval --retriever bm25
+python -m src.evaluation.runner --mode generation --llm ollama --retriever hybrid
+```
 
-Generation reports expected-status pass rate, abstention accuracy and false-abstention rate, output schema validity, citation ID validity, optional quote-level citation precision and faithfulness when the pipeline exposes claims, and latency. Citation ID validity only confirms that a source ID was supplied to the model; it is not evidence of semantic support. Quote checks are only run when claim-level quotes are available, so these metrics may be N/A for the current plan generator.
+`compare` first scores BM25, semantic, and hybrid on the same retrieval questions. It selects by Recall@5, then MRR, then median retrieval latency; `--retriever` overrides only the selection used for the generation arms. Both RAG arms share the same selected retriever instance and receive identical cases. The no-RAG baseline calls model A directly with the same request and profile but no retriever or evidence. All arms use the same schema and deterministic plan validation.
 
-Reports include whether generation was mocked or real and the selected retrieval, embedding, and generation models. A high score on the small encoded case set does not establish general safety or semantic correctness; review failures and sample outputs manually.
+The comparison ranks generation arms by case pass rate, request-constraint compliance, schema validity, then median latency. This is a descriptive ordering, not a significance test. The report preserves per-case failures and metric numerators/denominators so that a rank is not mistaken for a release decision. Compare runs call both Ollama models and can take several minutes.
+
+`--mode generation --llm mock` is a deterministic runner check, not model-performance evidence. `--mode all` runs the configured retrieval and generation suites but does not perform the three-arm comparison. Red-team mode requires `--llm ollama`; it never silently substitutes a mock.
+
+Each run writes `report.md` and `results.json` under `outputs/eval_runs/`. Add `--label` to make the run folder easier to identify. Reports record the model IDs, selected retriever, corpus size, timestamps, case IDs, rankings, and measured failures.
+
+## Dataset linkage and scope
+
+- `evals/retrieval/retrieval_test_cases.jsonl` contains the retrieval query IDs, question text, answerability, and topic.
+- `evals/expected_evidence/relevance_judgments.jsonl` links answerable query IDs to relevant video time spans, exact transcript excerpts, and direct source URLs. Each row separates `evidence_text` (verbatim corpus text) from `relevance_rationale` (why it answers the query).
+- `evals/benchmark_cases.jsonl` contains nominal generation requests, profiles, expected statuses, and optional output checks.
+- `evals/red_team/red_team_cases.jsonl` contains separate robustness and safety cases.
+
+The current retrieval set has 150 questions: 128 answerable with 166 labeled spans and 22 unanswerable. The loader checks unique IDs, accent/punctuation-insensitive duplicate questions, text encoding, answerability rationale, source links, evidence excerpts, relevance rationales, known judgment IDs, valid time ranges, and agreement between labels and judgments. Dataset tests verify each excerpt exactly matches the timestamped source passages for its span, and every labeled span overlaps both a source passage and a corpus chunk.
+
+The nominal generation set contains 30 distinct, profile-backed planning cases. Each records one or more `evidence_query_ids` that must reference answerable retrieval cases, making the intended corpus coverage reviewable. These IDs are dataset annotations only: model runs still retrieve their own context and do not receive the gold-labeled spans. The separate red-team set remains eight cases and is not included in nominal model ranking.
+
+These checks establish structural linkage and make the human relevance annotations auditable; they do not mathematically prove semantic relevance. I corrected the retrieval query text encoding and tightened several questions to ask only what their supporting spans actually say. Review changed labels against source transcripts when updating the dataset.
+
+Retrieval cases marked answerable must have at least one judgment; unanswerable cases must have none. A chunk is relevant when it overlaps a labelled time span in the same video. Retrieval scores use answerable cases; unanswerable cases have no relevant span to rank. Generation cases test expected status, request constraints, schema, citation IDs, and targeted required/forbidden patterns. Keep nominal cases and red-team cases separate so the main model ranking remains interpretable.
+
+## Metrics and limitations
+
+Retrieval reports Recall@k, Precision@k, Hit@1, MRR, and latency. Each relevant span is counted once for recall even if it overlaps multiple chunks.
+
+Generation reports case pass rate, expected-status/abstention results, request-constraint compliance, output-schema validity, citation ID validity, optional claim-level citation precision/faithfulness, and latency. `N/A (0/0)` means a metric was not applicable. The no-RAG baseline is expected to leave `source_ids` empty, so citation-ID validity is N/A for it; it is not penalized for lacking citations. In RAG arms, citation-ID validity only confirms that a cited passage ID was supplied, not that it semantically supports the exercise. The current plan adapter does not expose claim-level annotations, so semantic grounding may be N/A.
+
+The red-team checks are targeted cases, not a complete safety evaluation. Regex checks can miss paraphrases or match harmless wording; passing does not prove that advice is medically appropriate or safe. Review real model outputs and failures before using results to choose or release a configuration.

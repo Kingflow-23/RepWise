@@ -70,6 +70,14 @@ def test_context_keeps_traceable_training_chunk_and_removes_sponsor():
     assert sources[0].url.endswith("?t=10")
 
 
+def test_context_skips_an_oversized_chunk_and_keeps_later_evidence():
+    oversized = chunk()
+    oversized.text = "x" * 8_100
+    evidence, sources = select_evidence([oversized, chunk()])
+    assert "SOURCE video-1_p001" in evidence
+    assert len(sources) == 1
+
+
 def test_query_contains_current_goal_and_profile_information():
     query = make_query(request())
     assert "Build abdominal strength" in query
@@ -85,6 +93,31 @@ def test_validator_rejects_unknown_source():
         assert "was not retrieved" in str(error)
     else:
         raise AssertionError("Expected validation to fail")
+
+
+def test_validator_rejects_duplicate_days_and_undeclared_named_equipment():
+    plan = valid_plan()
+    plan.weeks[0].workouts[0].exercises[0].name = "Barbell squat"
+    plan.weeks[0].workouts[0].exercises[0].equipment = []
+    try:
+        validate_plan(plan, request(), {"video-1_p001"})
+    except ValueError as error:
+        assert "equipment" in str(error)
+    else:
+        raise AssertionError("Expected equipment validation to fail")
+
+    plan = valid_plan()
+    plan.weeks[0].workouts.append(
+        plan.weeks[0].workouts[0].model_copy(deep=True)
+    )
+    training_request = request()
+    training_request.profile.available_days.append("Wednesday")
+    try:
+        validate_plan(plan, training_request, {"video-1_p001"})
+    except ValueError as error:
+        assert "one workout per day" in str(error)
+    else:
+        raise AssertionError("Expected duplicate workout day validation to fail")
 
 
 def test_validator_rejects_equipment_not_in_profile():

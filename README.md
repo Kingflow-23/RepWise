@@ -9,7 +9,7 @@ The project is written as a course example: each layer has one clear job, and th
 - **Retrieval:** BM25 lexical search, local semantic search, and Reciprocal Rank Fusion (RRF) hybrid search. Sponsor and call-to-action chunks are filtered by each retriever.
 - **Evidence:** stable chunk IDs, source passage IDs, titles, URLs, and timestamps are retained for citations.
 - **Generation:** `PlanPipeline` retrieves evidence, builds the prompt, calls Ollama, validates the plan, and returns a readable status on failure.
-- **Application:** FastAPI and Streamlit clients, SQLite persistence, Argon2 password hashes, and signed bearer tokens. Saved profile and plan endpoints require a token and only accept the signed-in account's username.
+- **Application:** FastAPI and Streamlit clients, SQLite persistence, Argon2 password hashes, and signed bearer tokens. Users sign in with a unique full name and password; the backend generates an internal account ID and scopes saved profiles and plans to that account.
 - **Evaluation:** one runner for labelled retrieval queries and unified generation/safety cases, with JSON and Markdown reports. Mocked planner cases are simulations; only `--llm ollama` exercises local generation.
 
 The transcript passages are not distributed with this repository. You need authorized, prepared passage JSONL files to build an index and run retrieval against the corpus. The current generation checks validate structure and request consistency; they do not prove medical safety or semantic correctness.
@@ -59,33 +59,37 @@ uvicorn src.api.main:app --reload
 python -m streamlit run .\app\streamlit_app.py
 ```
 
-Create an account in the sidebar, then save a profile and generate a plan. API documentation is at `http://127.0.0.1:8000/docs`. The local demo uses username as the account key; it is not reviewed for deployment on an untrusted network.
+Create an account in the sidebar with a full name and password, then save a profile and generate a plan. The account ID is generated and used internally; it is not an extra value the user needs to enter. API documentation is at `http://127.0.0.1:8000/docs`. The local demo is not reviewed for deployment on an untrusted network.
 
 ## Evaluation and tests
 
-The fast test suite uses fake services and does not need the corpus, Ollama, or embedding model:
+The test suite uses fakes for model calls. It does not need Ollama; retrieval dataset-linkage tests require the local prepared corpus:
 
 ```powershell
 python -m pytest -q
 ```
 
-Compare retrieval strategies on the same labelled queries (semantic and hybrid need prepared chunks and the downloaded model):
+For the full benchmark comparison, configure the local corpus and semantic index, install Ollama, and pull two different models. `OLLAMA_MODEL` selects model A and `OLLAMA_COMPARISON_MODEL` selects model B:
 
 ```powershell
-python -m src.evaluation.runner --mode retrieval --retriever bm25
-python -m src.evaluation.runner --mode retrieval --retriever semantic
-python -m src.evaluation.runner --mode retrieval --retriever hybrid
+ollama pull llama3.2
+ollama pull qwen2.5:7b
+python -m src.evaluation.runner --mode compare
 ```
 
-Run the unified generation cases and run both retrieval and generation with:
+This ranks BM25, semantic, and hybrid retrieval, then compares model A + RAG, model B + RAG, and model A without RAG on identical nominal generation cases. To pin the RAG strategy or models, use:
 
 ```powershell
-python -m src.evaluation.runner --mode generation --llm mock
-python -m src.evaluation.runner --mode generation --llm ollama
-python -m src.evaluation.runner --mode all --retriever hybrid --llm ollama
+python -m src.evaluation.runner --mode compare --retriever hybrid --model-a llama3.2 --model-b qwen2.5:7b
 ```
 
-The `mock` planner is for deterministic test cases and simulated failure examples. It is not a substitute for the real pipeline and must not be described as real-model performance. Evaluation outputs go under `outputs/`; generated reports identify the retrieval strategy and generation mode. Metrics and interpretation are documented in [the evaluation protocol](docs/evaluation_protocol.md).
+Run the separate safety/robustness set through the real RAG path with:
+
+```powershell
+python -m src.evaluation.runner --mode red-team --llm ollama --retriever hybrid
+```
+
+For diagnostics, `--mode retrieval --retriever bm25|semantic|hybrid`, `--mode generation --llm ollama`, and `--mode generation --llm mock` run individual suites. `mock` is a deterministic runner check, not model-performance evidence. Evaluation outputs go under `outputs/eval_runs/`; reports include rankings, per-case failures, and metric numerators/denominators. See [the evaluation protocol](docs/evaluation_protocol.md), [metric choices](docs/evaluation/metrics_choice.md), and [red-team limitations](docs/evaluation/red_teaming.md).
 
 ## How the request flows
 

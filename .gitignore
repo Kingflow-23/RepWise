@@ -33,3 +33,4 @@ data/*.sqlite3
 
 # Docs
 generator_implementation_guide.txt
+*.pdf

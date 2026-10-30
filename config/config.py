@@ -14,6 +14,7 @@ class AppConfig:
 
     database_path: str = "data/repwise.sqlite3"
     ollama_model: str = "llama3.2"
+    ollama_comparison_model: str = "qwen2.5:7b"
     ollama_url: str = "http://localhost:11434"
     top_k: int = 5
     chunk_file: str | None = None
@@ -29,6 +30,9 @@ class AppConfig:
         return cls(
             database_path=os.getenv("REPWISE_DATABASE_PATH", cls.database_path),
             ollama_model=os.getenv("OLLAMA_MODEL", cls.ollama_model),
+            ollama_comparison_model=os.getenv(
+                "OLLAMA_COMPARISON_MODEL", cls.ollama_comparison_model
+            ),
             ollama_url=os.getenv("OLLAMA_BASE_URL", cls.ollama_url),
             top_k=int(os.getenv("REPWISE_TOP_K", cls.top_k)),
             chunk_file=os.getenv("REPWISE_CHUNK_FILE") or None,

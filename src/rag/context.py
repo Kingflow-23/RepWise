@@ -36,7 +36,7 @@ def select_evidence(
         excerpt = " ".join(chunk.text.split())
         evidence_block = f"SOURCE {source_id}: {excerpt}"
         if used_characters + len(evidence_block) > max_characters:
-            break
+            continue
         seen_ids.add(source_id)
         used_characters += len(evidence_block)
         context_parts.append(evidence_block)

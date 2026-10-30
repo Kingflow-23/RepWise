@@ -90,6 +90,15 @@ def show_plan(record: dict[str, Any]) -> None:
                 st.caption(source["excerpt"])
 
 
+def store_account(account: dict[str, Any]) -> None:
+    """Keep the internal owner ID in session state without asking the user to enter it."""
+    if st.session_state.get("user_id") != account["user_id"]:
+        for key in ("profile_form", "plan_history", "latest_plan"):
+            st.session_state.pop(key, None)
+    st.session_state.user_id = account["user_id"]
+    st.session_state.full_name = account["full_name"]
+
+
 st.markdown(
     "<style> .block-container{padding-top:2rem;max-width:1200px} [data-testid='stMetric']{background:#f4f7f5;padding:1rem;border-radius:12px} </style>",
     unsafe_allow_html=True,
@@ -103,18 +112,22 @@ st.write(
 with st.sidebar:
     st.header("Demo connection")
     st.subheader("Account")
-    account_name = st.text_input("Username", value=st.session_state.get("username", ""))
+    account_name = st.text_input(
+        "Full name", value=st.session_state.get("full_name", "")
+    )
     account_password = st.text_input("Password", type="password")
+    if st.session_state.get("full_name"):
+        st.caption(f"Signed in as {st.session_state.full_name}")
     sign_in, register = st.columns(2)
     if sign_in.button("Sign in", use_container_width=True):
         try:
             token = api_request(
                 "POST",
                 "/api/v1/auth/login",
-                json={"username": account_name, "password": account_password},
+                json={"full_name": account_name, "password": account_password},
             )
             st.session_state.access_token = token["access_token"]
-            st.session_state.username = account_name
+            store_account(token)
             st.success("Signed in.")
         except ApiError as error:
             st.error(str(error))
@@ -123,10 +136,10 @@ with st.sidebar:
             token = api_request(
                 "POST",
                 "/api/v1/auth/register",
-                json={"username": account_name, "password": account_password},
+                json={"full_name": account_name, "password": account_password},
             )
             st.session_state.access_token = token["access_token"]
-            st.session_state.username = account_name
+            store_account(token)
             st.success("Account created and signed in.")
         except ApiError as error:
             st.error(str(error))
@@ -165,22 +178,21 @@ profile_tab, plan_tab, history_tab = st.tabs(
 with profile_tab:
     st.subheader("Your training profile")
     st.write("Save or update the profile the backend will use to personalize plans.")
-    student_id = st.text_input(
-        "Student ID",
-        value=st.session_state.get("username", st.session_state.get("student_id", "")),
-        max_chars=100,
-        disabled=bool(st.session_state.get("access_token")),
-    )
-    st.session_state.student_id = student_id.strip()
+    student_id = st.session_state.get("user_id", "")
+    if not student_id:
+        st.info("Sign in or create an account to save your profile.")
     if st.button("Load saved profile"):
-        try:
-            saved = api_request(
-                "GET", f"/api/v1/students/{st.session_state.student_id}/profile"
-            )
-            st.session_state.profile_form = saved
-            st.success("Profile loaded.")
-        except ApiError as error:
-            st.error(str(error))
+        if not student_id:
+            st.error("Sign in or create an account first.")
+        else:
+            try:
+                saved = api_request(
+                    "GET", f"/api/v1/students/{student_id}/profile"
+                )
+                st.session_state.profile_form = saved
+                st.success("Profile loaded.")
+            except ApiError as error:
+                st.error(str(error))
     profile = st.session_state.get("profile_form", {})
     with st.form("profile_form"):
         left, right = st.columns(2)
@@ -230,8 +242,8 @@ with profile_tab:
             "Save profile", type="primary", use_container_width=True
         )
     if save:
-        if not st.session_state.student_id:
-            st.error("Enter a student ID.")
+        if not student_id:
+            st.error("Sign in or create an account first.")
         elif not goal.strip() or not available_days:
             st.error("Add a goal and choose at least one available day.")
         else:
@@ -248,7 +260,7 @@ with profile_tab:
             try:
                 st.session_state.profile_form = api_request(
                     "PUT",
-                    f"/api/v1/students/{st.session_state.student_id}/profile",
+                    f"/api/v1/students/{student_id}/profile",
                     json=payload,
                 )
                 st.success("Profile saved to the backend database.")
@@ -274,9 +286,9 @@ with plan_tab:
             "Generate plan", type="primary", use_container_width=True
         )
     if generate:
-        sid = st.session_state.get("student_id", "").strip()
+        sid = st.session_state.get("user_id", "")
         if not sid:
-            st.error("Set a Student ID on the profile tab first.")
+            st.error("Sign in or create an account first.")
         elif len(focus.strip()) < 3:
             st.error("Describe the plan focus in at least three characters.")
         else:
@@ -315,20 +327,27 @@ with history_tab:
         "Completed plans are stored in SQLite with their request and source links."
     )
     if st.button("Refresh plan history"):
-        try:
-            st.session_state.plan_history = api_request(
-                "GET",
-                f"/api/v1/students/{st.session_state.get('student_id', 'demo-student')}/plans",
-                params={"limit": 100},
-            )
-        except ApiError as error:
-            st.error(str(error))
-    records = st.session_state.get("plan_history")
-    if records is None:
+        user_id = st.session_state.get("user_id")
+        if not user_id:
+            st.error("Sign in or create an account first.")
+        else:
+            try:
+                st.session_state.plan_history = api_request(
+                    "GET",
+                    f"/api/v1/students/{user_id}/plans",
+                    params={"limit": 100},
+                )
+            except ApiError as error:
+                st.error(str(error))
+    records = st.session_state.get("plan_history", [])
+    user_id = st.session_state.get("user_id")
+    if not user_id:
+        st.info("Sign in to view your saved plans.")
+    elif "plan_history" not in st.session_state:
         try:
             records = api_request(
                 "GET",
-                f"/api/v1/students/{st.session_state.get('student_id', 'demo-student')}/plans",
+                f"/api/v1/students/{user_id}/plans",
                 params={"limit": 100},
             )
             st.session_state.plan_history = records

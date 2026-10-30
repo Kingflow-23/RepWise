@@ -14,14 +14,14 @@ The interactive API page is at `http://127.0.0.1:8000/docs`. In another terminal
 python -m streamlit run .\app\streamlit_app.py
 ```
 
-The UI is an HTTP client. It stores the bearer token in the Streamlit session and sends it to the backend for user-specific requests. It does not call the model or database directly.
+The UI is an HTTP client. It stores the bearer token and internal account ID in the Streamlit session and sends them to the backend for user-specific requests. It does not call the model or database directly, and the user does not need to enter an account ID.
 
 ## Authentication flow
 
-1. `POST /api/v1/auth/register` accepts a username and password of at least eight characters. The backend hashes the password with Argon2 and saves only that hash.
-2. `POST /api/v1/auth/login` checks the submitted password against the stored hash.
-3. Both successful endpoints return a signed JWT bearer token. Tokens expire after one hour.
-4. Profile and plan endpoints require `Authorization: Bearer <token>`. The backend gets the account name from the signed token and requires it to match the `student_id` path segment.
+1. `POST /api/v1/auth/register` accepts a full name and password of at least eight characters. Full names must be unique. The backend generates a UUID account ID and stores only an Argon2 password hash.
+2. `POST /api/v1/auth/login` looks up the full name and checks the submitted password against the stored hash.
+3. Both successful endpoints return a signed JWT bearer token, the internal account ID, and the full name. Tokens expire after one hour.
+4. Profile and plan endpoints require a bearer token. The backend gets the internal account ID from the signed token and requires it to match the `student_id` path segment.
 5. The database queries include both the plan ID and owner when updating or deleting. A client cannot gain access by changing a URL ID.
 
 The secret used to sign tokens comes from `REPWISE_AUTH_SECRET`. Without it, registration and login return a setup error. Never commit `.env` or send the secret to the UI.
@@ -42,15 +42,15 @@ The secret used to sign tokens comes from `REPWISE_AUTH_SECRET`. Without it, reg
 
 ## Tables and ownership
 
-- `users` stores a username, password hash, and creation time.
-- `student_profiles` stores the profile JSON and update time; its username key is a foreign key to `users`.
+- `users` stores the unique full name, generated account ID, password hash, and creation time.
+- `student_profiles` stores the profile JSON and update time; its account ID is a foreign key to `users`.
 - `training_plans` stores the complete generation request (including the profile snapshot), validated plan, selected source records, and creation time. Its student key references `student_profiles`, which ties each plan to an existing account. Account deletion cascades through profiles to plans.
 - Each saved source keeps its source, chunk, passage, and video IDs; title; canonical and timestamp URLs; timestamps; a short excerpt; and the full normalized evidence text used in the prompt. Saved plans remain understandable if the corpus is later changed or removed.
 - Database connections commit on success, roll back on failure, and close after every repository operation. The repository enforces a `list_plans` limit from 1 through 100 independently of API validation.
 
 Only completed plans are inserted. A failed generation result is returned as an API error and is not saved. SQLite is local and initialized when the API starts.
 
-Existing schemas are migrated to add the profile-to-user foreign key without dropping valid rows. If legacy profile rows have no matching user, startup stops with an explicit reconciliation error rather than discarding or assigning those rows. Plans created before full request snapshots were introduced retain their original options and plan/source JSON, but their historical profile cannot be recovered if it was not stored at creation time; new plans persist the exact profile and options used.
+Existing databases are migrated from username-based ownership to generated account IDs while preserving users, profiles, and plans. Legacy usernames become full names. If legacy profile rows have no matching user, startup stops with an explicit reconciliation error rather than discarding or assigning those rows. Plans created before full request snapshots were introduced retain their original options and plan/source JSON, but their historical profile cannot be recovered if it was not stored at creation time; new plans persist the exact profile and options used.
 
 ## Local-demo threat model
 

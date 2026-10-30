@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi.testclient import TestClient
 
 from config.config import AppConfig
@@ -59,7 +61,7 @@ def test_api_saves_profile_and_completed_plan(tmp_path, monkeypatch):
     monkeypatch.setattr(api_module, "read_access_token", lambda token, secret: token)
     repository = StudentRepository(str(tmp_path / "repwise.sqlite3"))
     repository.initialize()
-    repository.create_user("alex", "test-hash")
+    user_id = repository.create_user("Alex Example", "test-hash")
     app = create_app(
         AppConfig(
             database_path=str(tmp_path / "repwise.sqlite3"), auth_secret="test-secret"
@@ -76,21 +78,21 @@ def test_api_saves_profile_and_completed_plan(tmp_path, monkeypatch):
         "session_minutes": 45,
         "equipment": ["bodyweight"],
     }
-    headers = {"Authorization": "Bearer alex"}
+    headers = {"Authorization": f"Bearer {user_id}"}
     assert (
         client.put(
-            "/api/v1/students/alex/profile", json=profile, headers=headers
+            f"/api/v1/students/{user_id}/profile", json=profile, headers=headers
         ).status_code
         == 200
     )
     response = client.post(
-        "/api/v1/students/alex/plans",
+        f"/api/v1/students/{user_id}/plans",
         json={"focus": "Build a simple routine", "weeks": 1},
         headers=headers,
     )
     assert response.status_code == 200
     assert response.json()["status"] == "completed"
-    records = client.get("/api/v1/students/alex/plans", headers=headers).json()
+    records = client.get(f"/api/v1/students/{user_id}/plans", headers=headers).json()
     assert len(records) == 1
     assert records[0]["request"]["focus"] == "Build a simple routine"
     assert records[0]["request"]["profile"]["goal"] == "general strength"
@@ -101,7 +103,9 @@ def test_api_saves_profile_and_completed_plan(tmp_path, monkeypatch):
     saved_plan = records[0]["plan"]
     assert (
         client.put(
-            f"/api/v1/students/alex/plans/{plan_id}", json=saved_plan, headers=headers
+            f"/api/v1/students/{user_id}/plans/{plan_id}",
+            json=saved_plan,
+            headers=headers,
         ).status_code
         == 200
     )
@@ -113,11 +117,11 @@ def test_api_saves_profile_and_completed_plan(tmp_path, monkeypatch):
     )
     assert (
         client.delete(
-            f"/api/v1/students/alex/plans/{plan_id}", headers=headers
+            f"/api/v1/students/{user_id}/plans/{plan_id}", headers=headers
         ).status_code
         == 204
     )
-    assert client.get("/api/v1/students/alex/plans", headers=headers).json() == []
+    assert client.get(f"/api/v1/students/{user_id}/plans", headers=headers).json() == []
 
 
 def test_api_requires_a_profile_before_creating_a_plan(tmp_path, monkeypatch):
@@ -168,7 +172,7 @@ def test_registration_hashes_password_and_login_checks_credentials(
         lambda password, saved_hash: saved_hash == f"argon2-hash:{password}",
     )
     monkeypatch.setattr(
-        api_module, "create_access_token", lambda username, secret: f"signed:{username}"
+        api_module, "create_access_token", lambda user_id, secret: f"signed:{user_id}"
     )
     repository = StudentRepository(str(tmp_path / "repwise.sqlite3"))
     app = create_app(
@@ -180,13 +184,22 @@ def test_registration_hashes_password_and_login_checks_credentials(
         generator=FakeGenerator(),
     )
     client = TestClient(app)
-    credentials = {"username": "alex", "password": "correct-horse"}
+    credentials = {"full_name": "Alex Example", "password": "correct-horse"}
     registered = client.post("/api/v1/auth/register", json=credentials)
     assert registered.status_code == 200
     assert registered.json()["token_type"] == "bearer"
-    assert repository.get_password_hash("alex") != credentials["password"]
-    assert client.post("/api/v1/auth/login", json=credentials).status_code == 200
+    user_id = registered.json()["user_id"]
+    assert registered.json()["full_name"] == credentials["full_name"]
+    assert UUID(user_id).version == 4
+    assert user_id != credentials["full_name"]
+    assert registered.json()["access_token"] == f"signed:{user_id}"
+    assert repository.get_password_hash("Alex Example") != credentials["password"]
+    signed_in = client.post("/api/v1/auth/login", json=credentials)
+    assert signed_in.status_code == 200
+    assert signed_in.json()["user_id"] == user_id
     invalid = client.post(
-        "/api/v1/auth/login", json={"username": "alex", "password": "wrong-password"}
+        "/api/v1/auth/login",
+        json={"full_name": "Alex Example", "password": "wrong-password"},
     )
     assert invalid.status_code == 401
+    assert client.post("/api/v1/auth/register", json=credentials).status_code == 409
