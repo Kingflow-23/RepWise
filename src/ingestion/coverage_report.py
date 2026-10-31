@@ -14,17 +14,22 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import re
 from collections import defaultdict
 from pathlib import Path
 
+from ..observability import configure_logging
+
 REPO = Path(__file__).resolve().parents[2]
 CORPUS = REPO / "data" / "corpus"
+logger = logging.getLogger(__name__)
 
 
 def main(corpus: Path = CORPUS, lexicon_path: Path | None = None) -> None:
     corpus = Path(corpus)
     lexicon_path = lexicon_path or REPO / "config" / "topic_lexicon.json"
+    logger.info("Coverage report started corpus_dir=%s", corpus)
     lex = json.loads(lexicon_path.read_text(encoding="utf-8"))["topics"]
     rx = {
         t: re.compile("|".join(f"(?:{p})" for p in v["patterns"]), re.I)
@@ -92,8 +97,15 @@ def main(corpus: Path = CORPUS, lexicon_path: Path | None = None) -> None:
     (corpus / "coverage_summary.md").write_text(
         "\n".join(lines) + "\n", encoding="utf-8"
     )
+    logger.info(
+        "Coverage report completed videos=%s topics=%s passage_hits=%s",
+        len(titles),
+        len(topics),
+        len(hits),
+    )
     print("\n".join(lines))
 
 
 if __name__ == "__main__":
+    configure_logging("ingestion")
     main()

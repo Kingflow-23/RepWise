@@ -23,7 +23,7 @@ class FakeRetriever:
 
 
 class FakeGenerator:
-    def generate(self, system_prompt, user_prompt):
+    def generate(self, system_prompt, user_prompt, response_schema=None):
         return TrainingPlan.model_validate(
             {
                 "title": "Starter plan",
@@ -71,6 +71,11 @@ def test_api_saves_profile_and_completed_plan(tmp_path, monkeypatch):
         generator=FakeGenerator(),
     )
     client = TestClient(app)
+    health_response = client.get("/api/v1/health")
+    health = health_response.json()
+    assert health["retriever"] == "hybrid"
+    assert health["model"] == "llama3.2"
+    assert UUID(health_response.headers["X-Request-ID"])
     profile = {
         "experience": "beginner",
         "goal": "general strength",

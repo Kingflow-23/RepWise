@@ -52,7 +52,7 @@ REPWISE_EMBEDDING_INDEX=data/corpus/index/semantic.npz
 OLLAMA_MODEL=llama3.2
 ```
 
-Install [Ollama](https://ollama.com/) and fetch the model once with `ollama pull llama3.2`. Start the backend and UI in separate terminals:
+`llama3.2` is Ollama's instruction-tuned Llama 3.2 chat model. The Ollama tag does not include an `-instruct` suffix. Install [Ollama](https://ollama.com/) and fetch it once with `ollama pull llama3.2`. Start the backend and UI in separate terminals:
 
 ```powershell
 uvicorn src.api.main:app --reload
@@ -60,6 +60,19 @@ python -m streamlit run .\app\streamlit_app.py
 ```
 
 Create an account in the sidebar with a full name and password, then save a profile and generate a plan. The account ID is generated and used internally; it is not an extra value the user needs to enter. API documentation is at `http://127.0.0.1:8000/docs`. The local demo is not reviewed for deployment on an untrusted network.
+
+### Application logs
+
+The API, Streamlit client, evaluation runner, ingestion commands, and
+retrieval-index builder log startup, requests, retrieval/generation stages,
+validation retries, and errors to their terminal and rotating files under
+`logs/`. Files are separated by process (for example `repwise-api.log` and
+`repwise-streamlit.log`) and rotate at 5 MB with three backups.
+`REPWISE_LOG_LEVEL` accepts `DEBUG`, `INFO`,
+`WARNING`, `ERROR`, or `CRITICAL`; `REPWISE_LOG_DIR` changes the log folder.
+Logs intentionally omit passwords, bearer tokens, profile contents, and
+transcript/evidence text. API request IDs are returned in `X-Request-ID` and
+included in API logs for tracing a failed request.
 
 ## Evaluation and tests
 
@@ -69,7 +82,7 @@ The test suite uses fakes for model calls. It does not need Ollama; retrieval da
 python -m pytest -q
 ```
 
-For the full benchmark comparison, configure the local corpus and semantic index, install Ollama, and pull two different models. `OLLAMA_MODEL` selects model A and `OLLAMA_COMPARISON_MODEL` selects model B:
+For the full benchmark comparison, configure the local corpus and semantic index, install Ollama, and pull two different instruction-tuned chat models. `OLLAMA_MODEL` selects model A and `OLLAMA_COMPARISON_MODEL` selects model B. The Ollama tags are `llama3.2` (Llama 3.2 instruct) and `qwen2.5:7b` (Qwen2.5 7B instruct); neither tag needs an `-instruct` suffix:
 
 ```powershell
 ollama pull llama3.2

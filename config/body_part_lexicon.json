@@ -1,0 +1,156 @@
+{
+  "_about": {
+    "purpose": "Tag transcript chunks by explicitly mentioned training body regions so lexical and semantic retrieval can find body-part-specific evidence.",
+    "matching": "Patterns are matched case-insensitively after accent normalization. Tags indicate a textual mention, not proof that a passage contains advice for that body part.",
+    "taxonomy": "Canonical IDs are used in chunk metadata and query expansion. Tune patterns against data/corpus/coverage_hits.csv and the original timestamped video."
+  },
+  "body_parts": {
+    "chest": {
+      "label": "Chest",
+      "patterns": [
+        "\\bpectoraux\\b",
+        "\\bpector(?:al|als|aux)\\b",
+        "\\bpecs?\\b",
+        "\\bchest\\b",
+        "\\bbench press\\b",
+        "\\bdéveloppé couché\\b"
+      ]
+    },
+    "back": {
+      "label": "Back",
+      "patterns": [
+        "\\bdos\\b",
+        "\\bback\\b",
+        "\\bdorsaux?\\b",
+        "\\blats?\\b",
+        "\\blatissimus\\b",
+        "\\bgrand dorsal\\b",
+        "\\btirage (?:vertical|horizontal)\\b",
+        "\\browing\\b"
+      ]
+    },
+    "shoulders": {
+      "label": "Shoulders",
+      "patterns": [
+        "\\bépaules?\\b",
+        "\\bshoulders?\\b",
+        "\\bdeltoïdes?\\b",
+        "\\bdelts?\\b",
+        "\\bélévations? latérales?\\b",
+        "\\blateral raises?\\b",
+        "\\boverhead press\\b",
+        "\\bdéveloppé militaire\\b"
+      ]
+    },
+    "trapezius": {
+      "label": "Trapezius",
+      "patterns": [
+        "\\btrapèzes?\\b",
+        "\\btrapezius\\b",
+        "\\btraps?\\b",
+        "\\bshrugs?\\b"
+      ]
+    },
+    "biceps": {
+      "label": "Biceps",
+      "patterns": [
+        "\\bbiceps?\\b",
+        "\\bbiceps? brachial\\b"
+      ]
+    },
+    "triceps": {
+      "label": "Triceps",
+      "patterns": [
+        "\\btriceps?\\b"
+      ]
+    },
+    "forearms": {
+      "label": "Forearms",
+      "patterns": [
+        "\\bavant[- ]bras\\b",
+        "\\bforearms?\\b",
+        "\\bbrachio[- ]radial\\w*\\b"
+      ]
+    },
+    "core": {
+      "label": "Core / abdominals",
+      "patterns": [
+        "\\babdos?\\b",
+        "\\babdominaux\\b",
+        "\\babdominal\\w*\\b",
+        "\\bcore\\b",
+        "\\bobliques?\\b",
+        "\\bgrand droit\\b",
+        "\\bceinture abdominale\\b"
+      ]
+    },
+    "quadriceps": {
+      "label": "Quadriceps",
+      "patterns": [
+        "\\bquadriceps?\\b",
+        "\\bquads?\\b",
+        "\\bquadris?\\b"
+      ]
+    },
+    "hamstrings": {
+      "label": "Hamstrings",
+      "patterns": [
+        "\\bischio[- ]jambiers?\\b",
+        "\\bischios?\\b",
+        "\\bhamstrings?\\b",
+        "\\bbiceps fémoral\\b",
+        "\\bleg curls?\\b"
+      ]
+    },
+    "glutes": {
+      "label": "Glutes",
+      "patterns": [
+        "\\bfessiers?\\b",
+        "\\bglutes?\\b",
+        "\\bgrand fessier\\b",
+        "\\bhip thrust\\b"
+      ]
+    },
+    "calves": {
+      "label": "Calves",
+      "patterns": [
+        "\\bmollets?\\b",
+        "\\bcalves?\\b",
+        "\\bsoléaire\\b",
+        "\\bgastrocnémien\\b"
+      ]
+    },
+    "adductors": {
+      "label": "Adductors",
+      "patterns": [
+        "\\badducteurs?\\b",
+        "\\badductors?\\b"
+      ]
+    },
+    "legs": {
+      "label": "Legs (general)",
+      "patterns": [
+        "\\bjambes?\\b",
+        "\\blegs?\\b",
+        "\\bbas du corps\\b",
+        "\\blower body\\b",
+        "\\bcuisses?\\b",
+        "\\bthighs?\\b",
+        "\\bquadriceps?\\b",
+        "\\bischio[- ]jambiers?\\b",
+        "\\bfessiers?\\b",
+        "\\bmollets?\\b"
+      ]
+    },
+    "arms": {
+      "label": "Arms (general)",
+      "patterns": [
+        "\\bbras\\b",
+        "\\barms?\\b",
+        "\\bbiceps?\\b",
+        "\\btriceps?\\b",
+        "\\bavant[- ]bras\\b"
+      ]
+    }
+  }
+}

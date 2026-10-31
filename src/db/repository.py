@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Iterator
 
 from ..schemas.models import PlanRequest, PlanResult, TrainingPlan, UserProfile
+
+logger = logging.getLogger(__name__)
 
 
 def now() -> str:
@@ -26,6 +29,7 @@ class StudentRepository:
 
     def initialize(self) -> None:
         """Create tables and migrate username-owned rows to generated account IDs."""
+        logger.info("Initializing SQLite repository")
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.executescript("""
@@ -84,6 +88,7 @@ class StudentRepository:
             ):
                 connection.commit()
                 self._migrate_profile_owner_ids(connection)
+        logger.info("SQLite repository initialized")
 
     def _migrate_profile_owner_ids(self, connection: sqlite3.Connection) -> None:
         """Preserve old account data while replacing username ownership with user IDs."""
@@ -179,6 +184,7 @@ class StudentRepository:
                 "VALUES (?, ?, ?, ?)",
                 (full_name, user_id, password_hash, now()),
             )
+        logger.info("Database account created")
         return user_id
 
     def get_password_hash(self, full_name: str) -> str | None:
@@ -209,6 +215,7 @@ class StudentRepository:
             """,
                 (student_id, profile.model_dump_json(), now()),
             )
+        logger.info("Database profile saved")
 
     def get_profile(self, student_id: str) -> UserProfile | None:
         """Return one profile, or ``None`` when it has not been saved yet."""
@@ -262,6 +269,7 @@ class StudentRepository:
             """,
                 (student_id, limit),
             ).fetchall()
+        logger.info("Database plan history read count=%s", len(rows))
         return [
             {
                 "id": row[0],
@@ -280,6 +288,7 @@ class StudentRepository:
                 "UPDATE training_plans SET plan_json=? WHERE id=? AND student_id=?",
                 (plan.model_dump_json(), plan_id, student_id),
             )
+        logger.info("Database plan updated found=%s", cursor.rowcount == 1)
         return cursor.rowcount == 1
 
     def delete_plan(self, student_id: str, plan_id: str) -> bool:
@@ -289,6 +298,7 @@ class StudentRepository:
                 "DELETE FROM training_plans WHERE id=? AND student_id=?",
                 (plan_id, student_id),
             )
+        logger.info("Database plan deleted found=%s", cursor.rowcount == 1)
         return cursor.rowcount == 1
 
     @contextmanager
@@ -299,7 +309,11 @@ class StudentRepository:
             connection.execute("PRAGMA foreign_keys = ON")
             yield connection
             connection.commit()
-        except BaseException:
+        except BaseException as error:
+            logger.error(
+                "SQLite operation failed error_type=%s",
+                type(error).__name__,
+            )
             if connection.in_transaction:
                 connection.rollback()
             raise

@@ -1,5 +1,6 @@
 from src.generation import PlanPipeline, validate_plan
 from src.rag import make_query, select_evidence
+from src.rag.prompt import make_user_prompt, plan_response_schema
 from src.retrieval import BM25Retriever
 from src.schemas import PlanRequest, RetrievedChunk, TrainingPlan, UserProfile
 
@@ -84,6 +85,15 @@ def test_query_contains_current_goal_and_profile_information():
     assert "beginner" in query
 
 
+def test_query_expands_french_body_region_to_canonical_retrieval_tag():
+    training_request = request().model_copy(update={"focus": "Renforcer les jambes"})
+
+    query = make_query(training_request)
+
+    assert "quadriceps" not in query
+    assert "body parts: legs" in query
+
+
 def test_validator_rejects_unknown_source():
     plan = valid_plan()
     plan.weeks[0].workouts[0].exercises[0].source_ids = ["unknown"]
@@ -137,7 +147,7 @@ class FakeRetriever:
 
 
 class FakeGenerator:
-    def generate(self, system_prompt, user_prompt):
+    def generate(self, system_prompt, user_prompt, response_schema=None):
         return valid_plan()
 
 
@@ -151,7 +161,7 @@ def test_pipeline_retries_once_after_validation_failure():
     class CorrectingGenerator:
         calls = 0
 
-        def generate(self, system_prompt, user_prompt):
+        def generate(self, system_prompt, user_prompt, response_schema=None):
             self.calls += 1
             if self.calls == 1:
                 plan = valid_plan()
@@ -163,6 +173,17 @@ def test_pipeline_retries_once_after_validation_failure():
     result = PlanPipeline(FakeRetriever(), generator).create_plan(request())
     assert result.status == "completed"
     assert generator.calls == 2
+
+
+def test_prompt_and_structured_schema_require_exact_requested_week_count():
+    training_request = request().model_copy(update={"weeks": 4})
+    prompt = make_user_prompt(training_request, "")
+    schema = plan_response_schema(training_request)
+
+    assert "exactly 4 weeks" in prompt
+    assert '"minItems": 4' in prompt
+    assert schema["properties"]["weeks"]["minItems"] == 4
+    assert schema["properties"]["weeks"]["maxItems"] == 4
 
 
 def test_pipeline_returns_a_clear_status_when_retrieval_fails():

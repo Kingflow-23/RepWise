@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+import logging
 import sys
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import requests
@@ -18,7 +20,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.app_config import get_api_url
+from src.observability import configure_logging
 
+configure_logging("streamlit")
+logger = logging.getLogger(__name__)
 st.set_page_config(page_title="RepWise | Training plans", page_icon="🏋️", layout="wide")
 
 API_BASE = get_api_url()
@@ -36,18 +41,39 @@ def api_request(method: str, path: str, **kwargs: Any) -> Any:
         headers = dict(kwargs.pop("headers", {}))
         headers["Authorization"] = f"Bearer {token}"
         kwargs["headers"] = headers
+    started = perf_counter()
     try:
         response = requests.request(method, f"{API_BASE}{path}", timeout=130, **kwargs)
     except requests.RequestException as error:
+        logger.error(
+            "Backend request failed method=%s error_type=%s elapsed_ms=%.1f",
+            method,
+            type(error).__name__,
+            (perf_counter() - started) * 1000,
+        )
         raise ApiError(
             f"Cannot reach the RepWise API at {API_BASE}. Start it with `uvicorn src.api.main:app --reload`. Details: {error}"
         ) from error
     if not response.ok:
+        logger.warning(
+            "Backend returned error method=%s status=%s request_id=%s elapsed_ms=%.1f",
+            method,
+            response.status_code,
+            response.headers.get("X-Request-ID", "-"),
+            (perf_counter() - started) * 1000,
+        )
         try:
             detail = response.json().get("detail", response.text)
         except ValueError:
             detail = response.text
         raise ApiError(f"API returned {response.status_code}: {detail}")
+    logger.info(
+        "Backend request completed method=%s status=%s request_id=%s elapsed_ms=%.1f",
+        method,
+        response.status_code,
+        response.headers.get("X-Request-ID", "-"),
+        (perf_counter() - started) * 1000,
+    )
     return response.json() if response.content else None
 
 
@@ -128,6 +154,7 @@ with st.sidebar:
             )
             st.session_state.access_token = token["access_token"]
             store_account(token)
+            logger.info("User signed in through Streamlit")
             st.success("Signed in.")
         except ApiError as error:
             st.error(str(error))
@@ -140,6 +167,7 @@ with st.sidebar:
             )
             st.session_state.access_token = token["access_token"]
             store_account(token)
+            logger.info("Account registered through Streamlit")
             st.success("Account created and signed in.")
         except ApiError as error:
             st.error(str(error))
@@ -151,6 +179,7 @@ with st.sidebar:
     if api_base.rstrip("/") != API_BASE:
         API_BASE = api_base.rstrip("/")
     if st.button("Check connection", use_container_width=True):
+        logger.info("Connection health refresh requested")
         st.session_state.pop("health", None)
         st.session_state.pop("health_error", None)
     if "health" not in st.session_state and "health_error" not in st.session_state:
@@ -162,7 +191,9 @@ with st.sidebar:
         health = st.session_state.health
         st.success("API connected")
         st.caption(
-            f"Retrieval: {health.get('retrieval', 'unknown')} · Model: {health.get('model', 'unknown')}"
+            f"Retriever: {health.get('retrieval', 'unknown')} · "
+            f"Strategy: {health.get('retriever', 'unknown')} · "
+            f"Model: {health.get('model', 'unknown')}"
         )
     elif st.session_state.get("health_error"):
         st.error(st.session_state.health_error)
@@ -190,11 +221,12 @@ with profile_tab:
                     "GET", f"/api/v1/students/{student_id}/profile"
                 )
                 st.session_state.profile_form = saved
+                logger.info("Saved profile loaded into profile editor")
                 st.success("Profile loaded.")
             except ApiError as error:
                 st.error(str(error))
     profile = st.session_state.get("profile_form", {})
-    with st.form("profile_form"):
+    with st.form("profile_editor_form"):
         left, right = st.columns(2)
         with left:
             experience = st.selectbox(
@@ -263,6 +295,7 @@ with profile_tab:
                     f"/api/v1/students/{student_id}/profile",
                     json=payload,
                 )
+                logger.info("Profile saved through Streamlit")
                 st.success("Profile saved to the backend database.")
             except ApiError as error:
                 st.error(str(error))
@@ -296,6 +329,7 @@ with plan_tab:
                 "Retrieving evidence and generating your plan with the backend…"
             ):
                 try:
+                    logger.info("Plan generation requested through Streamlit")
                     result = api_request(
                         "POST",
                         f"/api/v1/students/{sid}/plans",
@@ -315,6 +349,7 @@ with plan_tab:
                         "sources": result.get("sources", []),
                         "request": {"focus": focus, "weeks": weeks},
                     }
+                    logger.info("Plan generation completed through Streamlit")
                     st.success("Plan generated, validated, and saved.")
                 except ApiError as error:
                     st.error(str(error))
@@ -332,6 +367,7 @@ with history_tab:
             st.error("Sign in or create an account first.")
         else:
             try:
+                logger.info("Plan history refresh requested")
                 st.session_state.plan_history = api_request(
                     "GET",
                     f"/api/v1/students/{user_id}/plans",

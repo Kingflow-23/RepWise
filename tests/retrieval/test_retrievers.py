@@ -46,6 +46,17 @@ def test_bm25_ranks_matching_chunks_and_excludes_commercial_content():
     assert results[0].rank == 1
 
 
+def test_bm25_uses_body_part_metadata_when_query_names_region():
+    relevant = chunk("tagged", "training advice")
+    relevant.body_parts = ["quadriceps"]
+    unrelated = chunk("unrelated", "training advice")
+    retriever = BM25Retriever([unrelated, relevant])
+
+    results = retriever.search("quadriceps", top_k=2)
+
+    assert [result.chunk_id for result in results] == ["tagged"]
+
+
 def test_hybrid_fuses_bm25_and_semantic_rankings_with_rrf():
     first = chunk("first", "first")
     second = chunk("second", "second")
@@ -83,11 +94,14 @@ def test_semantic_index_round_trip_and_query(tmp_path, monkeypatch):
         )
 
     class FakeModel:
+        passages = []
+
         def get_embedding_dimension(self):
             return 2
 
         def encode(self, texts, **kwargs):
             if texts[0].startswith("passage:"):
+                self.passages = texts
                 return np.asarray([[1, 0], [0, 1]], dtype=np.float32)
             assert texts == ["query: second"]
             return np.asarray([[0, 1]], dtype=np.float32)
@@ -101,11 +115,19 @@ def test_semantic_index_round_trip_and_query(tmp_path, monkeypatch):
 
     assert [result.chunk_id for result in results] == ["two"]
     assert results[0].score == pytest.approx(1.0)
+    assert all("Body parts:" in passage for passage in FakeModel.passages)
     with np.load(index_path, allow_pickle=False) as index:
         assert index["vectors"].shape == (2, 2)
         assert index["chunk_ids"].tolist() == ["one", "two"]
         assert str(index["fingerprint"].item()) == corpus_fingerprint(chunks)
         assert str(index["model"].item()) == "test-model"
+
+
+def test_body_part_changes_invalidate_semantic_index_fingerprint():
+    original = chunk("one", "leg training advice")
+    tagged = original.model_copy(update={"body_parts": ["quadriceps"]})
+
+    assert corpus_fingerprint([original]) != corpus_fingerprint([tagged])
 
 
 def test_semantic_rejects_an_index_with_a_different_model_dimension(

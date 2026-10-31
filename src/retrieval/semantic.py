@@ -8,15 +8,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from pathlib import Path
+from time import perf_counter
 
 from ..schemas.models import RetrievedChunk
 
 DEFAULT_MODEL = "intfloat/multilingual-e5-small"
+logger = logging.getLogger(__name__)
 
 
 def load_chunks(chunk_dir: str | Path) -> list[RetrievedChunk]:
     """Read all per-video JSONL files in a deterministic order."""
+    started = perf_counter()
     chunks = []
     for path in sorted(Path(chunk_dir).glob("*.jsonl")):
         for line_number, line in enumerate(
@@ -39,6 +43,12 @@ def load_chunks(chunk_dir: str | Path) -> list[RetrievedChunk]:
         raise ValueError(
             "Chunk IDs must be unique before an embedding index can be built."
         )
+    logger.info(
+        "Corpus chunks loaded directory=%s chunks=%s elapsed_ms=%.1f",
+        chunk_dir,
+        len(chunks),
+        (perf_counter() - started) * 1000,
+    )
     return chunks
 
 
@@ -51,6 +61,8 @@ def corpus_fingerprint(chunks: list[RetrievedChunk]) -> str:
         digest.update(chunk.title.encode("utf-8"))
         digest.update(b"\0")
         digest.update(chunk.text.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(" ".join(chunk.body_parts).encode("utf-8"))
         digest.update(b"\n")
     return digest.hexdigest()
 
@@ -82,6 +94,8 @@ def build_index(
     model_name: str = DEFAULT_MODEL,
 ) -> Path:
     """Embed corpus chunks locally and save a reproducible NumPy index."""
+    started = perf_counter()
+    logger.info("Embedding index build started model=%s", model_name)
     try:
         import numpy as np
     except ImportError as error:
@@ -99,7 +113,11 @@ def build_index(
         )
     model = _load_model(model_name)
     # E5 uses task prefixes to distinguish searches from stored passages.
-    passages = [f"passage: {chunk.title}. {chunk.text}" for chunk in chunks]
+    passages = [
+        f"passage: {chunk.title}. Body parts: {', '.join(chunk.body_parts)}. "
+        f"{chunk.text}"
+        for chunk in chunks
+    ]
     vectors = np.asarray(
         model.encode(passages, normalize_embeddings=True, show_progress_bar=True),
         dtype=np.float32,
@@ -125,6 +143,12 @@ def build_index(
             model=np.asarray(model_name),
             fingerprint=np.asarray(corpus_fingerprint(chunks)),
         )
+    logger.info(
+        "Embedding index build completed eligible_chunks=%s dimensions=%s elapsed_ms=%.1f",
+        len(chunks),
+        vectors.shape[1],
+        (perf_counter() - started) * 1000,
+    )
     return target
 
 
@@ -137,6 +161,12 @@ class SemanticRetriever:
         index_path: str | Path,
         model_name: str = DEFAULT_MODEL,
     ):
+        started = perf_counter()
+        logger.info(
+            "Semantic retriever initialization started model=%s chunks=%s",
+            model_name,
+            len(chunks),
+        )
         try:
             import numpy as np
         except ImportError as error:
@@ -185,6 +215,11 @@ class SemanticRetriever:
                 "Rebuild it with `python -m src.retrieval.index --build`."
             )
         if indexed_ids != ids or fingerprint != corpus_fingerprint(self.chunks):
+            logger.error(
+                "Semantic index stale indexed_chunks=%s current_chunks=%s",
+                len(indexed_ids),
+                len(ids),
+            )
             raise ValueError(
                 "Embedding index is stale. Rebuild it with `python -m src.retrieval.index --build`."
             )
@@ -196,9 +231,16 @@ class SemanticRetriever:
                 f"index has {self.vectors.shape[1]}, model expects {model_dimension}. "
                 "Rebuild the index with `python -m src.retrieval.index --build`."
             )
+        logger.info(
+            "Semantic retriever ready chunks=%s dimensions=%s elapsed_ms=%.1f",
+            len(self.chunks),
+            self.vectors.shape[1],
+            (perf_counter() - started) * 1000,
+        )
 
     def search(self, query: str, top_k: int) -> list[RetrievedChunk]:
         """Return the highest cosine-similarity chunks with stable ranks."""
+        started = perf_counter()
         query_vectors = self.np.asarray(
             self.model.encode([f"query: {query}"], normalize_embeddings=True),
             dtype=self.np.float32,
@@ -212,9 +254,16 @@ class SemanticRetriever:
         scores = self.vectors @ query_vector
         # Stable sort makes ties reproducible in repeated index runs.
         order = self.np.argsort(-scores, kind="stable")[:top_k]
-        return [
+        results = [
             self.chunks[int(position)].model_copy(
                 update={"rank": rank, "score": float(scores[position])}
             )
             for rank, position in enumerate(order, start=1)
         ]
+        logger.debug(
+            "Semantic search completed top_k=%s returned=%s elapsed_ms=%.1f",
+            top_k,
+            len(results),
+            (perf_counter() - started) * 1000,
+        )
+        return results

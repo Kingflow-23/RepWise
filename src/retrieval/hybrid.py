@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from ..schemas.models import RetrievedChunk
+
+logger = logging.getLogger(__name__)
 
 
 class HybridRetriever:
@@ -28,7 +32,15 @@ class HybridRetriever:
                 score, _ = fused.get(stable_id, (0.0, chunk))
                 fused[stable_id] = (score + 1 / (self.rrf_constant + rank), chunk)
         ordered = sorted(fused.values(), key=lambda item: -item[0])[:top_k]
-        return [
+        results = [
             chunk.model_copy(update={"rank": rank, "score": score})
             for rank, (score, chunk) in enumerate(ordered, start=1)
         ]
+        logger.debug(
+            "Hybrid search completed bm25_candidates=%s semantic_candidates=%s fused=%s returned=%s",
+            len(lists[0]),
+            len(lists[1]),
+            len(fused),
+            len(results),
+        )
+        return results

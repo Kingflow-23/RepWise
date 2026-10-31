@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..body_parts import detect_body_parts
 from ..schemas.models import PlanRequest, RetrievedChunk, Source
 
 
@@ -15,6 +16,9 @@ def make_query(request: PlanRequest) -> str:
         *profile.equipment,
         *request.extra_constraints,
     ]
+    body_parts = detect_body_parts(" ".join(parts))
+    if body_parts:
+        parts.append("body parts: " + " ".join(body_parts))
     return " | ".join(part for part in parts if part)
 
 

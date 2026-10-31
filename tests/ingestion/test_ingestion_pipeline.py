@@ -147,7 +147,7 @@ def test_chunker_groups_passages_and_preserves_metadata(tmp_path):
                     "start": (i - 1) * 30,
                     "end": i * 30,
                     "url_t": f"https://youtu.be/{VIDEO_ID}?t={(i - 1) * 30}",
-                    "text": f"passage {i}",
+                    "text": f"passage {i} for quadriceps and hamstrings",
                     "flags": [],
                 }
             )
@@ -199,5 +199,6 @@ def test_chunker_groups_passages_and_preserves_metadata(tmp_path):
         f"{VIDEO_ID}_p0003",
     ]
     assert chunks[0]["topics"] == ["rest"]
+    assert chunks[0]["body_parts"] == ["quadriceps", "hamstrings", "legs"]
     assert chunks[0]["scientific_references"] == ["https://example.org/paper"]
     assert chunks[0]["start_url"].endswith("?t=0")

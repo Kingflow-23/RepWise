@@ -8,14 +8,16 @@ RepWise evaluation has three distinct datasets and workflows:
 
 ## Prepare models and corpus
 
-The corpus is local and is not committed. Prepare it as described in the README, including the chunk JSONL files and semantic index. Install Ollama and pull two different local models:
+The corpus is local and is not committed. Prepare it as described in the README, including the chunk JSONL files and semantic index. Install Ollama and pull two different instruction-tuned chat models. The Ollama
+tags below select the instruct variants even though `-instruct` is not part of
+the tag:
 
 ```powershell
 ollama pull llama3.2
 ollama pull qwen2.5:7b
 ```
 
-Set `OLLAMA_MODEL` to model A and `OLLAMA_COMPARISON_MODEL` to model B in `.env`, or pass both explicitly to the runner. The defaults are `llama3.2` and `qwen2.5:7b`. The comparison requires both models to be available from the configured Ollama service. Semantic and hybrid retrieval also need the configured embedding model and current local index.
+Set `OLLAMA_MODEL` to model A and `OLLAMA_COMPARISON_MODEL` to model B in `.env`, or pass both explicitly to the runner. The defaults are `llama3.2` (Llama 3.2 instruct) and `qwen2.5:7b` (Qwen2.5 7B instruct). These are different model families, and both must be available from the configured Ollama service. Semantic and hybrid retrieval also need the configured embedding model and current local index.
 
 ## Run the evaluation
 

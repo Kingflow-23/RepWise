@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 
+from ..observability import configure_logging
 from .semantic import DEFAULT_MODEL, build_index
+
+logger = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,7 +37,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.build:
         parser.error("pass --build to create the index")
+    configure_logging("retrieval")
+    logger.info(
+        "Embedding index command started chunks=%s index=%s model=%s",
+        args.chunks,
+        args.index,
+        args.model,
+    )
     result = build_index(args.chunks, args.index, args.model)
+    logger.info("Embedding index saved path=%s", result)
     print(f"Saved embedding index: {Path(result)}")
     return 0
 

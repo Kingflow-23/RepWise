@@ -87,14 +87,18 @@ import csv
 import difflib
 import hashlib
 import json
+import logging
 import re
 import unicodedata
 from collections import Counter
 from datetime import date
 from pathlib import Path
 
+from src.observability import configure_logging
+
 REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / "data"
+logger = logging.getLogger(__name__)
 
 TS_LINE = re.compile(
     r"^\s*(?:(\d+):)?(\d{1,3}):(\d{2})\s?(.*)$"
@@ -298,6 +302,7 @@ def match_files(
 
 
 def main(argv: list[str] | None = None) -> None:
+    configure_logging("ingestion")
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -318,6 +323,11 @@ def main(argv: list[str] | None = None) -> None:
     files = sorted(args.corpus_dir.glob("*.txt"))
     matched, issues = match_files(titles, files)
     rules = load_corrections(args.corrections)
+    logger.info(
+        "Transcript ingestion started files=%s matched_videos=%s",
+        len(files),
+        len(matched),
+    )
 
     (args.out / "passages").mkdir(parents=True, exist_ok=True)
     (args.out / "clean_txt").mkdir(parents=True, exist_ok=True)
@@ -329,6 +339,13 @@ def main(argv: list[str] | None = None) -> None:
         punct = is_punctuated(frags)
         counter: Counter = Counter()
         passages = to_passages(correct_fragments(frags, rules, counter), punct)
+        logger.info(
+            "Transcript processed video_id=%s passages=%s corrections=%s layout=%s",
+            vid,
+            len(passages),
+            sum(counter.values()),
+            layout,
+        )
         sponsor_ts = []
         url = f"https://youtu.be/{vid}"
         with open(
@@ -421,7 +438,14 @@ def main(argv: list[str] | None = None) -> None:
         f"with refs: {sum(1 for m in manifest if m['n_references'])}  "
         f"corrections applied: {sum(m['n_corrections'] for m in manifest)}"
     )
+    logger.info(
+        "Transcript ingestion completed videos=%s passages=%s corrections=%s",
+        len(manifest),
+        sum(m["n_passages"] for m in manifest),
+        sum(m["n_corrections"] for m in manifest),
+    )
     for i in issues:
+        logger.warning("Transcript matching issue: %s", i)
         print("WARN", i)
 
 

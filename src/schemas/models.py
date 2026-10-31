@@ -69,6 +69,7 @@ class RetrievedChunk(Model):
     speaker: str | None = None
     topics: list[str] = Field(default_factory=list)
     topic_counts: dict[str, int] = Field(default_factory=dict)
+    body_parts: list[str] = Field(default_factory=list)
     scientific_references: list[str] = Field(default_factory=list)
     reference_review_status: str | None = None
     word_count: int | None = Field(default=None, ge=0)

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import re
+from time import perf_counter
 
 from ..llm.ollama import PlanGenerator
 from ..rag.context import make_query, select_evidence
-from ..rag.prompt import load_system_prompt, make_user_prompt
+from ..rag.prompt import load_system_prompt, make_user_prompt, plan_response_schema
 from ..retrieval.base import Retriever
 from ..schemas.models import PlanRequest, PlanResult, TrainingPlan
+
+logger = logging.getLogger(__name__)
 
 
 class PlanPipeline:
@@ -21,9 +25,19 @@ class PlanPipeline:
 
     def create_plan(self, request: PlanRequest) -> PlanResult:
         """Create one grounded plan, or return a clear status when this fails."""
+        logger.info(
+            "Plan generation started weeks=%s top_k=%s",
+            request.weeks,
+            self.top_k,
+        )
+        retrieval_started = perf_counter()
         try:
             chunks = self.retriever.search(make_query(request), self.top_k)
         except Exception as error:
+            logger.exception(
+                "Plan retrieval failed elapsed_ms=%.1f",
+                (perf_counter() - retrieval_started) * 1000,
+            )
             return PlanResult(
                 status="retrieval_error",
                 message=(
@@ -32,8 +46,14 @@ class PlanPipeline:
                 ),
             )
 
+        logger.info(
+            "Plan evidence retrieved chunks=%s elapsed_ms=%.1f",
+            len(chunks),
+            (perf_counter() - retrieval_started) * 1000,
+        )
         evidence, sources = select_evidence(chunks)
         if not evidence:
+            logger.warning("Plan generation stopped reason=no_usable_evidence")
             return PlanResult(
                 status="insufficient_evidence",
                 message="No useful training evidence was found.",
@@ -46,25 +66,49 @@ class PlanPipeline:
         for attempt in range(
             3
         ):  # Allow two correction attempts after the initial generation
+            generation_started = perf_counter()
             try:
                 if attempt:
+                    logger.warning(
+                        "Retrying plan generation attempt=%s reason=%s",
+                        attempt + 1,
+                        type(last_error).__name__ if last_error else "unknown",
+                    )
                     user_prompt += (
                         "\n\nCorrection request: the previous response failed validation: "
                         f"{last_error}. Return corrected JSON only."
                     )
-                plan = self.generator.generate(system_prompt, user_prompt)
+                plan = self.generator.generate(
+                    system_prompt, user_prompt, plan_response_schema(request)
+                )
+                logger.info(
+                    "Model returned plan attempt=%s elapsed_ms=%.1f",
+                    attempt + 1,
+                    (perf_counter() - generation_started) * 1000,
+                )
                 validate_plan(plan, request, {source.source_id for source in sources})
                 break
             except (OSError, ValueError, RuntimeError) as error:
                 last_error = error
+                logger.warning(
+                    "Generated plan rejected attempt=%s error_type=%s",
+                    attempt + 1,
+                    type(error).__name__,
+                )
         else:
             assert last_error is not None
+            logger.error("Plan generation failed after retries")
             return PlanResult(
                 status="generation_error",
                 message=f"The plan could not be validated after two correction attempts: {last_error}",
                 sources=sources,
             )
 
+        logger.info(
+            "Plan generation completed weeks=%s sources=%s",
+            len(plan.weeks),
+            len(sources),
+        )
         return PlanResult(
             status="completed",
             message="Plan created from retrieved sources.",

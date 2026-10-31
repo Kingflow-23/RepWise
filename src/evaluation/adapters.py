@@ -276,7 +276,7 @@ def build_real_pipeline_planner(
     from config.config import AppConfig
     from ..generation.pipeline import PlanPipeline
     from ..llm.ollama import OllamaGenerator
-    from ..rag.prompt import load_system_prompt, make_user_prompt
+    from ..rag.prompt import load_system_prompt, make_user_prompt, plan_response_schema
     from ..schemas.models import (
         PlanRequest,
         RetrievedChunk,
@@ -329,7 +329,9 @@ def build_real_pipeline_planner(
                     "The system prompt no longer has the citation instruction expected by the no-RAG baseline."
                 )
             plan_model = generator.generate(
-                system_prompt, make_user_prompt(request, "")
+                system_prompt,
+                make_user_prompt(request, ""),
+                plan_response_schema(request),
             )
             validate_plan(plan_model, request, set(), require_citations=False)
             sources = []

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import logging
 import statistics
 import sys
 import time
@@ -10,10 +11,13 @@ from datetime import datetime
 
 from config import evaluation_config as config
 from config.config import AppConfig
+from ..observability import configure_logging
 from . import adapters, datasets, report
 from .metrics.common import Ratio, mean_ratio
 from .metrics.grounding import abstention_metrics, abstention_outcome, check_claims
 from .metrics.retrieval import judge_ranking
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -643,6 +647,15 @@ def run_comparison(
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    configure_logging("evaluation")
+    logger.info(
+        "Evaluation started suite=%s llm=%s retriever=%s model_a=%s model_b=%s",
+        args.suite,
+        args.llm,
+        args.retriever or config.RETRIEVER,
+        args.model_a or "configured",
+        args.model_b or "configured",
+    )
     if args.suite == "compare" or args.llm == "compare":
         run = run_comparison(
             args.retriever,
@@ -652,6 +665,7 @@ def main(argv=None) -> int:
         )
         print(run["report"])
         print(f"\nFull report: {run['run_dir'] / 'report.md'}")
+        logger.info("Model comparison completed output_dir=%s", run["run_dir"])
         return 0
 
     planner_name = "ollama-rag" if args.llm == "ollama" else config.PLANNER
@@ -666,6 +680,7 @@ def main(argv=None) -> int:
     )
     print(report.render_console(run["results"], run["gates"]))
     print(f"\nFull report: {run['run_dir'] / 'report.md'}")
+    logger.info("Evaluation completed output_dir=%s", run["run_dir"])
 
     if config.FAIL_ON_GATES and any(g["status"] != "pass" for g in run["gates"]):
         return 1

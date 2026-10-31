@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import math
+import logging
 import re
 import unicodedata
 from collections import Counter
 
 from ..schemas.models import RetrievedChunk
+
+logger = logging.getLogger(__name__)
 
 
 def terms(text: str) -> list[str]:
@@ -32,7 +35,12 @@ class BM25Retriever:
         self.k1 = k1
         self.b = b
         self.documents = [
-            Counter(terms(f"{c.title} {c.text} {' '.join(c.topics)}"))
+            Counter(
+                terms(
+                    f"{c.title} {c.text} {' '.join(c.topics)} "
+                    f"{' '.join(c.body_parts)}"
+                )
+            )
             for c in self.chunks
         ]
         self.lengths = [sum(document.values()) for document in self.documents]
@@ -68,7 +76,9 @@ class BM25Retriever:
             if score > 0:
                 scores.append((score, position))
         scores.sort(key=lambda item: (-item[0], item[1]))
-        return [
+        results = [
             self.chunks[position].model_copy(update={"rank": rank, "score": score})
             for rank, (score, position) in enumerate(scores[:top_k], start=1)
         ]
+        logger.debug("BM25 search completed candidates=%s returned=%s", len(scores), len(results))
+        return results

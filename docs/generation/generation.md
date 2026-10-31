@@ -26,6 +26,8 @@ The code rejects a plan when:
 
 These are simple consistency checks. They do not prove that the programme is safe, medically suitable or scientifically complete. The returned plan always contains a short safety note and the system must not be used to diagnose pain or injuries.
 
+The requested week count is also enforced in the Ollama structured-output schema, not only checked after generation. The prompt explicitly requires consecutive week numbers and asks the model to use only equipment in the student's profile; the validator rejects unavailable equipment. Other failed checks still trigger correction attempts and may cause the request to be rejected rather than saving an invalid plan.
+
 ## When the pipeline stops
 
 If retrieval returns no usable evidence, the pipeline returns `insufficient_evidence` and does not ask the model to invent a plan. If the model response is malformed or violates the checks, it returns `generation_error` with a readable message. If the knowledge base is not connected, it returns `retrieval_error`.

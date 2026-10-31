@@ -1,13 +1,18 @@
 import re
 import json
+import logging
 from pathlib import Path
 import pandas as pd
+
+from ..body_parts import detect_body_parts
+from ..observability import configure_logging
 
 MAX_WORD_CHUNK = 450
 REPO = Path(__file__).resolve().parents[2]
 PROJECT = REPO.parent
 TOPIC_MIN_COUNT = 1
 NON_TOPIC_COLS = {"video_id", "title"}
+logger = logging.getLogger(__name__)
 
 
 def read_json_file(text_json_path: str):
@@ -138,6 +143,7 @@ def final_metadata_match(
                 "speaker": speaker,
                 "topics": topics,
                 "topic_counts": topic_counts,
+                "body_parts": detect_body_parts(chunk["text"]),
                 "scientific_references": references,
                 "reference_review_status": review_status,
             }
@@ -184,6 +190,7 @@ def build_chunks(corpus_dir: str | Path):
     manifest_df, coverage_df = read_manifest(str(manifest_path), str(coverage_path))
 
     chunk_files = []
+    logger.info("Chunk building started corpus_dir=%s", corpus_dir)
     for video_file in sorted(passages_dir.glob("*.jsonl")):
         video_id = video_file.stem
         chunk_dict = create_chunk(str(video_file))
@@ -199,10 +206,17 @@ def build_chunks(corpus_dir: str | Path):
         )
         saved = save_chunk(records, corpus_dir / "chunks")
         chunk_files.extend(saved)
+        logger.info(
+            "Video chunks built video_id=%s chunks=%s",
+            video_id,
+            len(records),
+        )
 
+    logger.info("Chunk building completed video_files=%s", len(chunk_files))
     print(f"saved {len(chunk_files)} chunk files")
     return chunk_files
 
 
 if __name__ == "__main__":
+    configure_logging("ingestion")
     main()

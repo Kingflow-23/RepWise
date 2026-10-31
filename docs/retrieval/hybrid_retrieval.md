@@ -14,6 +14,28 @@ The constant 60 is fixed and documented in `HybridRetriever`. Fusion uses ranks 
 
 All local retrievers exclude chunks flagged `sponsor` or `cta`; evidence selection applies the same exclusion again before generation. The retrieval benchmark also uses the retriever's filtered ranking.
 
+## Body-part targeting
+
+The chunker tags each chunk with canonical `body_parts` from
+`config/body_part_lexicon.json`. The bilingual lexicon includes broad regions
+(such as legs and arms) and specific muscles (such as quadriceps, hamstrings,
+chest, and triceps). Tags are based on words explicitly present in the chunk;
+they are retrieval hints, not human-verified claims that the passage contains
+useful advice for that region.
+
+The request query is expanded with matching canonical tags. BM25 indexes those
+tags as searchable terms, and semantic embeddings include them alongside the
+chunk title and transcript text. To tune the vocabulary, update the lexicon,
+then rebuild chunks and the semantic index:
+
+```powershell
+python -m src.ingestion.chunker
+python -m src.retrieval.index --build --chunks data/corpus/chunks --index data/corpus/index/semantic.npz
+```
+
+Changing chunk tags changes the semantic corpus fingerprint, so the existing
+index must be rebuilt before semantic or hybrid retrieval can start.
+
 ## Model and local index
 
 The default embedding model is [`intfloat/multilingual-e5-small`](https://huggingface.co/intfloat/multilingual-e5-small). Its model card lists an MIT license and multilingual support; the safetensors weights are about 471 MB. Sentence Transformers and PyTorch add disk use, so the complete Python environment is substantially larger than the weights. Encoding a large corpus needs model memory plus one vector per chunk; allow at least 1–2 GB free RAM for this small model and more for large corpora.
@@ -26,7 +48,7 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download(repo
 python -m src.retrieval.index --build --chunks data/corpus/chunks --index data/corpus/index/semantic.npz
 ```
 
-The index is a compressed NumPy file containing normalized vectors, ordered chunk IDs, model name, and a SHA-256 fingerprint of chunk text and IDs. Text and citation metadata remain in the JSONL files. Search verifies the model, IDs, and fingerprint; rebuild the index after changing the corpus or model. Generated indexes and corpus chunks are local artifacts and must not be committed.
+The index is a compressed NumPy file containing normalized vectors, ordered chunk IDs, model name, and a SHA-256 fingerprint of chunk IDs, text, titles, and body-part tags. Text and citation metadata remain in the JSONL files. Search verifies the model, IDs, and fingerprint; rebuild the index after changing the corpus or model. Generated indexes and corpus chunks are local artifacts and must not be committed.
 
 On load, RepWise also checks that the index matrix has one row per stored chunk ID and that its embedding dimension matches the configured model. If the model or index cannot be loaded locally, the API reports the setup error rather than falling back to another retrieval method. Install dependencies with `python -m pip install -r requirements.txt`, download the model using the command above, and rebuild a stale or incompatible index with the index-build command.
 
