@@ -11,6 +11,12 @@ VIDEO_ID = "abcdefghijk"
 
 
 def test_build_corpus_writes_clean_passages_and_provenance(tmp_path, capsys):
+    """Build passages and manifest metadata with corrections and sponsor flags.
+
+    Args:
+        tmp_path: Hold the synthetic transcript inputs and generated corpus.
+        capsys: Verify that the command reports the processed video count.
+    """
     transcripts = tmp_path / "transcripts"
     transcripts.mkdir()
     transcript = transcripts / "Demo video.txt"
@@ -77,6 +83,11 @@ def test_build_corpus_writes_clean_passages_and_provenance(tmp_path, capsys):
 
 
 def test_coverage_report_ignores_sponsors_and_writes_empty_hits(tmp_path):
+    """Exclude sponsored passages and report topic coverage with no matching hits.
+
+    Args:
+        tmp_path: Hold the passage, manifest, lexicon, and generated reports.
+    """
     passages = tmp_path / "passages"
     passages.mkdir()
     (passages / f"{VIDEO_ID}.jsonl").write_text(
@@ -136,6 +147,11 @@ def test_coverage_report_ignores_sponsors_and_writes_empty_hits(tmp_path):
 
 
 def test_chunker_groups_passages_and_preserves_metadata(tmp_path):
+    """Group adjacent passages while retaining topic, body-part, and source metadata.
+
+    Args:
+        tmp_path: Hold the synthetic passage files and generated chunk output.
+    """
     passages = tmp_path / "passages"
     passages.mkdir()
     (passages / f"{VIDEO_ID}.jsonl").write_text(
@@ -202,3 +218,46 @@ def test_chunker_groups_passages_and_preserves_metadata(tmp_path):
     assert chunks[0]["body_parts"] == ["quadriceps", "hamstrings", "legs"]
     assert chunks[0]["scientific_references"] == ["https://example.org/paper"]
     assert chunks[0]["start_url"].endswith("?t=0")
+
+
+def test_chunker_excludes_flagged_passages_before_grouping(tmp_path):
+    """Remove CTA and sponsor passages before joining clean passage text.
+
+    Args:
+        tmp_path: Provide the flagged input passages and isolated output location.
+    """
+    passages = tmp_path / "passages.jsonl"
+    passages.write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "video_id": VIDEO_ID,
+                    "passage_id": f"{VIDEO_ID}_p{i:04}",
+                    "start": (i - 1) * 30,
+                    "end": i * 30,
+                    "url_t": f"https://youtu.be/{VIDEO_ID}?t={(i - 1) * 30}",
+                    "text": text,
+                    "flags": flags,
+                }
+            )
+            for i, text, flags in (
+                (1, "clean training passage", []),
+                (2, "subscribe now", ["cta"]),
+                (3, "use this discount code", ["sponsor"]),
+                (4, "another clean passage", []),
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    chunks = chunker.create_chunk(str(passages))
+
+    assert len(chunks) == 1
+    chunk = next(iter(chunks.values()))
+    assert chunk["passage_ids"] == [
+        f"{VIDEO_ID}_p0001",
+        f"{VIDEO_ID}_p0004",
+    ]
+    assert chunk["text"] == "clean training passage another clean passage"
+    assert "flags" not in chunk

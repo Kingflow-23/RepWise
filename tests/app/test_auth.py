@@ -4,6 +4,7 @@ import pytest
 
 
 def test_passwords_are_hashed_and_tokens_expire():
+    """Verify password helpers and signed-token validation when dependencies exist."""
     pytest.importorskip("pwdlib")
     pytest.importorskip("jwt")
 

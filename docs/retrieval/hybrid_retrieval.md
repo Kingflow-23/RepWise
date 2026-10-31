@@ -12,7 +12,7 @@ RRF(chunk) = 1 / (60 + BM25 rank) + 1 / (60 + semantic rank)
 
 The constant 60 is fixed and documented in `HybridRetriever`. Fusion uses ranks because BM25 scores and cosine similarities are on different scales. Chunks absent from one list receive no contribution from that list.
 
-All local retrievers exclude chunks flagged `sponsor` or `cta`; evidence selection applies the same exclusion again before generation. The retrieval benchmark also uses the retriever's filtered ranking.
+The chunker excludes any passage with flags before forming chunks. Retrieval and evidence selection therefore operate on clean chunks and do not repeat flag checks. Rebuild chunks and the semantic index after changing this ingestion behavior.
 
 ## Body-part targeting
 

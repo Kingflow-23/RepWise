@@ -1,3 +1,5 @@
+"""Repository tests for account, profile, plan, and migration behavior."""
+
 import sqlite3
 
 import pytest
@@ -13,6 +15,7 @@ from src.schemas import (
 
 
 def profile() -> UserProfile:
+    """Build the representative profile shared by repository tests."""
     return UserProfile(
         experience="beginner",
         goal="general strength",
@@ -23,6 +26,7 @@ def profile() -> UserProfile:
 
 
 def plan() -> TrainingPlan:
+    """Build a valid one-week plan for persistence assertions."""
     return TrainingPlan.model_validate(
         {
             "title": "Starter plan",
@@ -57,19 +61,34 @@ def plan() -> TrainingPlan:
 
 
 def test_repository_rolls_back_and_closes_connections_on_failure(tmp_path, monkeypatch):
+    """Ensure failed repository transactions roll back and always close connections.
+
+    Args:
+        tmp_path: Provide a fresh SQLite database for the transaction test.
+        monkeypatch: Track connections created by the repository.
+    """
     import src.db.repository as repository_module
 
     original_connect = sqlite3.connect
     connections = []
 
     class TrackedConnection(sqlite3.Connection):
+        """Record whether a connection's close method was called."""
+
         closed = False
 
         def close(self):
+            """Mark the connection closed before delegating to SQLite."""
             self.closed = True
             super().close()
 
     def tracked_connect(database_path):
+        """Create and retain a connection so cleanup can be asserted.
+
+        Args:
+            database_path: SQLite file or connection target forwarded to the
+                original connector.
+        """
         connection = original_connect(database_path, factory=TrackedConnection)
         connections.append(connection)
         return connection
@@ -93,6 +112,11 @@ def test_repository_rolls_back_and_closes_connections_on_failure(tmp_path, monke
 
 
 def test_profiles_and_plans_require_their_account_and_profile(tmp_path):
+    """Enforce foreign-key ownership from profiles and plans to their parents.
+
+    Args:
+        tmp_path: Provide an isolated database for constraint checks.
+    """
     repository = StudentRepository(tmp_path / "repwise.sqlite3")
     repository.initialize()
 
@@ -125,6 +149,11 @@ def test_profiles_and_plans_require_their_account_and_profile(tmp_path):
 
 
 def test_saved_plan_retains_full_request_plan_and_source_snapshot(tmp_path):
+    """Preserve the exact request, plan, and evidence snapshot after later profile edits.
+
+    Args:
+        tmp_path: Keep persisted test data in a disposable SQLite database.
+    """
     repository = StudentRepository(tmp_path / "repwise.sqlite3")
     repository.initialize()
     user_id = repository.create_user("alex", "hash")
@@ -177,6 +206,12 @@ def test_saved_plan_retains_full_request_plan_and_source_snapshot(tmp_path):
 
 @pytest.mark.parametrize("limit", [0, -1, 101, True, 1.5])
 def test_list_plans_rejects_invalid_limit_values(tmp_path, limit):
+    """Reject limits outside the supported integer range.
+
+    Args:
+        tmp_path: Provide an initialized database for the repository call.
+        limit: Supply each invalid value to exercise input validation.
+    """
     repository = StudentRepository(tmp_path / "repwise.sqlite3")
     repository.initialize()
 
@@ -185,6 +220,11 @@ def test_list_plans_rejects_invalid_limit_values(tmp_path, limit):
 
 
 def test_initialize_migrates_existing_profile_and_plan_tables(tmp_path):
+    """Migrate legacy tables while preserving account, profile, and plan records.
+
+    Args:
+        tmp_path: Hold the legacy database and its migrated replacement.
+    """
     database_path = tmp_path / "legacy.sqlite3"
     connection = sqlite3.connect(database_path)
     try:
@@ -261,6 +301,11 @@ def test_initialize_migrates_existing_profile_and_plan_tables(tmp_path):
 
 
 def test_only_completed_results_can_be_saved(tmp_path):
+    """Prevent incomplete generation results from entering plan history.
+
+    Args:
+        tmp_path: Provide the isolated SQLite database for this check.
+    """
     repository = StudentRepository(tmp_path / "repwise.sqlite3")
     repository.initialize()
     user_id = repository.create_user("alex", "hash")

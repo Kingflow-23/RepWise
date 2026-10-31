@@ -1,3 +1,5 @@
+"""Configure the evaluation tests to import the repository's ``src`` package."""
+
 import sys
 from pathlib import Path
 

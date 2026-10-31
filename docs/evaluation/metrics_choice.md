@@ -12,7 +12,7 @@ The runner reports retrieval, generation, and (in comparison mode) ranked result
 | Precision@k | Fraction of the top k results overlapping labelled evidence. |
 | Median and p95 latency | How long each retrieval request takes. |
 
-Labels are video time ranges rather than chunk IDs, so the same relevance judgments can be used after re-chunking. When one relevant span overlaps multiple chunks, it is counted once for Recall. BM25, semantic, and hybrid runs must use the same query set and judgments. These metrics can show whether hybrid performed better on this test set; they cannot guarantee better generation.
+Labels are video time ranges rather than chunk IDs, so the same relevance judgments can be used after re-chunking. When one relevant span overlaps multiple chunks, it is counted once for Recall. BM25, semantic, and hybrid runs use the same query set and judgments. BM25 in evaluation is the production `src.retrieval.sparse.BM25Retriever`, not a benchmark-specific reimplementation. These metrics can show whether hybrid performed better on this test set; they cannot guarantee better generation.
 
 ## Generation
 
@@ -29,7 +29,7 @@ Generation reports must identify `mocked` versus `real Ollama`, retrieval strate
 
 ## Controlled comparison
 
-Comparison mode ranks BM25, semantic, and hybrid using Recall@5, MRR, and median retrieval latency (in that priority order). It then runs the same nominal cases against model A + RAG, model B + RAG, and model A without RAG. Both RAG arms share the selected retriever and its evidence-selection path; the no-RAG arm gets no retrieved passages. Generation ranking is by case pass rate, request-constraint compliance, schema validity, and median latency, in that priority order.
+Comparison mode ranks BM25, semantic, and hybrid using Recall@5, MRR, and median retrieval latency (in that priority order). BM25 and semantic components are initialized once and shared with hybrid and the generation arm. It then runs the same one-week nominal cases, including explicit workout counts, against model A + RAG, model B + RAG, and model A without RAG. Both RAG arms share the selected retriever and its evidence-selection path; the no-RAG arm gets no retrieved passages. Generation ranking is by case pass rate, request-constraint compliance, schema validity, and median latency, in that priority order.
 
 Citation ID validity is N/A for the no-RAG arm because no sources are available or required. This is intentional and is not interpreted as either a perfect citation score or a failure. The comparison is descriptive and fixed-dataset only; it has no confidence intervals or significance tests.
 

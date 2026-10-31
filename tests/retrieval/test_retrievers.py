@@ -1,3 +1,5 @@
+"""Verify retrieval configuration, ranking, index compatibility, and model errors."""
+
 import sys
 from types import ModuleType
 
@@ -16,6 +18,11 @@ from src.schemas import RetrievedChunk
 
 
 def test_retrieval_configuration_supports_only_the_three_named_modes(monkeypatch):
+    """Accept the supported retrieval strategies and default to hybrid.
+
+    Args:
+        monkeypatch: Set each strategy in the environment without changing the host.
+    """
     assert AppConfig().retrieval_strategy == "hybrid"
 
     for strategy in ("bm25", "semantic", "hybrid"):
@@ -23,7 +30,24 @@ def test_retrieval_configuration_supports_only_the_three_named_modes(monkeypatch
         assert AppConfig.from_environment().retrieval_strategy == strategy
 
 
-def chunk(chunk_id: str, text: str, flags: list[str] | None = None):
+def test_retrieval_top_k_never_drops_below_five(monkeypatch):
+    """Enforce the minimum retrieval depth when the configured value is too small.
+
+    Args:
+        monkeypatch: Set a deliberately undersized top-k environment value.
+    """
+    monkeypatch.setenv("REPWISE_TOP_K", "3")
+
+    assert AppConfig.from_environment().top_k == 5
+
+
+def chunk(chunk_id: str, text: str):
+    """Create a retrieved chunk with the metadata required by retriever tests.
+
+    Args:
+        chunk_id: Identifier used for the chunk and its source video.
+        text: Searchable passage text stored in the chunk.
+    """
     return RetrievedChunk(
         chunk_id=chunk_id,
         text=text,
@@ -31,14 +55,14 @@ def chunk(chunk_id: str, text: str, flags: list[str] | None = None):
         passage_ids=[f"{chunk_id}_p001"],
         title=chunk_id,
         video_url=f"https://example.com/{chunk_id}",
-        flags=flags or [],
     )
 
 
-def test_bm25_ranks_matching_chunks_and_excludes_commercial_content():
+def test_bm25_ranks_matching_chunks():
+    """Rank the passage containing the query terms above an unrelated passage."""
     relevant = chunk("training", "controlled abdominal repetitions")
-    commercial = chunk("promo", "controlled abdominal repetitions", ["sponsor"])
-    retriever = BM25Retriever([commercial, relevant])
+    unrelated = chunk("unrelated", "slow eccentric biceps curls")
+    retriever = BM25Retriever([unrelated, relevant])
 
     results = retriever.search("abdominal repetitions", top_k=2)
 
@@ -47,6 +71,7 @@ def test_bm25_ranks_matching_chunks_and_excludes_commercial_content():
 
 
 def test_bm25_uses_body_part_metadata_when_query_names_region():
+    """Use indexed body-part tags to find a passage with no lexical match."""
     relevant = chunk("tagged", "training advice")
     relevant.body_parts = ["quadriceps"]
     unrelated = chunk("unrelated", "training advice")
@@ -58,14 +83,29 @@ def test_bm25_uses_body_part_metadata_when_query_names_region():
 
 
 def test_hybrid_fuses_bm25_and_semantic_rankings_with_rrf():
+    """Fuse component rankings with reciprocal-rank fusion and assign final ranks."""
     first = chunk("first", "first")
     second = chunk("second", "second")
 
     class RankedRetriever:
+        """Return a prescribed ranking to make hybrid fusion deterministic."""
+
         def __init__(self, chunks):
+            """Retain the ordered chunks used as this component's ranking.
+
+            Args:
+                chunks: Prescribed result order used to distinguish RRF ranks.
+            """
             self.chunks = chunks
 
         def search(self, query, top_k):
+            """Return the requested prefix of the prepared ranking.
+
+            Args:
+                query: Search query required by the retriever interface; this
+                    fixture's order is predetermined.
+                top_k: Maximum number of prepared results to return.
+            """
             return self.chunks[:top_k]
 
     retriever = HybridRetriever(
@@ -79,6 +119,12 @@ def test_hybrid_fuses_bm25_and_semantic_rankings_with_rrf():
 
 
 def test_semantic_index_round_trip_and_query(tmp_path, monkeypatch):
+    """Build, persist, load, and query a semantic index with a deterministic model.
+
+    Args:
+        tmp_path: Hold synthetic chunks and the serialized vector index.
+        monkeypatch: Replace model loading with a local deterministic encoder.
+    """
     np = pytest.importorskip("numpy")
     import src.retrieval.semantic as semantic
 
@@ -94,12 +140,22 @@ def test_semantic_index_round_trip_and_query(tmp_path, monkeypatch):
         )
 
     class FakeModel:
+        """Provide known embeddings and retain encoded passage inputs."""
+
         passages = []
 
         def get_embedding_dimension(self):
+            """Report the fixed two-dimensional test embedding size."""
             return 2
 
         def encode(self, texts, **kwargs):
+            """Return fixed passage or query vectors for index assertions.
+
+            Args:
+                texts: Passage- or query-prefixed input strings to encode.
+                **kwargs: Encoder options passed by the semantic implementation;
+                    unused because these test vectors are fixed.
+            """
             if texts[0].startswith("passage:"):
                 self.passages = texts
                 return np.asarray([[1, 0], [0, 1]], dtype=np.float32)
@@ -124,6 +180,7 @@ def test_semantic_index_round_trip_and_query(tmp_path, monkeypatch):
 
 
 def test_body_part_changes_invalidate_semantic_index_fingerprint():
+    """Include body-part metadata in the semantic corpus fingerprint."""
     original = chunk("one", "leg training advice")
     tagged = original.model_copy(update={"body_parts": ["quadriceps"]})
 
@@ -133,6 +190,12 @@ def test_body_part_changes_invalidate_semantic_index_fingerprint():
 def test_semantic_rejects_an_index_with_a_different_model_dimension(
     tmp_path, monkeypatch
 ):
+    """Reject a saved index whose vector dimension differs from the model.
+
+    Args:
+        tmp_path: Store the deliberately incompatible vector index.
+        monkeypatch: Supply a model double reporting a different dimension.
+    """
     np = pytest.importorskip("numpy")
     import src.retrieval.semantic as semantic
 
@@ -147,7 +210,10 @@ def test_semantic_rejects_an_index_with_a_different_model_dimension(
     )
 
     class DifferentDimensionModel:
+        """Report an embedding dimension incompatible with the saved index."""
+
         def get_embedding_dimension(self):
+            """Return the deliberately mismatched dimension."""
             return 3
 
     monkeypatch.setattr(
@@ -158,6 +224,12 @@ def test_semantic_rejects_an_index_with_a_different_model_dimension(
 
 
 def test_semantic_rejects_stale_corpus_fingerprint(tmp_path, monkeypatch):
+    """Reject a semantic index built from different corpus text.
+
+    Args:
+        tmp_path: Store an index fingerprinted against the original chunk.
+        monkeypatch: Disable model loading because stale-index validation comes first.
+    """
     np = pytest.importorskip("numpy")
     import src.retrieval.semantic as semantic
 
@@ -178,10 +250,24 @@ def test_semantic_rejects_stale_corpus_fingerprint(tmp_path, monkeypatch):
 
 
 def test_local_model_loading_failure_is_actionable_without_fallback(monkeypatch):
+    """Explain local model-loading failures without attempting fallback downloads.
+
+    Args:
+        monkeypatch: Install a failing sentence-transformers module in ``sys.modules``.
+    """
     module = ModuleType("sentence_transformers")
 
     class FailingSentenceTransformer:
+        """Simulate unavailable local model weights."""
+
         def __init__(self, model_name, local_files_only):
+            """Raise the local-cache failure expected by this test.
+
+            Args:
+                model_name: Requested embedding model, which is unavailable.
+                local_files_only: Confirms loading is restricted to local
+                    weights rather than silently downloading a fallback.
+            """
             raise OSError("local weights not found")
 
     module.SentenceTransformer = FailingSentenceTransformer

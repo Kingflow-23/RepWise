@@ -158,7 +158,7 @@ Only 6 of the 60 videos have linked papers (22 in total), all with status `menti
 
 ### 6.5 Text quality
 
-48 of 60 transcripts have no punctuation, speech recognition errors remain beyond the 29 corrected patterns, and sponsor reads are only partly flagged (the chunker keeps flagged passages). See `data/corpus/README.md`.
+48 of 60 transcripts have no punctuation, speech recognition errors remain beyond the 29 corrected patterns, and sponsor reads are only partly detected by passage flags. The chunker excludes flagged passages before grouping; undetected sponsor reads may still remain. See `data/corpus/README.md`.
 
 ### 6.6 Off-topic share
 

@@ -1,117 +1,74 @@
 # RepWise
 
-RepWise is a local-first workout-plan demo. It retrieves transcript passages, sends those passages and a student's request to a local Ollama model, checks the returned plan, and saves completed plans in SQLite.
+**From training transcripts to a workout plan you can inspect.**
 
-The project is written as a course example: each layer has one clear job, and the data passed between layers uses shared Pydantic models. The system provides training suggestions; it does not diagnose injuries or replace a qualified coach.
+RepWise is a local-first learning project: it searches prepared fitness
+transcripts, asks a local Ollama model to draft a plan, checks the plan against
+your schedule and equipment, and shows the sources behind it.
 
-## What currently works
+It is a prototype for general fitness planning—not a medical or coaching
+service. It does not diagnose injuries or guarantee that a plan is safe.
 
-- **Retrieval:** BM25 lexical search, local semantic search, and Reciprocal Rank Fusion (RRF) hybrid search. Sponsor and call-to-action chunks are filtered by each retriever.
-- **Evidence:** stable chunk IDs, source passage IDs, titles, URLs, and timestamps are retained for citations.
-- **Generation:** `PlanPipeline` retrieves evidence, builds the prompt, calls Ollama, validates the plan, and returns a readable status on failure.
-- **Application:** FastAPI and Streamlit clients, SQLite persistence, Argon2 password hashes, and signed bearer tokens. Users sign in with a unique full name and password; the backend generates an internal account ID and scopes saved profiles and plans to that account.
-- **Evaluation:** one runner for labelled retrieval queries and unified generation/safety cases, with JSON and Markdown reports. Mocked planner cases are simulations; only `--llm ollama` exercises local generation.
+## How it fits together
 
-The transcript passages are not distributed with this repository. You need authorized, prepared passage JSONL files to build an index and run retrieval against the corpus. The current generation checks validate structure and request consistency; they do not prove medical safety or semantic correctness.
+```mermaid
+flowchart LR
+    Student --> UI[Streamlit app]
+    UI -->|HTTP + bearer token| API[FastAPI]
+    API --> Auth[Authentication]
+    API --> DB[(SQLite profiles and plans)]
+    API --> Plan[Plan pipeline]
+    Plan --> Query[Build search query]
+    Query --> Search{Configured retriever}
+    Search --> BM25[BM25]
+    Search --> Semantic[Semantic search]
+    Search --> Hybrid[Hybrid: BM25 + semantic RRF]
+    Corpus[(Prepared transcript chunks)] --> Search
+    BM25 --> Evidence[Select sources]
+    Semantic --> Evidence
+    Hybrid --> Evidence
+    Evidence --> Prompt[Prompt + JSON schema]
+    Prompt --> Ollama[Local Ollama model]
+    Ollama --> Validate[Validate plan and citations]
+    Validate --> DB
+    Validate --> UI
 
-## Setup (Windows PowerShell)
+    Raw[Authorized source transcripts] --> Ingest[Ingestion and filtering]
+    Ingest --> Corpus
+    Corpus --> Index[(Local semantic index)]
+    Index --> Semantic
 
-Use Python 3.11 or 3.12. Create an environment and install the app, API, ingestion, and authentication dependencies:
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-Copy-Item .env.example .env
+    Cases[Evaluation cases] --> Eval[Evaluation runner]
+    Eval --> Search
+    Eval --> Reports[Evaluation reports]
 ```
 
-Set a private random value for `REPWISE_AUTH_SECRET` in `.env` before starting the API. Keep `.env` local; it is ignored by Git. The SQLite database is created automatically.
+## Try it locally
 
-### Prepare local corpus and embeddings
+You’ll need Python 3.11 or 3.12, an authorized prepared transcript corpus, and
+[Ollama](https://ollama.com/). Start with the [setup guide](docs/setup.md);
+corpus files and model weights are local and are not distributed with this
+repository.
 
-Place cleaned passage JSONL files in `data/corpus/passages/` and ensure `manifest.csv` and `coverage_matrix.csv` describe those videos. Then run:
-
-```powershell
-python -m src.ingestion.chunker
-python -m pip install -r requirements.txt
-python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='intfloat/multilingual-e5-small')"
-python -m src.retrieval.index --build --chunks data/corpus/chunks --index data/corpus/index/semantic.npz
-```
-
-The selected model is `intfloat/multilingual-e5-small`, an MIT-licensed multilingual model. Its model weights are about 471 MB; the full model repository is larger. Plan for roughly 1–2 GB of free RAM while encoding and additional disk space for the Python/PyTorch dependencies and index. The first model download needs internet; embedding and search run locally afterwards. `requirements.txt` includes the semantic retrieval dependencies; the API does not silently switch to BM25 if local model or index loading fails. See [hybrid retrieval](docs/retrieval/hybrid_retrieval.md) for the index format, RRF, and resource notes.
-
-### Run the application
-
-Configure the corpus and model in `.env` (the path may point to any JSONL file inside the chunks folder). `REPWISE_RETRIEVAL` accepts only `bm25`, `semantic`, or `hybrid` and defaults to `hybrid`:
-
-```dotenv
-REPWISE_CHUNK_FILE=data/corpus/chunks/VIDEO_ID.jsonl
-REPWISE_RETRIEVAL=hybrid
-REPWISE_EMBEDDING_MODEL=intfloat/multilingual-e5-small
-REPWISE_EMBEDDING_INDEX=data/corpus/index/semantic.npz
-OLLAMA_MODEL=llama3.2
-```
-
-`llama3.2` is Ollama's instruction-tuned Llama 3.2 chat model. The Ollama tag does not include an `-instruct` suffix. Install [Ollama](https://ollama.com/) and fetch it once with `ollama pull llama3.2`. Start the backend and UI in separate terminals:
-
-```powershell
-uvicorn src.api.main:app --reload
-python -m streamlit run .\app\streamlit_app.py
-```
-
-Create an account in the sidebar with a full name and password, then save a profile and generate a plan. The account ID is generated and used internally; it is not an extra value the user needs to enter. API documentation is at `http://127.0.0.1:8000/docs`. The local demo is not reviewed for deployment on an untrusted network.
-
-### Application logs
-
-The API, Streamlit client, evaluation runner, ingestion commands, and
-retrieval-index builder log startup, requests, retrieval/generation stages,
-validation retries, and errors to their terminal and rotating files under
-`logs/`. Files are separated by process (for example `repwise-api.log` and
-`repwise-streamlit.log`) and rotate at 5 MB with three backups.
-`REPWISE_LOG_LEVEL` accepts `DEBUG`, `INFO`,
-`WARNING`, `ERROR`, or `CRITICAL`; `REPWISE_LOG_DIR` changes the log folder.
-Logs intentionally omit passwords, bearer tokens, profile contents, and
-transcript/evidence text. API request IDs are returned in `X-Request-ID` and
-included in API logs for tracing a failed request.
-
-## Evaluation and tests
-
-The test suite uses fakes for model calls. It does not need Ollama; retrieval dataset-linkage tests require the local prepared corpus:
+## Run the tests
 
 ```powershell
 python -m pytest -q
 ```
 
-For the full benchmark comparison, configure the local corpus and semantic index, install Ollama, and pull two different instruction-tuned chat models. `OLLAMA_MODEL` selects model A and `OLLAMA_COMPARISON_MODEL` selects model B. The Ollama tags are `llama3.2` (Llama 3.2 instruct) and `qwen2.5:7b` (Qwen2.5 7B instruct); neither tag needs an `-instruct` suffix:
+Some corpus-linkage tests require the prepared local corpus. For evaluation
+commands and what the results do—and do not—show, see the
+[evaluation guide](docs/evaluation_protocol.md).
 
-```powershell
-ollama pull llama3.2
-ollama pull qwen2.5:7b
-python -m src.evaluation.runner --mode compare
-```
+## Explore the docs
 
-This ranks BM25, semantic, and hybrid retrieval, then compares model A + RAG, model B + RAG, and model A without RAG on identical nominal generation cases. To pin the RAG strategy or models, use:
+Start at the [documentation hub](docs/README.md) for setup, architecture,
+generation, retrieval, corpus preparation, API/database details, and
+evaluation.
 
-```powershell
-python -m src.evaluation.runner --mode compare --retriever hybrid --model-a llama3.2 --model-b qwen2.5:7b
-```
+## Important limits
 
-Run the separate safety/robustness set through the real RAG path with:
-
-```powershell
-python -m src.evaluation.runner --mode red-team --llm ollama --retriever hybrid
-```
-
-For diagnostics, `--mode retrieval --retriever bm25|semantic|hybrid`, `--mode generation --llm ollama`, and `--mode generation --llm mock` run individual suites. `mock` is a deterministic runner check, not model-performance evidence. Evaluation outputs go under `outputs/eval_runs/`; reports include rankings, per-case failures, and metric numerators/denominators. See [the evaluation protocol](docs/evaluation_protocol.md), [metric choices](docs/evaluation/metrics_choice.md), and [red-team limitations](docs/evaluation/red_teaming.md).
-
-## How the request flows
-
-1. A signed-in student saves a profile and sends plan options to FastAPI.
-2. FastAPI loads that profile and constructs one `PlanRequest`.
-3. The retrieval layer ranks corpus chunks; hybrid search adds the BM25 and semantic reciprocal-rank scores.
-4. Evidence selection removes sponsor/CTA material and duplicate passage IDs, then formats bounded context.
-5. The prompt builder supplies the request, evidence, and JSON schema to Ollama.
-6. Pydantic parses the response; `validate_plan` checks week numbering, available days, session duration, and source ID membership.
-7. Only completed plans are saved, with the full request/profile snapshot, validated plan, and source evidence snapshots.
-
-See [generation](docs/generation/generation.md), [API and database](docs/generation/api_and_database.md), and [hybrid retrieval](docs/retrieval/hybrid_retrieval.md) for the exact responsibilities and current limitations of each step.
+RepWise checks plan structure, schedule constraints, equipment declarations,
+and whether cited quotes occur in the supplied text. Those checks cannot prove
+that a quote supports an exercise, that the advice is medically appropriate,
+or that the model followed every instruction.

@@ -1,4 +1,4 @@
-"""Dataset contract checks for benchmark cases and corpus evidence."""
+"""Validate benchmark case schemas, relevance links, and corpus evidence."""
 
 import json
 
@@ -9,12 +9,14 @@ from src.evaluation.metrics.grounding import normalise
 
 
 def test_retrieval_cases_link_to_relevance_judgments():
+    """Require a substantial retrieval set with evidence for every answerable case."""
     cases = datasets.load_retrieval_cases()
     assert len(cases) >= 150
     assert all(case.spans for case in cases if case.answerable)
 
 
 def test_retrieval_queries_are_unique_and_cleanly_encoded():
+    """Keep benchmark queries distinct after normalization and free of mojibake."""
     cases = datasets.load_retrieval_cases()
     queries = [normalise(case.query) for case in cases]
     assert len(queries) == len(set(queries))
@@ -22,6 +24,7 @@ def test_retrieval_queries_are_unique_and_cleanly_encoded():
 
 
 def test_every_relevance_span_overlaps_a_real_corpus_chunk():
+    """Ensure every judged interval occurs in at least one indexed chunk."""
     cases = datasets.load_retrieval_cases()
     chunks = adapters.load_chunks()
     video_chunks = {}
@@ -38,6 +41,7 @@ def test_every_relevance_span_overlaps_a_real_corpus_chunk():
 
 
 def test_every_relevance_span_overlaps_a_timestamped_source_passage():
+    """Ensure every judged interval is grounded in timestamped source passages."""
     cases = datasets.load_retrieval_cases()
     passages_dir = datasets.REPO / "data" / "corpus" / "passages"
     passages_by_video = {}
@@ -54,6 +58,7 @@ def test_every_relevance_span_overlaps_a_timestamped_source_passage():
 
 
 def test_relevance_judgments_show_verbatim_source_evidence():
+    """Match each judgment's excerpt and URL to its source passage interval."""
     judgments = datasets.read_jsonl(datasets.RELEVANCE_JUDGMENTS)
     passages_dir = datasets.REPO / "data" / "corpus" / "passages"
     passages_by_video = {}
@@ -77,6 +82,7 @@ def test_relevance_judgments_show_verbatim_source_evidence():
 
 
 def test_unanswerable_queries_have_no_labels_and_explain_why():
+    """Require a bounded unanswerable share with no relevance spans and a rationale."""
     cases = datasets.load_retrieval_cases()
     share = sum(not case.answerable for case in cases) / len(cases)
     assert 0.10 <= share <= 0.25
@@ -85,12 +91,19 @@ def test_unanswerable_queries_have_no_labels_and_explain_why():
 
 
 def test_generation_and_red_team_cases_are_separate_and_coherent():
+    """Check suite IDs, valid one-week profiles, and answerable evidence links."""
     cases = datasets.load_generation_cases()
     red_team = datasets.load_red_team_cases()
     assert {case.id for case in cases} == {f"G{i:03}" for i in range(1, 31)}
     assert {case.id for case in red_team} == {f"RT{i:03}" for i in range(1, 9)}
     assert all(case.request and case.expected_status for case in cases)
-    assert all(case.profile and case.weeks >= 1 for case in cases + red_team)
+    assert all(
+        case.profile
+        and case.weeks == 1
+        and case.workouts_per_week is not None
+        and case.workouts_per_week <= len(case.profile["available_days"])
+        for case in cases + red_team
+    )
 
     answerable_ids = {
         case.id for case in datasets.load_retrieval_cases() if case.answerable
@@ -110,6 +123,12 @@ def test_generation_and_red_team_cases_are_separate_and_coherent():
 
 
 def write(path, rows):
+    """Write JSONL rows to a test fixture file and return its path.
+
+    Args:
+        path: Destination path for the generated fixture.
+        rows: JSON-compatible objects to serialize one per line.
+    """
     path.write_text(
         "\n".join(json.dumps(row, ensure_ascii=False) for row in rows),
         encoding="utf-8",
@@ -118,6 +137,11 @@ def write(path, rows):
 
 
 def test_loader_rejects_answerable_case_without_evidence(tmp_path):
+    """Reject an answerable query that has no relevance judgments.
+
+    Args:
+        tmp_path: Hold the temporary query and judgment datasets.
+    """
     cases = write(
         tmp_path / "cases.jsonl",
         [{"id": "X", "query": "q", "answerable": True, "topic": "test"}],
@@ -128,6 +152,11 @@ def test_loader_rejects_answerable_case_without_evidence(tmp_path):
 
 
 def test_loader_rejects_mojibake_in_retrieval_queries(tmp_path):
+    """Reject query text whose encoding has produced mojibake.
+
+    Args:
+        tmp_path: Hold the malformed query and its empty judgment file.
+    """
     cases = write(
         tmp_path / "cases.jsonl",
         [
@@ -146,6 +175,11 @@ def test_loader_rejects_mojibake_in_retrieval_queries(tmp_path):
 
 
 def test_loader_rejects_unknown_query_id(tmp_path):
+    """Reject relevance judgments that refer to an absent query.
+
+    Args:
+        tmp_path: Hold the query and judgment files for the loader.
+    """
     cases = write(
         tmp_path / "cases.jsonl",
         [
@@ -177,6 +211,11 @@ def test_loader_rejects_unknown_query_id(tmp_path):
 
 
 def test_loader_rejects_unanswerable_case_without_rationale(tmp_path):
+    """Require an explanation for queries marked unanswerable.
+
+    Args:
+        tmp_path: Hold the invalid query and its empty judgment file.
+    """
     cases = write(
         tmp_path / "cases.jsonl",
         [
@@ -194,6 +233,11 @@ def test_loader_rejects_unanswerable_case_without_rationale(tmp_path):
 
 
 def test_loader_rejects_relevance_judgment_without_rationale(tmp_path):
+    """Require a rationale on each relevance judgment.
+
+    Args:
+        tmp_path: Hold the answerable query and incomplete judgment file.
+    """
     cases = write(
         tmp_path / "cases.jsonl",
         [{"id": "X", "query": "q", "answerable": True, "topic": "test"}],
@@ -218,6 +262,11 @@ def test_loader_rejects_relevance_judgment_without_rationale(tmp_path):
 
 
 def test_loader_reports_file_and_line_on_bad_json(tmp_path):
+    """Include the source filename and line number in JSONL parse errors.
+
+    Args:
+        tmp_path: Provide a location for the intentionally malformed JSONL file.
+    """
     bad = tmp_path / "bad.jsonl"
     bad.write_text('{"id":"X"}\n{oops\n', encoding="utf-8")
     with pytest.raises(datasets.DatasetError, match="bad.jsonl:2"):
@@ -225,6 +274,11 @@ def test_loader_reports_file_and_line_on_bad_json(tmp_path):
 
 
 def test_generation_loader_rejects_unknown_status(tmp_path):
+    """Reject generation cases with an unsupported expected status.
+
+    Args:
+        tmp_path: Hold the invalid generation-case file.
+    """
     path = write(
         tmp_path / "cases.jsonl",
         [{"id": "X", "request": "q", "expected_status": "maybe"}],
@@ -234,6 +288,11 @@ def test_generation_loader_rejects_unknown_status(tmp_path):
 
 
 def test_generation_loader_rejects_link_to_unanswerable_retrieval_case(tmp_path):
+    """Reject generation evidence links to queries that cannot be answered.
+
+    Args:
+        tmp_path: Hold the generation case with the invalid evidence link.
+    """
     path = write(
         tmp_path / "cases.jsonl",
         [
