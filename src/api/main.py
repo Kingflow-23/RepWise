@@ -42,7 +42,22 @@ def create_app(
     retriever: Retriever | None = None,
     generator: PlanGenerator | None = None,
 ) -> FastAPI:
-    """Create the application and allow fake services to be injected in tests."""
+    """Build the API, persistence layer, retriever, generator, and routes.
+
+    Args:
+        config: Application settings, or ``None`` to load them from the environment.
+        repository: Optional repository implementation; it is initialized before
+            the app is returned.
+        retriever: Optional retrieval service. If omitted, the configured corpus
+            and retrieval strategy are used.
+        generator: Optional plan-generation service; if omitted, a local Ollama
+            generator is configured from the settings.
+
+    Returns:
+        A configured FastAPI application. If default retriever initialization
+        fails, the app is still created with a ``MissingRetriever`` so health and
+        documentation routes remain available.
+    """
     config = config or AppConfig.from_environment()
     configure_logging("api")
     logger.info(
@@ -107,6 +122,19 @@ def create_app(
 
     @app.middleware("http")
     async def log_http_request(request: Request, call_next):
+        """Log an HTTP request and attach a request ID to its response.
+
+        Args:
+            request: Incoming Starlette request.
+            call_next: Middleware continuation that dispatches the request.
+
+        Returns:
+            The downstream response, with an ``X-Request-ID`` header.
+
+        Notes:
+            The request-ID logging context is reset even when downstream handling
+            raises; such exceptions are logged and re-raised.
+        """
         request_id = str(uuid4())
         context_token = request_id_context.set(request_id)
         started = perf_counter()
@@ -139,7 +167,18 @@ def create_app(
     def require_account(
         credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     ) -> str:
-        """Authenticate every route that reads or writes student-specific data."""
+        """Authenticate a bearer token and return its account ID.
+
+        Args:
+            credentials: Optional HTTP bearer credentials extracted by FastAPI.
+
+        Returns:
+            The internal account ID from the verified token.
+
+        Raises:
+            HTTPException: With status 401 for missing or invalid credentials, or
+                503 when the application authentication secret is not configured.
+        """
         if credentials is None:
             logger.warning("Authentication rejected reason=missing_credentials")
             raise HTTPException(
@@ -162,7 +201,15 @@ def create_app(
             ) from error
 
     def check_owner(student_id: str, user_id: str) -> None:
-        """Bind the URL identity to the signed-in account, never to client claims."""
+        """Require a URL account ID to match the authenticated account.
+
+        Args:
+            student_id: Account ID supplied in the route path.
+            user_id: Account ID decoded from the authenticated bearer token.
+
+        Raises:
+            HTTPException: With status 403 if the IDs do not match.
+        """
         if student_id != user_id:
             raise HTTPException(
                 status_code=403,
@@ -171,7 +218,18 @@ def create_app(
 
     @app.post("/api/v1/auth/register", response_model=AccessToken)
     def register(credentials: AccountCredentials) -> AccessToken:
-        """Create an account with an Argon2 password hash and sign it in."""
+        """Register an account and return its signed-in bearer token.
+
+        Args:
+            credentials: New account name and plaintext password from the request.
+
+        Returns:
+            An access-token response containing the account ID and full name.
+
+        Raises:
+            HTTPException: With status 503 if authentication is not configured,
+                or 409 if the full name is already registered.
+        """
         if not config.auth_secret:
             raise HTTPException(
                 status_code=503, detail="Set REPWISE_AUTH_SECRET before registering"
@@ -194,7 +252,18 @@ def create_app(
 
     @app.post("/api/v1/auth/login", response_model=AccessToken)
     def login(credentials: AccountCredentials) -> AccessToken:
-        """Verify a password hash and return a short-lived signed bearer token."""
+        """Verify account credentials and issue a bearer token.
+
+        Args:
+            credentials: Account name and password supplied for sign-in.
+
+        Returns:
+            An access-token response containing the account ID and full name.
+
+        Raises:
+            HTTPException: With status 503 if authentication is not configured,
+                or 401 if the account name or password is invalid.
+        """
         if not config.auth_secret:
             raise HTTPException(
                 status_code=503, detail="Set REPWISE_AUTH_SECRET before signing in"
@@ -213,7 +282,12 @@ def create_app(
 
     @app.get("/api/v1/health")
     def health() -> dict[str, object]:
-        """Report local component configuration without making an LLM call."""
+        """Report database, retrieval, and model configuration without generation.
+
+        Returns:
+            A status mapping describing the configured retrieval strategy and
+            model, including the setup error when retrieval is unavailable.
+        """
         result = {
             "status": "ok",
             "database": "ready",
@@ -241,7 +315,19 @@ def create_app(
     def save_profile(
         student_id: str, profile: UserProfile, user_id: str = Depends(require_account)
     ) -> UserProfile:
-        """Save the student details explicitly provided for future plans."""
+        """Save the authenticated student's supplied profile.
+
+        Args:
+            student_id: Account ID from the route path.
+            profile: Validated profile to store.
+            user_id: Authenticated account ID supplied by the bearer dependency.
+
+        Returns:
+            The saved profile.
+
+        Raises:
+            HTTPException: With status 403 if the route account is not the caller.
+        """
         check_owner(student_id, user_id)
         repository.save_profile(student_id, profile)
         logger.info("Student profile saved")
@@ -251,7 +337,19 @@ def create_app(
     def get_profile(
         student_id: str, user_id: str = Depends(require_account)
     ) -> UserProfile:
-        """Read one saved profile."""
+        """Read the authenticated student's saved profile.
+
+        Args:
+            student_id: Account ID from the route path.
+            user_id: Authenticated account ID supplied by the bearer dependency.
+
+        Returns:
+            The saved validated profile.
+
+        Raises:
+            HTTPException: With status 403 for an account mismatch or 404 if no
+                profile has been saved.
+        """
         check_owner(student_id, user_id)
         profile = repository.get_profile(student_id)
         if profile is None:
@@ -263,7 +361,21 @@ def create_app(
     def create_plan(
         student_id: str, options: PlanOptions, user_id: str = Depends(require_account)
     ) -> dict[str, object]:
-        """Create and save a plan from a stored profile and current request."""
+        """Generate and save a plan using the student's saved profile.
+
+        Args:
+            student_id: Account ID from the route path.
+            options: Focus and generation options for this plan.
+            user_id: Authenticated account ID supplied by the bearer dependency.
+
+        Returns:
+            A mapping containing the saved plan ID and completed pipeline result.
+
+        Raises:
+            HTTPException: With status 403 for an account mismatch, 404 when no
+                profile exists, 422 when the request or generation is invalid,
+                or 503 when retrieval fails.
+        """
         check_owner(student_id, user_id)
         profile = repository.get_profile(student_id)
         if profile is None:
@@ -271,8 +383,20 @@ def create_app(
                 status_code=404,
                 detail="Save the student profile before creating a plan",
             )
+        if (
+            options.workouts_per_week is not None
+            and options.workouts_per_week > len(profile.available_days)
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="workouts_per_week cannot exceed the days in the saved profile",
+            )
         request = PlanRequest(profile=profile, **options.model_dump())
-        logger.info("Plan request accepted weeks=%s", request.weeks)
+        logger.info(
+            "Plan request accepted weeks=%s workouts_per_week=%s",
+            request.weeks,
+            request.target_workouts_per_week,
+        )
         result: PlanResult = pipeline.create_plan(request)
         if result.status == "completed":
             plan_id = repository.save_plan(student_id, request, result)
@@ -288,7 +412,19 @@ def create_app(
         limit: int = Query(20, ge=1, le=100),
         user_id: str = Depends(require_account),
     ) -> list[dict[str, object]]:
-        """List plans previously created for one student."""
+        """List saved plans belonging to the authenticated student.
+
+        Args:
+            student_id: Account ID from the route path.
+            limit: Maximum number of recent plans to return (1 through 100).
+            user_id: Authenticated account ID supplied by the bearer dependency.
+
+        Returns:
+            Recent plan records in descending creation-time order.
+
+        Raises:
+            HTTPException: With status 403 if the route account is not the caller.
+        """
         check_owner(student_id, user_id)
         plans = repository.list_plans(student_id, limit)
         logger.info("Plan history loaded count=%s", len(plans))
@@ -301,7 +437,21 @@ def create_app(
         plan: TrainingPlan,
         user_id: str = Depends(require_account),
     ) -> dict[str, object]:
-        """Replace one of the signed-in student's saved plans."""
+        """Replace one saved plan belonging to the authenticated student.
+
+        Args:
+            student_id: Account ID from the route path.
+            plan_id: ID of the saved plan to replace.
+            plan: Validated replacement plan.
+            user_id: Authenticated account ID supplied by the bearer dependency.
+
+        Returns:
+            A mapping containing the plan ID and updated plan data.
+
+        Raises:
+            HTTPException: With status 403 for an account mismatch or 404 if the
+                plan does not exist for this student.
+        """
         check_owner(student_id, user_id)
         if not repository.update_plan(student_id, plan_id, plan):
             raise HTTPException(status_code=404, detail="Saved plan not found")
@@ -314,7 +464,20 @@ def create_app(
         plan_id: str,
         user_id: str = Depends(require_account),
     ) -> Response:
-        """Delete one of the signed-in student's saved plans."""
+        """Delete one saved plan belonging to the authenticated student.
+
+        Args:
+            student_id: Account ID from the route path.
+            plan_id: ID of the saved plan to delete.
+            user_id: Authenticated account ID supplied by the bearer dependency.
+
+        Returns:
+            An empty HTTP 204 response after deletion.
+
+        Raises:
+            HTTPException: With status 403 for an account mismatch or 404 if the
+                plan does not exist for this student.
+        """
         check_owner(student_id, user_id)
         if not repository.delete_plan(student_id, plan_id):
             raise HTTPException(status_code=404, detail="Saved plan not found")

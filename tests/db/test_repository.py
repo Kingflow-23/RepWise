@@ -1,4 +1,4 @@
-"""Repository tests for account, profile, plan, and migration behavior."""
+"""Repository tests for account, profile, plan, and schema behavior."""
 
 import sqlite3
 
@@ -219,11 +219,11 @@ def test_list_plans_rejects_invalid_limit_values(tmp_path, limit):
         repository.list_plans("alex", limit=limit)
 
 
-def test_initialize_migrates_existing_profile_and_plan_tables(tmp_path):
-    """Migrate legacy tables while preserving account, profile, and plan records.
+def test_initialize_rejects_legacy_database_without_migrating_it(tmp_path):
+    """Reject the old username-based schema without changing its data.
 
     Args:
-        tmp_path: Hold the legacy database and its migrated replacement.
+        tmp_path: Hold the legacy database to verify it is left untouched.
     """
     database_path = tmp_path / "legacy.sqlite3"
     connection = sqlite3.connect(database_path)
@@ -234,70 +234,22 @@ def test_initialize_migrates_existing_profile_and_plan_tables(tmp_path):
                 password_hash TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
-            CREATE TABLE student_profiles (
-                student_id TEXT PRIMARY KEY,
-                profile_json TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY(student_id) REFERENCES users(username) ON DELETE CASCADE
-            );
-            CREATE TABLE training_plans (
-                id TEXT PRIMARY KEY,
-                student_id TEXT NOT NULL,
-                request_json TEXT NOT NULL,
-                plan_json TEXT NOT NULL,
-                sources_json TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(student_id) REFERENCES student_profiles(student_id) ON DELETE CASCADE
-            );
-            CREATE INDEX plans_by_student ON training_plans(student_id, created_at DESC);
         """)
         connection.execute(
             "INSERT INTO users VALUES (?, ?, ?)", ("alex", "hash", "now")
-        )
-        connection.execute(
-            "INSERT INTO student_profiles VALUES (?, ?, ?)",
-            ("alex", profile().model_dump_json(), "now"),
-        )
-        connection.execute(
-            "INSERT INTO training_plans VALUES (?, ?, ?, ?, ?, ?)",
-            ("plan-1", "alex", "{}", "{}", "[]", "now"),
         )
         connection.commit()
     finally:
         connection.close()
 
     repository = StudentRepository(database_path)
-    repository.initialize()
-    account = repository.get_account_by_name("alex")
-    assert account is not None
-    user_id = account[0]
-    assert account[1:] == ("hash", "alex")
-    assert repository.get_profile(user_id) == profile()
+    with pytest.raises(RuntimeError, match="unsupported schema"):
+        repository.initialize()
 
-    with repository._connect() as migrated:
-        profile_fks = migrated.execute(
-            "PRAGMA foreign_key_list(student_profiles)"
-        ).fetchall()
-        plan_fks = migrated.execute(
-            "PRAGMA foreign_key_list(training_plans)"
-        ).fetchall()
-        assert any(
-            row[2] == "users" and row[4] == "user_id" for row in profile_fks
-        )
-        assert any(row[2] == "student_profiles" for row in plan_fks)
-        assert (
-            migrated.execute(
-                "SELECT COUNT(*) FROM training_plans WHERE id='plan-1'"
-            ).fetchone()[0]
-            == 1
-        )
-        assert migrated.execute(
-            "SELECT student_id FROM student_profiles"
-        ).fetchone()[0] == user_id
-        assert migrated.execute(
-            "SELECT student_id FROM training_plans WHERE id='plan-1'"
-        ).fetchone()[0] == user_id
-        assert migrated.execute("PRAGMA foreign_key_check").fetchall() == []
+    with sqlite3.connect(database_path) as unchanged:
+        assert unchanged.execute(
+            "SELECT username, password_hash FROM users"
+        ).fetchone() == ("alex", "hash")
 
 
 def test_only_completed_results_can_be_saved(tmp_path):

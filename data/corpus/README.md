@@ -49,7 +49,7 @@ These rules guided every choice in the cleaning:
 3. **Every passage stays traceable to the video.** Each passage keeps its start and end time and a link that opens the video at that exact second. Anyone can check a claim against the source in a few seconds.
 4. **Every correction is counted.** Each fix is logged per video, so you can see what was changed and how often.
 5. **Same input, same output.** The script is deterministic: run it twice on the same files and you get identical results. The fingerprint of each raw file (SHA-256) is stored, so anyone can check that they are working on the same corpus.
-6. **Flag, don't delete.** Sponsor reads and calls to action are marked, not removed. The decision to exclude them belongs to the next steps.
+6. **Flag passages, filter before chunking.** Sponsor reads and calls to action stay traceable in passage files, but flagged passages are excluded before chunks are assembled.
 7. **No dependencies.** The script uses only the Python standard library, so it runs anywhere without installing anything.
 
 ---
@@ -163,7 +163,7 @@ Each passage is checked against two lists of expressions (case-insensitive):
 | `sponsor` | "sponsoris(é/e)", "code promo", "mon code", "premier lien", "partenaire de la/cette vidéo", "X % de réduction", "-X % avec/sur" | 70 passages, in 32 videos |
 | `cta` (call to action) | "abonnez-vous", "abonne-toi", "lâchez/mettez un like", "activez la cloche", "en/dans les commentaires", "lien en/dans la description" | 125 passages |
 
-A passage can have both flags. Flagged passages are kept, with their flags, so the next steps decide what to do with them. The coverage report already skips `sponsor` passages.
+A passage can have both flags. Passage files retain the text and its flags for traceability; the coverage report skips `sponsor` passages. The chunker then excludes every passage with any flag before grouping clean passages. Chunk files contain neither flagged text nor a flags field, so retrieval does not need to filter flags again.
 
 ### Step 6. Write the outputs
 
@@ -265,4 +265,4 @@ Being clear about this matters for the evaluation and the presentation.
 - **The correction map only fixes known errors.** Other misheard words certainly remain. The map grows as new errors are found.
 - **Timestamps are precise to the second only,** as in the raw captions.
 - **`upload_date` is empty,** and the linked papers have not been checked yet (`mentioned` status).
-- **The chunker keeps flagged passages:** `chunker.py` carries the flags into chunk JSONL. BM25, semantic, hybrid retrieval, and evidence selection exclude sponsor and CTA chunks before they can reach the model.
+- **The chunker excludes flagged passages:** `chunker.py` removes every flagged passage before grouping clean passages. Chunk JSONL files contain neither flagged text nor a flags field, so BM25, semantic, hybrid retrieval, and evidence selection do not need a later flag filter.

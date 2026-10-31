@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import html
 import os
 import logging
+import re
 import sys
 from pathlib import Path
 from time import perf_counter
@@ -35,6 +37,13 @@ class ApiError(RuntimeError):
 
 
 def api_request(method: str, path: str, **kwargs: Any) -> Any:
+    """Send an authenticated backend request and translate failures for the UI.
+
+    Args:
+        method: HTTP verb used for the API call.
+        path: API route appended to the configured backend URL.
+        **kwargs: Additional request options passed to ``requests.request``.
+    """
     # The backend derives ownership from this signed token, not a client-sent ID.
     token = st.session_state.get("access_token")
     if token:
@@ -77,7 +86,42 @@ def api_request(method: str, path: str, **kwargs: Any) -> Any:
     return response.json() if response.content else None
 
 
+def highlighted_evidence(text: str, matched_terms: list[str]) -> str:
+    """Escape source text and mark exact query-term matches for review.
+
+    Args:
+        text: Full retrieved extract to render without interpreting its HTML.
+        matched_terms: Literal terms derived from the request; these are
+            escaped and regex-quoted before matching so source text stays safe.
+
+    Returns:
+        HTML with exact case-insensitive matches wrapped in ``<mark>`` tags.
+        It is a lexical review aid, not an explanation of model reasoning.
+    """
+    terms = sorted(set(matched_terms), key=len, reverse=True)
+    if not terms:
+        return html.escape(text)
+
+    pattern = re.compile(
+        rf"(?<!\w)({'|'.join(re.escape(term) for term in terms)})(?!\w)",
+        flags=re.IGNORECASE | re.UNICODE,
+    )
+    rendered: list[str] = []
+    previous_end = 0
+    for match in pattern.finditer(text):
+        rendered.append(html.escape(text[previous_end : match.start()]))
+        rendered.append(f"<mark>{html.escape(match.group(0))}</mark>")
+        previous_end = match.end()
+    rendered.append(html.escape(text[previous_end:]))
+    return "".join(rendered)
+
+
 def show_plan(record: dict[str, Any]) -> None:
+    """Render a saved plan, its supporting evidence, and its source details.
+
+    Args:
+        record: Plan history record containing the plan, request, and sources.
+    """
     plan = record.get("plan") or {}
     options = record.get("request") or {}
     st.subheader(plan.get("title", "Training plan"))
@@ -99,6 +143,11 @@ def show_plan(record: dict[str, Any]) -> None:
                         f"- **{exercise['name']}** · {exercise['sets']} × {exercise['repetitions']} · rest {exercise['rest_seconds']}s"
                     )
                     st.caption(exercise.get("coaching_note", ""))
+                    for evidence in exercise.get("supporting_evidence", []):
+                        st.caption(
+                            f"Evidence `{evidence['source_id']}`: "
+                            f"“{evidence['quote']}”"
+                        )
     if plan.get("assumptions"):
         st.markdown("**Assumptions**")
         for assumption in plan["assumptions"]:
@@ -112,12 +161,40 @@ def show_plan(record: dict[str, Any]) -> None:
             st.markdown(
                 f"- [{source['title']}]({source['url']}) · `{source['source_id']}`"
             )
-            if source.get("excerpt"):
+            evidence_text = source.get("evidence_text")
+            if evidence_text:
+                with st.expander("Full retrieved extract"):
+                    matched_terms = source.get("matched_terms", [])
+                    if matched_terms:
+                        st.caption(
+                            f"Intent terms found in this extract ({len(matched_terms)}): "
+                            + ", ".join(matched_terms)
+                        )
+                    else:
+                        st.caption(
+                            "No exact intent-term matches found. The semantic retriever "
+                            "may still have selected this related passage."
+                        )
+                    st.html(
+                        '<div style="white-space: pre-wrap; overflow-wrap: anywhere">'
+                        + highlighted_evidence(
+                            evidence_text, matched_terms
+                        )
+                        + "</div>"
+                    )
+            elif source.get("excerpt"):
                 st.caption(source["excerpt"])
+                st.caption("Full evidence is unavailable for this saved plan.")
 
 
 def store_account(account: dict[str, Any]) -> None:
-    """Keep the internal owner ID in session state without asking the user to enter it."""
+    """Keep the authenticated account identity in Streamlit session state.
+
+    Args:
+        account: API account response with ``user_id`` and ``full_name``. A
+            changed owner clears cached profile and plan state to prevent data
+            from one signed-in account appearing under another.
+    """
     if st.session_state.get("user_id") != account["user_id"]:
         for key in ("profile_form", "plan_history", "latest_plan"):
             st.session_state.pop(key, None)
@@ -303,14 +380,28 @@ with profile_tab:
 with plan_tab:
     st.subheader("Create a personalized plan")
     st.write(
-        "The backend retrieves evidence, builds the prompt, calls Ollama, validates the response, and stores completed plans."
+        "Each run creates one week of workouts using your available days. Generate again when you need a fresh week. Review the evidence quote shown under each exercise."
     )
     with st.form("plan_form"):
         focus = st.text_input(
             "What do you want to focus on?",
             placeholder="For example: a beginner core routine",
         )
-        weeks = st.slider("Plan length", 1, 12, 4)
+        saved_profile = st.session_state.get("profile_form") or {}
+        available_days = [
+            day
+            for day in saved_profile.get("available_days", [])
+            if day in DAYS
+        ]
+        default_workouts = min(3, max(1, len(available_days)))
+        workouts_per_week = st.number_input(
+            "Workouts per week",
+            min_value=1,
+            max_value=max(1, len(available_days)),
+            value=min(default_workouts, max(1, len(available_days))),
+            step=1,
+            help="Choose how many of your available days should have a workout.",
+        )
         constraints = st.text_input(
             "Additional constraints (comma separated)",
             placeholder="For example: no jumping, minimal equipment",
@@ -335,7 +426,7 @@ with plan_tab:
                         f"/api/v1/students/{sid}/plans",
                         json={
                             "focus": focus,
-                            "weeks": weeks,
+                            "workouts_per_week": workouts_per_week,
                             "extra_constraints": [
                                 item.strip()
                                 for item in constraints.split(",")
@@ -347,10 +438,16 @@ with plan_tab:
                         "id": result.get("plan_id"),
                         "plan": result.get("plan"),
                         "sources": result.get("sources", []),
-                        "request": {"focus": focus, "weeks": weeks},
+                        "request": {
+                            "focus": focus,
+                            "weeks": 1,
+                            "workouts_per_week": workouts_per_week,
+                        },
                     }
                     logger.info("Plan generation completed through Streamlit")
-                    st.success("Plan generated, validated, and saved.")
+                    st.success(
+                        "One-week plan generated and saved. Review the source quotes below to check exercise relevance."
+                    )
                 except ApiError as error:
                     st.error(str(error))
     if st.session_state.get("latest_plan"):
