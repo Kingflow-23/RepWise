@@ -156,9 +156,11 @@ def create_app(
             logger.exception(
                 "HTTP request failed method=%s route=%s",
                 request.method,
-                request.scope.get("route").path
-                if request.scope.get("route")
-                else "unmatched",
+                (
+                    request.scope.get("route").path
+                    if request.scope.get("route")
+                    else "unmatched"
+                ),
             )
             raise
         finally:
@@ -193,9 +195,7 @@ def create_app(
         try:
             return read_access_token(credentials.credentials, config.auth_secret)
         except Exception as error:
-            logger.warning(
-                "Authentication rejected reason=invalid_or_expired_token"
-            )
+            logger.warning("Authentication rejected reason=invalid_or_expired_token")
             raise HTTPException(
                 status_code=401, detail="Invalid or expired access token"
             ) from error
@@ -383,9 +383,8 @@ def create_app(
                 status_code=404,
                 detail="Save the student profile before creating a plan",
             )
-        if (
-            options.workouts_per_week is not None
-            and options.workouts_per_week > len(profile.available_days)
+        if options.workouts_per_week is not None and options.workouts_per_week > len(
+            profile.available_days
         ):
             raise HTTPException(
                 status_code=422,

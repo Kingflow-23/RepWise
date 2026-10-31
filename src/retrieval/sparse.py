@@ -107,5 +107,7 @@ class BM25Retriever:
             self.chunks[position].model_copy(update={"rank": rank, "score": score})
             for rank, (score, position) in enumerate(scores[:top_k], start=1)
         ]
-        logger.debug("BM25 search completed candidates=%s returned=%s", len(scores), len(results))
+        logger.debug(
+            "BM25 search completed candidates=%s returned=%s", len(scores), len(results)
+        )
         return results

@@ -6,7 +6,7 @@ RepWise is a local-first learning project: it searches prepared fitness
 transcripts, asks a local Ollama model to draft a plan, checks the plan against
 your schedule and equipment, and shows the sources behind it.
 
-It is a prototype for general fitness planning—not a medical or coaching
+It is a prototype for general fitness planning, not a medical or coaching
 service. It does not diagnose injuries or guarantee that a plan is safe.
 
 ## How it fits together
@@ -57,7 +57,7 @@ python -m pytest -q
 ```
 
 Some corpus-linkage tests require the prepared local corpus. For evaluation
-commands and what the results do—and do not—show, see the
+commands and what the results do and do not show, see the
 [evaluation guide](docs/evaluation_protocol.md).
 
 ## Explore the docs

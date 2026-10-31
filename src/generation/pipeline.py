@@ -96,9 +96,7 @@ class PlanPipeline:
                 ),
             )
 
-        evidence, sources = select_evidence(
-            chunks, query=make_highlight_query(request)
-        )
+        evidence, sources = select_evidence(chunks, query=make_highlight_query(request))
         if not evidence:
             logger.warning("Plan generation stopped reason=no_usable_evidence")
             return PlanResult(
@@ -296,7 +294,9 @@ def validate_plan(
                 required_equipment = canonical_equipment(exercise.equipment)
                 name = exercise.name.casefold()
                 for equipment, terms in equipment_aliases.items():
-                    if any(re.search(rf"\b{re.escape(term)}\b", name) for term in terms):
+                    if any(
+                        re.search(rf"\b{re.escape(term)}\b", name) for term in terms
+                    ):
                         required_equipment.add(equipment)
                 unavailable = required_equipment - available_equipment - {"bodyweight"}
                 if unavailable and "full gym" not in available_equipment:

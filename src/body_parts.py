@@ -43,7 +43,9 @@ def _compiled_lexicon() -> dict[str, re.Pattern[str]]:
     data = json.loads(LEXICON_PATH.read_text(encoding="utf-8"))
     return {
         body_part: re.compile(
-            "|".join(f"(?:{_fold_accents(pattern)})" for pattern in definition["patterns"])
+            "|".join(
+                f"(?:{_fold_accents(pattern)})" for pattern in definition["patterns"]
+            )
         )
         for body_part, definition in data["body_parts"].items()
     }

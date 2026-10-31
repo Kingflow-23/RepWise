@@ -173,9 +173,7 @@ def test_comparison_builds_shared_retrieval_components(chunks_dir, monkeypatch):
     monkeypatch.setattr(hybrid_module, "HybridRetriever", FakeHybrid)
     monkeypatch.setattr(AppConfig, "from_environment", classmethod(lambda cls: cls()))
 
-    retrievers = adapters.build_retrievers(
-        ["bm25", "semantic", "hybrid"], chunks_dir
-    )
+    retrievers = adapters.build_retrievers(["bm25", "semantic", "hybrid"], chunks_dir)
 
     assert set(retrievers) == {"bm25", "semantic", "hybrid"}
     assert created["hybrid"] == (created["lexical"], created["semantic"])
@@ -213,9 +211,7 @@ def test_no_rag_generation_does_not_require_citations():
     planner = lambda _case: {
         "status": "ok",
         "message": "Plan generated without retrieved evidence.",
-        "plan": {
-            "sessions": [{"name": "Day 1", "exercises": [{"name": "Squat"}]}]
-        },
+        "plan": {"sessions": [{"name": "Day 1", "exercises": [{"name": "Squat"}]}]},
         "rag_enabled": False,
         "available_source_ids": [],
     }
@@ -276,6 +272,7 @@ def test_abstaining_mock_scores_abstention():
 
 def test_crashing_planner_is_reported_not_raised():
     """Convert planner exceptions into per-case pipeline failures."""
+
     def broken(_case):
         """Raise a representative timeout from the planner callback.
 
@@ -436,7 +433,10 @@ def test_real_generation_with_missing_corpus_writes_failure_report(
         "generation", "bm25", "ollama-rag", generation_model="test-model"
     )
 
-    assert any("Planner setup failed" in warning for warning in run["payload"]["meta"]["warnings"])
+    assert any(
+        "Planner setup failed" in warning
+        for warning in run["payload"]["meta"]["warnings"]
+    )
     assert run["results"]["generation"].failures[0].category == "pipeline_error"
 
 
@@ -498,7 +498,9 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
             n_cases=1,
             n_passed=1,
             metrics={
-                "recall@5": Ratio({"bm25": 0.5, "semantic": 0.4, "hybrid": 0.8}[strategy], 1),
+                "recall@5": Ratio(
+                    {"bm25": 0.5, "semantic": 0.4, "hybrid": 0.8}[strategy], 1
+                ),
                 "mrr": Ratio(0.5, 1),
                 "hit@1": Ratio(1, 1),
             },
@@ -563,9 +565,7 @@ def test_no_rag_planner_does_not_construct_retriever(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(ollama, "OllamaGenerator", lambda *_args: object())
 
-    planner = adapters.build_planner(
-        "ollama-no-rag", tmp_path, model_name="test-model"
-    )
+    planner = adapters.build_planner("ollama-no-rag", tmp_path, model_name="test-model")
 
     assert callable(planner)
 
@@ -727,9 +727,7 @@ def test_real_pipeline_adapter_uses_one_week_and_requested_workout_count(
                 }
             )
 
-    monkeypatch.setattr(
-        ollama, "OllamaGenerator", lambda *_args: CapturingGenerator()
-    )
+    monkeypatch.setattr(ollama, "OllamaGenerator", lambda *_args: CapturingGenerator())
     planner = adapters.build_real_pipeline_planner(tmp_path, use_rag=False)
     result = planner(
         {
@@ -750,11 +748,13 @@ def test_real_pipeline_adapter_uses_one_week_and_requested_workout_count(
     assert result["status"] == "ok"
     assert captured["schema"]["properties"]["weeks"]["maxItems"] == 1
     assert (
-        captured["schema"]["$defs"]["Week"]["properties"]["workouts"]["maxItems"]
-        == 2
+        captured["schema"]["$defs"]["Week"]["properties"]["workouts"]["maxItems"] == 2
     )
     assert "no jumping" in captured["prompt"]
     assert "EVIDENCE POLICY (NO-RAG BASELINE)" in captured["system_prompt"]
     assert "Use general fitness knowledge" in captured["system_prompt"]
-    assert "Every exercise must cite at least one source ID" not in captured["system_prompt"]
+    assert (
+        "Every exercise must cite at least one source ID"
+        not in captured["system_prompt"]
+    )
     assert "Do not prescribe" not in captured["system_prompt"]

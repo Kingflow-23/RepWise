@@ -177,9 +177,7 @@ def show_plan(record: dict[str, Any]) -> None:
                         )
                     st.html(
                         '<div style="white-space: pre-wrap; overflow-wrap: anywhere">'
-                        + highlighted_evidence(
-                            evidence_text, matched_terms
-                        )
+                        + highlighted_evidence(evidence_text, matched_terms)
                         + "</div>"
                     )
             elif source.get("excerpt"):
@@ -294,9 +292,7 @@ with profile_tab:
             st.error("Sign in or create an account first.")
         else:
             try:
-                saved = api_request(
-                    "GET", f"/api/v1/students/{student_id}/profile"
-                )
+                saved = api_request("GET", f"/api/v1/students/{student_id}/profile")
                 st.session_state.profile_form = saved
                 logger.info("Saved profile loaded into profile editor")
                 st.success("Profile loaded.")
@@ -389,9 +385,7 @@ with plan_tab:
         )
         saved_profile = st.session_state.get("profile_form") or {}
         available_days = [
-            day
-            for day in saved_profile.get("available_days", [])
-            if day in DAYS
+            day for day in saved_profile.get("available_days", []) if day in DAYS
         ]
         default_workouts = min(3, max(1, len(available_days)))
         workouts_per_week = st.number_input(

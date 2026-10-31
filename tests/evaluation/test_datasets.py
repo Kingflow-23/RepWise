@@ -70,8 +70,7 @@ def test_relevance_judgments_show_verbatim_source_evidence():
         expected_text = " ".join(
             passage["text"].strip()
             for passage in passages_by_video[judgment["video_id"]]
-            if passage["start"] < judgment["end"]
-            and passage["end"] > judgment["start"]
+            if passage["start"] < judgment["end"] and passage["end"] > judgment["start"]
         )
         assert judgment["evidence_text"].strip()
         assert judgment["evidence_text"] in expected_text
@@ -110,8 +109,7 @@ def test_generation_and_red_team_cases_are_separate_and_coherent():
     }
     assert all(case.notes for case in cases)
     assert all(
-        case.evidence_query_ids
-        and set(case.evidence_query_ids) <= answerable_ids
+        case.evidence_query_ids and set(case.evidence_query_ids) <= answerable_ids
         for case in cases
     )
     assert len({tuple(sorted(case.profile["equipment"])) for case in cases}) >= 5

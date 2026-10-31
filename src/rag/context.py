@@ -9,11 +9,50 @@ from ..body_parts import detect_body_parts
 from ..schemas.models import PlanRequest, RetrievedChunk, Source
 
 HIGHLIGHT_STOP_WORDS = {
-    "a", "an", "and", "as", "au", "aux", "avec", "be", "but", "by",
-    "ce", "ces", "cette", "dans", "de", "des", "du", "en", "et", "est",
-    "for", "from", "in", "is", "it", "la", "le", "les", "of", "on", "or",
-    "par", "pour", "que", "qui", "sur", "the", "this", "to", "un", "une",
-    "with", "you", "your",
+    "a",
+    "an",
+    "and",
+    "as",
+    "au",
+    "aux",
+    "avec",
+    "be",
+    "but",
+    "by",
+    "ce",
+    "ces",
+    "cette",
+    "dans",
+    "de",
+    "des",
+    "du",
+    "en",
+    "et",
+    "est",
+    "for",
+    "from",
+    "in",
+    "is",
+    "it",
+    "la",
+    "le",
+    "les",
+    "of",
+    "on",
+    "or",
+    "par",
+    "pour",
+    "que",
+    "qui",
+    "sur",
+    "the",
+    "this",
+    "to",
+    "un",
+    "une",
+    "with",
+    "you",
+    "your",
 }
 
 
@@ -133,7 +172,11 @@ def select_evidence(
 
     for chunk in chunks:
         source_id = next(
-            (passage_id for passage_id in chunk.passage_ids if passage_id not in seen_source_ids),
+            (
+                passage_id
+                for passage_id in chunk.passage_ids
+                if passage_id not in seen_source_ids
+            ),
             None,
         )
         if source_id is None:

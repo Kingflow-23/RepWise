@@ -650,6 +650,7 @@ def run_evaluation(
                     """
                     case_id = _case.get("id", "unknown")
                     raise RuntimeError(f"{error_message} (case: {case_id})")
+
         results["generation"] = evaluate_generation(
             cases,
             planner,
@@ -681,9 +682,11 @@ def run_evaluation(
         "llm_mode": (
             "not used"
             if suite == "retrieval"
-            else "real Ollama"
-            if planner_name in {"ollama-rag", "ollama-no-rag"}
-            else "mocked"
+            else (
+                "real Ollama"
+                if planner_name in {"ollama-rag", "ollama-no-rag"}
+                else "mocked"
+            )
         ),
         "embedding_model": (
             runtime_settings.embedding_model
@@ -692,8 +695,7 @@ def run_evaluation(
         ),
         "generation_model": (
             generation_model or runtime_settings.ollama_model
-            if suite != "retrieval"
-            and planner_name in {"ollama-rag", "ollama-no-rag"}
+            if suite != "retrieval" and planner_name in {"ollama-rag", "ollama-no-rag"}
             else None
         ),
         "n_corpus_chunks": len(corpus) if corpus is not None else 0,
@@ -789,9 +791,7 @@ def run_comparison(
     corpus = {chunk["chunk_id"]: chunk.get("text", "") for chunk in chunks}
     retrieval_cases = datasets.load_retrieval_cases()
     strategies = ["bm25", "semantic", "hybrid"]
-    retrievers = adapters.build_retrievers(
-        strategies, config.CHUNKS_DIR, chunks=chunks
-    )
+    retrievers = adapters.build_retrievers(strategies, config.CHUNKS_DIR, chunks=chunks)
     retrieval_results = {}
     for strategy in strategies:
         retrieval_results[strategy] = evaluate_retrieval(
@@ -902,8 +902,7 @@ def run_comparison(
     }
     markdown = report.render_comparison(meta, retrieval_results, generation_results)
     run_dir = (
-        config.OUT_DIR
-        / f"{datetime.now():%Y%m%d-%H%M%S}{'_' + label if label else ''}"
+        config.OUT_DIR / f"{datetime.now():%Y%m%d-%H%M%S}{'_' + label if label else ''}"
     )
     run_dir.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -916,7 +915,12 @@ def run_comparison(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
-    return {"run_dir": run_dir, "payload": payload, "results": results, "report": markdown}
+    return {
+        "run_dir": run_dir,
+        "payload": payload,
+        "results": results,
+        "report": markdown,
+    }
 
 
 def main(argv=None) -> int:

@@ -133,9 +133,7 @@ def test_highlights_accent_and_plural_variants_of_request_intent():
     item = chunk()
     item.text = "Les répétitions contrôlées renforcent les muscles et les tendons."
 
-    _, sources = select_evidence(
-        [item], query=make_highlight_query(training_request)
-    )
+    _, sources = select_evidence([item], query=make_highlight_query(training_request))
 
     assert sources[0].matched_terms == ["répétitions", "muscles"]
     assert "beginner" not in sources[0].matched_terms
@@ -194,9 +192,7 @@ def test_validator_rejects_duplicate_days_and_undeclared_named_equipment():
         raise AssertionError("Expected equipment validation to fail")
 
     plan = valid_plan()
-    plan.weeks[0].workouts.append(
-        plan.weeks[0].workouts[0].model_copy(deep=True)
-    )
+    plan.weeks[0].workouts.append(plan.weeks[0].workouts[0].model_copy(deep=True))
     training_request = request().model_copy(
         update={
             "workouts_per_week": 2,
@@ -263,9 +259,9 @@ def test_validator_rejects_generic_and_repeated_exercise_names():
 def test_validator_rejects_supporting_quote_not_found_in_cited_source():
     """Reject supporting evidence whose quote is absent from its cited passage."""
     plan = valid_plan()
-    plan.weeks[0].workouts[0].exercises[0].supporting_evidence[0].quote = (
-        "This quote is absent from the source."
-    )
+    plan.weeks[0].workouts[0].exercises[0].supporting_evidence[
+        0
+    ].quote = "This quote is absent from the source."
 
     with pytest.raises(ValueError, match="does not match"):
         validate_plan(
@@ -330,6 +326,7 @@ def test_pipeline_does_not_generate_when_retrieval_returns_fewer_than_five():
     The nested retriever and generator track whether the minimum-evidence
     gate runs before generation.
     """
+
     class ThreeChunkRetriever:
         """Return fewer passages than the pipeline's required evidence minimum."""
 
@@ -448,6 +445,7 @@ def test_pipeline_sends_all_five_retrieved_chunks_to_generator():
 
 def test_pipeline_retries_once_after_validation_failure():
     """Retry generation once when the first plan fails source validation."""
+
     class CorrectingGenerator:
         """Return an invalid citation once, then return a valid plan."""
 
@@ -539,6 +537,7 @@ def test_system_prompt_rejects_missing_or_duplicate_evidence_policy_marker(
 
 def test_pipeline_returns_a_clear_status_when_retrieval_fails():
     """Convert retriever exceptions into a user-facing retrieval error result."""
+
     class BrokenRetriever:
         """Simulate an unavailable retrieval index."""
 

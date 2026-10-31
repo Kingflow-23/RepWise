@@ -48,7 +48,9 @@ def load_system_prompt(*, require_evidence: bool = True) -> str:
         raise ValueError(
             f"System prompt must contain exactly one {EVIDENCE_POLICY_MARKER} marker."
         )
-    evidence_policy = RAG_EVIDENCE_POLICY if require_evidence else NO_RAG_EVIDENCE_POLICY
+    evidence_policy = (
+        RAG_EVIDENCE_POLICY if require_evidence else NO_RAG_EVIDENCE_POLICY
+    )
     return prompt.replace(EVIDENCE_POLICY_MARKER, evidence_policy).strip()
 
 

@@ -322,9 +322,7 @@ def build_retrievers(
         )
         for chunk in (load_chunks(chunks_dir) if chunks is None else chunks)
     ]
-    lexical = (
-        BM25Retriever(chunk_records) if {"bm25", "hybrid"} & set(names) else None
-    )
+    lexical = BM25Retriever(chunk_records) if {"bm25", "hybrid"} & set(names) else None
     semantic = None
     if {"semantic", "hybrid"} & set(names):
         from config.config import AppConfig
@@ -558,16 +556,14 @@ def build_real_pipeline_planner(
                     }
                     for week in plan_model.weeks
                     for workout in week.workouts
-                        ],
+                ],
             }
         return {
             "status": status,
             "message": message,
             "plan": plan_data,
             "claims": [],
-            "retrieved_ids": [
-                source.chunk_id for source in sources if source.chunk_id
-            ],
+            "retrieved_ids": [source.chunk_id for source in sources if source.chunk_id],
             "available_source_ids": [source.source_id for source in sources],
             "available_source_evidence": {
                 source.source_id: source.evidence_text or "" for source in sources

@@ -226,9 +226,7 @@ def load_retrieval_cases(
             or row["end"] <= row["start"]
         ):
             raise DatasetError(f"{where}: invalid video_id or evidence time range")
-        expected_source_url = (
-            f"https://youtu.be/{row['video_id']}?t={row['start']}"
-        )
+        expected_source_url = f"https://youtu.be/{row['video_id']}?t={row['start']}"
         if row["source_url"] != expected_source_url:
             raise DatasetError(
                 f"{where}: source_url must link to the cited video and start time"
@@ -348,7 +346,9 @@ def load_generation_cases(
                 raise DatasetError(f"{where}: invalid profile: {error}") from error
         weeks = row.get("weeks", 1)
         if isinstance(weeks, bool) or not isinstance(weeks, int) or weeks != 1:
-            raise DatasetError(f"{where}: this application evaluates one-week plans only")
+            raise DatasetError(
+                f"{where}: this application evaluates one-week plans only"
+            )
         workouts_per_week = row.get("workouts_per_week")
         if workouts_per_week is not None and (
             isinstance(workouts_per_week, bool)
@@ -386,9 +386,7 @@ def load_generation_cases(
             raise DatasetError(f"{where}: evidence_query_ids must be non-empty strings")
         if len(evidence_query_ids) != len(set(evidence_query_ids)):
             raise DatasetError(f"{where}: evidence_query_ids must be unique")
-        if (
-            is_nominal_dataset and not evidence_query_ids
-        ):
+        if is_nominal_dataset and not evidence_query_ids:
             raise DatasetError(
                 f"{where}: nominal benchmark cases need answerable evidence_query_ids"
             )
