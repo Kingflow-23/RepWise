@@ -1,43 +1,69 @@
-"""Connections between the evaluation runner and RepWise components.
+"""Adapt evaluation inputs and production components to common runner contracts.
 
-Interface contract (what Axel's and Florian's code must expose):
+The evaluation runner works against two small callable interfaces instead of
+depending directly on a particular retriever or planner implementation:
 
-    retrieve(query: str, k: int) -> list[dict]
-        chunks best first; each has video_id, start, end, text and chunk_id.
+* A retriever accepts ``(query, k)`` and returns ranked chunk dictionaries,
+  best match first. Ranking checks need stable chunk IDs and source time ranges;
+  the production generation path additionally validates each row as a
+  :class:`RetrievedChunk`.
+* A planner accepts a case dictionary containing ``id``, ``request``,
+  ``profile``, ``weeks``, ``workouts_per_week`` and ``extra_constraints``.
+  It returns a result dictionary with ``status``, ``message``, ``plan``,
+  ``claims`` and ``retrieved_ids``. Real pipeline adapters also expose the
+  available citation IDs/evidence and whether RAG is enabled, which the
+  generation evaluator uses to validate citations and constraints.
 
-    plan(case: dict) -> dict
-        input  {"request", "profile"}
-        output {"status": "ok" | "abstain" | "clarify" | "blocked" | "hold",
-                "message": str, "plan": {...} | None,
-                "claims": [{"text", "kind", "citations": [{"chunk_id", "quote"}]}],
-                "retrieved_ids": [chunk_id, ...]}
+The flow is ``runner -> adapter -> corpus or production component -> normalized
+dictionary -> metrics``. ``build_retrievers`` delegates ranking to production
+BM25, semantic and hybrid implementations; it contains no separate ranking
+algorithm. ``build_real_pipeline_planner`` wraps the production plan pipeline,
+or runs its matched no-RAG baseline. Mock planners intentionally return fixed
+examples to exercise scoring behavior; they are not substitutes for model
+quality evaluation.
 
-Any callable with that signature can be plugged with ``module.path:function``.
-Mock planners below are deliberately simple simulated systems for runner tests
-and failure examples. ``ollama`` adapts the application's real PlanPipeline.
+Custom implementations can be loaded by trusted configuration as
+``package.module:callable``. The callable is imported and invoked in-process,
+so this extension point is for project-controlled code, not user-supplied
+specifications. Application imports are kept inside builders so that using
+corpus helpers or mock planners does not eagerly initialize retrieval models
+or the generation stack.
 """
 
 import importlib
 import json
-import math
 import re
-from collections import Counter
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable, Sequence
 
 from .metrics.grounding import normalise
 
-Retriever = Callable[[str, int], list[dict]]
-Planner = Callable[[dict], dict]
+Chunk = dict[str, Any]
+PlannerCase = dict[str, Any]
+PlannerResult = dict[str, Any]
+Retriever = Callable[[str, int], list[Chunk]]
+Planner = Callable[[PlannerCase], PlannerResult]
 
+# Resolve from this module so the default follows the repository checkout,
+# while callers can override it for isolated corpora and tests.
 DEFAULT_CHUNKS_DIR = Path(__file__).resolve().parents[2] / "data" / "corpus" / "chunks"
 
 
 # ------------------------------------------------------------------- corpus
 
 
-def chunk_id_of(chunk: dict) -> str:
-    """Use the stored chunk_id, else derive a stable one from the passage range."""
+def chunk_id_of(chunk: Chunk) -> str:
+    """Return a chunk's stored ID or derive one from its source range.
+
+    Args:
+        chunk: A JSONL chunk record. It should contain ``video_id`` and either
+            ``chunk_id``, ``passage_ids``, or ``start``/``end``.
+
+    Returns:
+        The stored identifier when present; otherwise an identifier derived
+        from the first/last passage IDs or the chunk's time range. This fallback
+        keeps older corpus records usable without changing production IDs.
+    """
     if chunk.get("chunk_id"):
         return chunk["chunk_id"]
     pids = chunk.get("passage_ids") or []
@@ -47,7 +73,22 @@ def chunk_id_of(chunk: dict) -> str:
     return f"{chunk['video_id']}_{chunk['start']}-{chunk['end']}"
 
 
-def load_chunks(chunks_dir: Path = DEFAULT_CHUNKS_DIR) -> list[dict]:
+def load_chunks(chunks_dir: Path = DEFAULT_CHUNKS_DIR) -> list[Chunk]:
+    """Read JSONL chunk records and ensure that each has a stable chunk ID.
+
+    Args:
+        chunks_dir: Directory containing the corpus' ``*.jsonl`` chunk files.
+            The default points to this checkout's generated corpus; an
+            override supports alternate corpora and isolated tests.
+
+    Returns:
+        All non-empty records, ordered by filename and then file order.
+
+    Raises:
+        FileNotFoundError: If the directory is missing or contains no chunk
+            records, since an empty corpus would make evaluation misleading.
+        json.JSONDecodeError: If a non-empty line is not valid JSON.
+    """
     chunks_dir = Path(chunks_dir)
     if not chunks_dir.is_dir():
         raise FileNotFoundError(
@@ -62,74 +103,56 @@ def load_chunks(chunks_dir: Path = DEFAULT_CHUNKS_DIR) -> list[dict]:
                     chunk = json.loads(line)
                     chunk["chunk_id"] = chunk_id_of(chunk)
                     chunks.append(chunk)
+    if not chunks:
+        raise FileNotFoundError(
+            f"No JSONL chunks found in {chunks_dir}. Build the corpus first."
+        )
     return chunks
-
-
-# ------------------------------------------------------------ BM25 baseline
-
-FRENCH_STOPWORDS = set(
-    "a au aux avec ce ces c ca cette d dans de des du elle en est et etre il ils j je l la le les leur "
-    "lui m ma mais me meme mes moi mon n ne nos notre nous on ou par pas pour qu que qui s sa se ses "
-    "si son sur t ta te tes toi ton tu un une vos votre vous y faut fait faire plus tres bien bah ben "
-    "alors donc ok voila quoi va vais".split()
-)
-
-
-def tokenize(text: str) -> list[str]:
-    return [
-        t for t in normalise(text).split() if t not in FRENCH_STOPWORDS and len(t) > 1
-    ]
-
-
-class BM25Retriever:
-    """Plain BM25 (k1=1.5, b=0.75) over chunk text: the course's sparse baseline."""
-
-    def __init__(
-        self,
-        chunks: list[dict],
-        k1: float = 1.5,
-        b: float = 0.75,
-        skip_flags=("sponsor",),
-    ):
-        self.chunks = [
-            c for c in chunks if not set(c.get("flags") or []) & set(skip_flags)
-        ] or chunks
-        self.k1, self.b = k1, b
-        self.docs = [Counter(tokenize(c.get("text", ""))) for c in self.chunks]
-        self.lengths = [sum(d.values()) for d in self.docs]
-        self.avgdl = sum(self.lengths) / max(len(self.lengths), 1)
-        df = Counter(t for d in self.docs for t in d)
-        n = len(self.docs)
-        self.idf = {t: math.log(1 + (n - f + 0.5) / (f + 0.5)) for t, f in df.items()}
-
-    def __call__(self, query: str, k: int) -> list[dict]:
-        terms = tokenize(query)
-        scores = []
-        for i, doc in enumerate(self.docs):
-            s = 0.0
-            norm = self.k1 * (1 - self.b + self.b * self.lengths[i] / self.avgdl)
-            for t in terms:
-                f = doc.get(t)
-                if f:
-                    s += self.idf[t] * f * (self.k1 + 1) / (f + norm)
-            if s > 0:
-                scores.append((s, i))
-        scores.sort(reverse=True)
-        return [{**self.chunks[i], "score": s} for s, i in scores[:k]]
 
 
 # ------------------------------------------------------------ mock planners
 
 
-def _first_words(text: str, n: int = 8) -> str:
-    return " ".join(text.split()[:n])
+def _first_words(text: str) -> str:
+    """Return a short deterministic quote for the mock planner's citation.
+
+    Args:
+        text: Source text to quote.
+
+    Returns:
+        The first eight whitespace-separated words joined by single spaces.
+        Eight is enough to make this fixture citation readable without adding
+        tokenization logic or a configuration parameter used nowhere else.
+    """
+    return " ".join(text.split()[:8])
 
 
-def make_mock_naive(chunks: list[dict]) -> Planner:
-    """Ignores the profile and always answers: shows what failures look like."""
+def make_mock_naive(chunks: list[Chunk]) -> Planner:
+    """Create a deterministic deliberately poor planner fixture.
+
+    Args:
+        chunks: Corpus records from which the fixture can make one nominally
+            supported citation. An empty list uses a sentinel source instead,
+            so the mock can still demonstrate invalid-citation behavior.
+
+    Returns:
+        A planner callable that ignores its case and returns a fixed,
+        intentionally non-personalized plan with both supported and fabricated
+        claims. It is a scoring/test fixture, not a baseline for model quality.
+    """
     real = chunks[0] if chunks else {"chunk_id": "none", "text": ""}
 
-    def plan(case: dict) -> dict:
+    def plan(_case: PlannerCase) -> PlannerResult:
+        """Return the same intentionally flawed response for any case.
+
+        Args:
+            _case: Required by the planner interface; deliberately ignored
+                because this fixture is designed to expose constraint failures.
+
+        Returns:
+            The fixed planner result consumed by generation metrics.
+        """
+        del _case
         exercise = {
             "name": "Squat barre",
             "equipment": ["barbell", "rack"],
@@ -175,7 +198,17 @@ def make_mock_naive(chunks: list[dict]) -> Planner:
     return plan
 
 
-def mock_abstain(case: dict) -> dict:
+def mock_abstain(_case: PlannerCase) -> PlannerResult:
+    """Return a deterministic abstention for planner-interface tests.
+
+    Args:
+        _case: Required by the planner interface, but unused because this
+            fixture abstains independently of request content.
+
+    Returns:
+        A result with no plan, claims, or retrieved chunk IDs.
+    """
+    del _case
     return {
         "status": "abstain",
         "message": "Je n'ai pas trouvé cette information dans les sources.",
@@ -188,8 +221,23 @@ def mock_abstain(case: dict) -> dict:
 # ------------------------------------------------------------------ factory
 
 
-def load_callable(spec: str) -> Callable:
-    """'package.module:function' -> the function (or class instance factory)."""
+def load_callable(spec: str) -> Callable[..., Any]:
+    """Import a project-controlled callable using ``module.path:name`` syntax.
+
+    Args:
+        spec: Fully qualified module and attribute separated by one colon.
+            The imported object is returned without invocation; constructors
+            that need arguments should be wrapped in a project-owned function.
+
+    Returns:
+        The named module attribute. Its suitability for a retriever or planner
+        contract is checked when the runner invokes it.
+
+    Raises:
+        ValueError: If ``spec`` has no colon.
+        ImportError: If the module cannot be imported.
+        AttributeError: If the named attribute is absent.
+    """
     if ":" not in spec:
         raise ValueError(f"expected 'module.path:callable', got {spec!r}")
     module_name, attr = spec.split(":", 1)
@@ -198,46 +246,119 @@ def load_callable(spec: str) -> Callable:
 
 
 def build_retriever(name: str, chunks_dir: Path) -> Retriever:
-    if name == "bm25":
-        from ..retrieval.sparse import BM25Retriever as LocalBM25
-        from ..schemas.models import RetrievedChunk
+    """Build one named production or configured custom retriever.
 
-        chunks = [
-            RetrievedChunk.model_validate(
-                {
-                    **chunk,
-                    # Tiny evaluation fixtures omit display-only provenance fields.
-                    "title": chunk.get("title", ""),
-                    "video_url": chunk.get("video_url", ""),
-                }
-            )
-            for chunk in load_chunks(chunks_dir)
-        ]
-        retriever = LocalBM25(chunks)
-        return lambda query, k: [
-            chunk.model_dump() for chunk in retriever.search(query, k)
-        ]
-    if name in {"semantic", "hybrid"}:
-        from config.config import AppConfig
-        from ..retrieval.hybrid import HybridRetriever
-        from ..retrieval.semantic import (
-            SemanticRetriever,
-            load_chunks as load_local_chunks,
+    Args:
+        name: ``bm25``, ``semantic`` or ``hybrid`` for production strategies;
+            otherwise a trusted ``module.path:callable`` plugin specification.
+        chunks_dir: Corpus directory used to initialize a built-in strategy.
+            Custom callables own their own data access and do not receive it.
+
+    Returns:
+        A ``(query, k) -> ranked chunk dictionaries`` callable.
+
+    Raises:
+        ValueError: If ``name`` is neither a supported built-in strategy nor a
+            valid ``module.path:callable`` specification.
+        FileNotFoundError: If a built-in strategy needs a missing/empty corpus.
+        ImportError: If a custom callable's module cannot be imported.
+    """
+    if name in {"bm25", "semantic", "hybrid"}:
+        return build_retrievers([name], chunks_dir)[name]
+    return load_callable(name)
+
+
+def build_retrievers(
+    names: Sequence[str],
+    chunks_dir: Path,
+    *,
+    chunks: Sequence[Chunk] | None = None,
+) -> dict[str, Retriever]:
+    """Build requested production retrievers, sharing common components.
+
+    Args:
+        names: Requested strategies from ``bm25``, ``semantic`` and ``hybrid``.
+            A sequence preserves the requested order in the returned mapping,
+            whose keys are strategy names.
+        chunks_dir: Default corpus source, used only when ``chunks`` is not
+            supplied.
+        chunks: Optional already-loaded corpus records. Supplying these avoids
+            rereading JSONL files, which lets comparison runs share one corpus.
+            Records are still validated as ``RetrievedChunk`` objects before
+            being passed to production retrieval implementations.
+
+    Returns:
+        A mapping from each requested strategy to a callable that serializes
+        production ``RetrievedChunk`` results as dictionaries. An empty
+        ``names`` sequence returns an empty mapping without loading the corpus.
+
+    Raises:
+        ValueError: If any requested strategy is unsupported.
+        FileNotFoundError: If records must be loaded but the corpus is missing
+            or empty.
+        ValidationError: If a supplied or loaded record violates the production
+            ``RetrievedChunk`` schema.
+    """
+    supported = {"bm25", "semantic", "hybrid"}
+    unknown = set(names) - supported
+    if unknown:
+        raise ValueError(f"Unknown retrieval strategies: {', '.join(sorted(unknown))}")
+    if not names:
+        return {}
+
+    from ..retrieval.hybrid import HybridRetriever
+    from ..retrieval.semantic import SemanticRetriever
+    from ..retrieval.sparse import BM25Retriever
+    from ..schemas.models import RetrievedChunk
+
+    chunk_records = [
+        RetrievedChunk.model_validate(
+            {
+                **chunk,
+                # Tiny evaluation fixtures omit display-only provenance fields.
+                "title": chunk.get("title", ""),
+                "video_url": chunk.get("video_url", ""),
+            }
         )
-        from ..retrieval.sparse import BM25Retriever as LocalBM25
+        for chunk in (load_chunks(chunks_dir) if chunks is None else chunks)
+    ]
+    lexical = (
+        BM25Retriever(chunk_records) if {"bm25", "hybrid"} & set(names) else None
+    )
+    semantic = None
+    if {"semantic", "hybrid"} & set(names):
+        from config.config import AppConfig
 
         settings = AppConfig.from_environment()
-        chunks = load_local_chunks(chunks_dir)
         semantic = SemanticRetriever(
-            chunks, settings.embedding_index, settings.embedding_model
+            chunk_records, settings.embedding_index, settings.embedding_model
         )
-        retriever = semantic
-        if name == "hybrid":
-            retriever = HybridRetriever(LocalBM25(chunks), semantic)
+
+    components = {
+        "bm25": lexical,
+        "semantic": semantic,
+        "hybrid": (
+            HybridRetriever(lexical, semantic)
+            if lexical is not None and semantic is not None
+            else None
+        ),
+    }
+
+    def adapt(retriever: Any) -> Retriever:
+        """Bridge the production ``search`` object to the runner callable.
+
+        Args:
+            retriever: Production retriever exposing ``search(query, k)``.
+
+        Returns:
+            A callable that serializes model objects while preserving ranking
+            order and all fields used by evaluation.
+        """
         return lambda query, k: [
             chunk.model_dump() for chunk in retriever.search(query, k)
         ]
-    return load_callable(name)
+
+    return {name: adapt(components[name]) for name in names}
 
 
 def build_planner(
@@ -248,6 +369,26 @@ def build_planner(
     retriever_name: str | None = None,
     retriever: Retriever | None = None,
 ) -> Planner:
+    """Resolve a planner name to a mock, production, or configured callable.
+
+    Args:
+        name: ``mock-naive``, ``mock-abstain``, ``ollama-rag``,
+            ``ollama-no-rag`` or a trusted ``module.path:callable`` plugin.
+        chunks_dir: Corpus directory for the naive mock and real RAG planner.
+            It is not read by the abstaining mock or custom plugins.
+        model_name: Optional Ollama model override for the real planner.
+            ``None`` uses the application's configured default.
+        retriever_name: Optional built-in or plugin retriever selection for
+            real RAG. ``None`` uses the evaluation configuration's strategy.
+        retriever: Optional prebuilt retriever. When provided to a RAG planner,
+            it takes precedence over ``retriever_name`` so comparison arms can
+            share the same fitted index and ranking configuration. Retriever-
+            related options do not affect mocks, plugins, or no-RAG mode.
+
+    Returns:
+        A callable accepting the common planner case dictionary and returning
+        the common planner result dictionary.
+    """
     if name == "mock-naive":
         return make_mock_naive(load_chunks(chunks_dir))
     if name == "mock-abstain":
@@ -271,7 +412,41 @@ def build_real_pipeline_planner(
     retriever: Retriever | None = None,
     use_rag: bool = True,
 ) -> Planner:
-    """Run a benchmark case through RepWise RAG or the matched no-RAG baseline."""
+    """Adapt RepWise plan generation to the evaluation planner contract.
+
+    The RAG path creates the real ``PlanPipeline`` and validates retrieved
+    dictionaries as production ``RetrievedChunk`` models. The no-RAG path uses
+    the same request schema, system prompt, response schema and plan validator,
+    but removes the prompt's evidence-citation requirement and supplies no
+    retrieved context. Thus it isolates the effect of retrieved evidence
+    without substituting a different planner implementation.
+
+    Args:
+        chunks_dir: Corpus directory used when this function must build its own
+            retriever. It is not read by the no-RAG path or when ``retriever``
+            is injected.
+        model_name: Optional Ollama model override; ``None`` uses
+            ``AppConfig.ollama_model``.
+        retriever_name: Retriever name used only when RAG is enabled and no
+            prebuilt ``retriever`` is supplied; ``None`` uses evaluation
+            configuration.
+        retriever: Optional prebuilt ``(query, k)`` retriever. Injection lets
+            comparison arms share one retrieval instance. It takes precedence
+            over ``retriever_name``.
+        use_rag: Selects retrieval-grounded generation when true and the
+            matched no-context baseline when false.
+
+    Returns:
+        A planner callable that maps each case to the runner's normalized result
+        shape. Result source IDs are citation IDs; ``retrieved_ids`` are chunk
+        IDs, kept separately because the production pipeline distinguishes
+        sources from corpus chunks.
+
+    Raises:
+        FileNotFoundError: If the RAG path must load a missing/empty corpus.
+        RuntimeError: If the system prompt no longer contains the citation
+            instruction that the no-RAG baseline must replace.
+    """
     from config import evaluation_config
     from config.config import AppConfig
     from ..generation.pipeline import PlanPipeline
@@ -288,12 +463,28 @@ def build_real_pipeline_planner(
     generator = OllamaGenerator(generation_model, settings.ollama_url)
     pipeline = None
     if use_rag:
-        selected_retriever = retriever or build_retriever(
-            retriever_name or evaluation_config.RETRIEVER, chunks_dir
+        selected_retriever = (
+            retriever
+            if retriever is not None
+            else build_retriever(
+                retriever_name or evaluation_config.RETRIEVER, chunks_dir
+            )
         )
 
         class PipelineRetriever:
-            def search(self, query: str, top_k: int):
+            """Adapt the evaluation callable to the production Retriever API."""
+
+            def search(self, query: str, top_k: int) -> list[RetrievedChunk]:
+                """Return model-validated chunks in the callable's ranking order.
+
+                Args:
+                    query: Query constructed by the production plan pipeline.
+                    top_k: Maximum number of chunks requested by that pipeline.
+
+                Returns:
+                    Validated production chunk models ready for evidence
+                    selection and plan generation.
+                """
                 return [
                     RetrievedChunk.model_validate(row)
                     for row in selected_retriever(query, top_k)
@@ -301,12 +492,28 @@ def build_real_pipeline_planner(
 
         pipeline = PlanPipeline(PipelineRetriever(), generator, settings.top_k)
 
-    def plan(case: dict) -> dict:
-        """Use identical case inputs and normalize the result for common scoring."""
+    def plan(case: PlannerCase) -> PlannerResult:
+        """Run one case and normalize its result for the evaluation runner.
+
+        Args:
+            case: Runner case with request text, profile and schedule
+                constraints. Those fields are passed through to ``PlanRequest``
+                so the benchmark evaluates the same request the planner sees.
+
+        Returns:
+            A normalized mapping containing status, message, plan, claims,
+            retrieved chunk IDs, available citation IDs/evidence, and the RAG
+            flag used by downstream schema and citation checks. The plan keeps
+            its week structure and also adds flattened ``sessions`` for the
+            runner's schedule checks. ``claims`` is empty because production
+            generation records evidence citations on exercises, not as the
+            claim-level objects used by mock planner fixtures.
+        """
         profile = UserProfile.model_validate(case["profile"])
         request = PlanRequest(
             focus=case["request"],
-            weeks=case.get("weeks", 4),
+            weeks=case.get("weeks", 1),
+            workouts_per_week=case.get("workouts_per_week"),
             profile=profile,
             extra_constraints=case.get("extra_constraints", []),
         )
@@ -319,18 +526,10 @@ def build_real_pipeline_planner(
         else:
             from ..generation.pipeline import validate_plan
 
-            rag_system_prompt = load_system_prompt()
-            system_prompt = rag_system_prompt.replace(
-                "Every exercise must cite at least one supplied source ID. Use only IDs in the evidence block.",
-                "No reference sources are provided in this baseline. Leave source_ids empty and do not invent citations.",
-            )
-            if system_prompt == rag_system_prompt:
-                raise RuntimeError(
-                    "The system prompt no longer has the citation instruction expected by the no-RAG baseline."
-                )
+            system_prompt = load_system_prompt(require_evidence=False)
             plan_model = generator.generate(
                 system_prompt,
-                make_user_prompt(request, ""),
+                make_user_prompt(request, "", require_evidence=False),
                 plan_response_schema(request),
             )
             validate_plan(plan_model, request, set(), require_citations=False)
@@ -346,9 +545,9 @@ def build_real_pipeline_planner(
         }.get(result_status, "error")
         plan_data = None
         if plan_model is not None:
+            serialized_plan = plan_model.model_dump()
             plan_data = {
-                **plan_model.model_dump(),
-                "weeks": plan_model.model_dump()["weeks"],
+                **serialized_plan,
                 "sessions": [
                     {
                         "name": f"Week {week.number} · {workout.day}",
@@ -359,7 +558,7 @@ def build_real_pipeline_planner(
                     }
                     for week in plan_model.weeks
                     for workout in week.workouts
-                ]
+                        ],
             }
         return {
             "status": status,
@@ -370,14 +569,29 @@ def build_real_pipeline_planner(
                 source.chunk_id for source in sources if source.chunk_id
             ],
             "available_source_ids": [source.source_id for source in sources],
+            "available_source_evidence": {
+                source.source_id: source.evidence_text or "" for source in sources
+            },
             "rag_enabled": use_rag,
         }
 
     return plan
 
 
-def answer_text(output: dict) -> str:
-    """Everything a user would read, for forbidden / required pattern checks."""
+def answer_text(output: PlannerResult) -> str:
+    """Collect user-visible planner text for required/forbidden checks.
+
+    Args:
+        output: Normalized planner result. Both the current week-based
+            ``plan.weeks`` shape and the legacy flattened ``plan.sessions``
+            shape are read because plugins and earlier fixtures may emit
+            either. Non-text metadata such as IDs and scores is intentionally
+            excluded from user-visible pattern checks.
+
+    Returns:
+        User-facing message, claims, plan prose and exercise names joined by
+        newlines for regular-expression matching.
+    """
     parts = [output.get("message") or ""]
     parts += [c.get("text", "") for c in output.get("claims") or []]
     plan = output.get("plan") or {}
@@ -403,7 +617,22 @@ def answer_text(output: dict) -> str:
 
 
 def pattern_hits(patterns: list[str], text: str) -> list[str]:
-    """Patterns are regexes matched against the normalised text (lower case, no
-    accents, no punctuation), so write them as e.g. 'tendinite|diagnosti'."""
+    """Return configured regexes that match normalized planner text.
+
+    Args:
+        patterns: Regular expressions written for lowercase normalized text;
+            for example, ``tendinite|diagnosti`` also matches accented input
+            after normalization.
+        text: Combined user-visible answer from :func:`answer_text`, or any
+            other text to check with the same normalization.
+
+    Returns:
+        The original pattern strings that matched, preserving input order.
+
+    Raises:
+        re.error: If any supplied expression is invalid. Invalid benchmark
+            patterns should surface as configuration errors rather than being
+            silently treated as misses.
+    """
     folded = normalise(text)
     return [p for p in patterns if re.search(p, folded)]

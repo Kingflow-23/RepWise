@@ -1,4 +1,8 @@
-"""Retrieval adapters."""
+"""Public retrieval protocol and implementations.
+
+The package exports the BM25 lexical baseline, local semantic retriever,
+Reciprocal Rank Fusion wrapper, and placeholder retriever interface.
+"""
 
 from .base import MissingRetriever, Retriever
 from .hybrid import HybridRetriever

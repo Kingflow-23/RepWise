@@ -122,25 +122,62 @@ MIN_SENT_WORDS = 8  # do not close a passage on a very short sentence
 
 
 def nfc(s: str) -> str:
-    """Normalize accents and apostrophes, replace non-breaking spaces. NFC means Normalization Form C, which composes characters (é) instead of decomposing them (e + ´)."""
+    """Normalize Unicode and standardize apostrophes and non-breaking spaces.
+
+    NFC (Normalization Form C) composes characters where possible; it does not
+    remove accents.
+
+    Args:
+        s: Text to normalize.
+
+    Returns:
+        NFC-normalized text with curly apostrophes replaced by straight ones
+        and non-breaking spaces replaced by ordinary spaces.
+    """
     return unicodedata.normalize("NFC", s).replace("’", "'").replace(" ", " ")
 
 
 def key(s: str) -> str:
-    """Alphanumeric-only key used to match file names to video titles."""
+    """Create the normalized alphanumeric key used for title/file matching.
+
+    Args:
+        s: A video title or transcript filename stem.
+
+    Returns:
+        Lowercase NFC text with all non-alphanumeric characters removed.
+    """
     s = nfc(s).lower()
     return "".join(ch for ch in s if ch.isalnum())
 
 
 def fmt_ts(sec: int) -> str:
-    """Format seconds as H:MM:SS or M:SS."""
+    """Format an offset in seconds as ``H:MM:SS`` or ``MM:SS``.
+
+    Args:
+        sec: Time offset, converted to an integer before formatting.
+
+    Returns:
+        Zero-padded minutes and seconds, with hours included when nonzero.
+    """
     h, rem = divmod(int(sec), 3600)
     m, s = divmod(rem, 60)
     return f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
 
 def parse_raw(text: str) -> tuple[list[dict], str]:
-    """Return caption fragments [{start, text}] and the detected layout."""
+    """Parse timestamped caption lines and infer their caption layout.
+
+    Untimestamped non-empty lines are appended to the preceding fragment;
+    timestamped but empty lines contribute to the rolling-layout heuristic.
+
+    Args:
+        text: Raw transcript text containing timestamped captions.
+
+    Returns:
+        A pair of ``(fragments, layout)`` where each fragment has integer
+        ``start`` seconds and ``text``, and layout is ``"rolling"`` or
+        ``"flat"``.
+    """
     frags: list[dict] = []
     empty_ts = 0
     for line in nfc(text).splitlines():
@@ -160,11 +197,28 @@ def parse_raw(text: str) -> tuple[list[dict], str]:
 
 
 def clean_fragment(t: str) -> str:
+    """Remove bracketed sound tags and collapse whitespace in one fragment.
+
+    Args:
+        t: Caption fragment text.
+
+    Returns:
+        Cleaned text with sound tags replaced by spaces.
+    """
     t = SOUND_TAG.sub(" ", t)
     return re.sub(r"\s+", " ", t).strip()
 
 
 def is_punctuated(frags: list[dict]) -> bool:
+    """Classify a transcript as punctuated using its fragment punctuation rate.
+
+    Args:
+        frags: Caption fragments with a ``text`` field.
+
+    Returns:
+        ``True`` when more than 20 percent of non-empty input fragments contain
+        sentence punctuation or a comma; empty input returns ``False``.
+    """
     if not frags:
         return False
     with_punct = sum(1 for f in frags if re.search(r"[.?!,]", f["text"]))
@@ -172,10 +226,23 @@ def is_punctuated(frags: list[dict]) -> bool:
 
 
 def correct_fragments(frags: list[dict], rules, counter: Counter) -> list[dict]:
-    """Apply corrections on the whole transcript so errors split across two
-    caption fragments ("push" | "pool legs") are still fixed, then map the
-    corrected text back onto fragments. A match spanning a boundary is
-    assigned to the fragment where it starts."""
+    """Correct transcript text across fragment boundaries, then split it back.
+
+    Rules are applied sequentially to the joined transcript. This lets a
+    correction match text split across adjacent caption fragments. If a match
+    crosses a fragment boundary, that boundary is snapped to the match start.
+
+    Args:
+        frags: Ordered caption fragments with ``start`` and ``text`` fields.
+        rules: Ordered ``(compiled_regex, replacement, name)`` correction
+            tuples.
+        counter: Mutable counter incremented by the number of matches for each
+            rule name.
+
+    Returns:
+        New fragment dictionaries retaining each original start time and
+        containing the corrected text.
+    """
     texts = [clean_fragment(f["text"]) for f in frags]
     full, bounds, pos = [], [], 0
     for t in texts:
@@ -215,7 +282,22 @@ def correct_fragments(frags: list[dict], rules, counter: Counter) -> list[dict]:
 
 
 def to_passages(frags: list[dict], punctuated: bool) -> list[dict]:
-    """Group caption fragments into passages of a few sentences, keeping start and end timestamps."""
+    """Group caption fragments into passages while retaining time bounds.
+
+    Repeated or empty fragment text is skipped. Punctuated transcripts close
+    passages at sentence boundaries after a minimum length or at the hard word
+    cap; unpunctuated transcripts close at the approximate word target.
+
+    Args:
+        frags: Ordered corrected fragments with start times and text.
+        punctuated: Whether to use sentence-aware rather than fixed-size
+            grouping.
+
+    Returns:
+        Passage dictionaries with ``start``, ``end``, and joined ``text``.
+        End times use the next fragment's start, or a two-second estimate at
+        the end of the transcript, and are kept at least one second after start.
+    """
     passages, buf, start = [], [], None
     prev = None
     for i, f in enumerate(frags):
@@ -246,6 +328,21 @@ def to_passages(frags: list[dict], punctuated: bool) -> list[dict]:
 
 
 def load_corrections(path: Path) -> list[tuple[re.Pattern, str, str]]:
+    """Read and compile transcript correction rules from JSON.
+
+    Args:
+        path: JSON file containing a ``corrections`` array.
+
+    Returns:
+        Ordered tuples of case-insensitive compiled pattern, replacement, and
+        original pattern string.
+
+    Raises:
+        OSError: If the correction file cannot be read.
+        json.JSONDecodeError: If the file contains invalid JSON.
+        KeyError: If correction entries lack required fields.
+        re.error: If a correction pattern is invalid.
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
     return [
         (re.compile(c["pattern"], re.I), c["replacement"], c["pattern"])
@@ -254,7 +351,20 @@ def load_corrections(path: Path) -> list[tuple[re.Pattern, str, str]]:
 
 
 def parse_title_map(path: Path) -> dict[str, str]:
-    """dictionnary_links.txt: 'https://youtu.be/<id> : <title>' per line."""
+    """Parse video IDs and titles from the dictionary-links text file.
+
+    Args:
+        path: Text file with one ``https://youtu.be/<id> : <title>`` entry per
+            line.
+
+    Returns:
+        Mapping of 11-character YouTube video IDs to parsed titles. Lines that
+        do not match the expected format are ignored.
+
+    Raises:
+        OSError: If the input file cannot be read.
+        UnicodeError: If the file is not valid UTF-8.
+    """
     out = {}
     for line in nfc(path.read_text(encoding="utf-8")).splitlines():
         m = re.match(r"\s*https?://youtu\.be/([\w-]{11})\S*\s*:\s*(.+?)\s*$", line)
@@ -264,7 +374,20 @@ def parse_title_map(path: Path) -> dict[str, str]:
 
 
 def parse_refs(path: Path) -> dict[str, list[str]]:
-    """links.txt: a video URL followed by tab-indented paper URLs."""
+    """Parse paper URLs associated with their preceding video URL.
+
+    Args:
+        path: Text file with video URLs on unindented lines and associated
+            reference URLs on subsequent lines (typically tab-indented).
+
+    Returns:
+        Mapping of video IDs to their listed paper URLs; videos with no listed
+        references map to an empty list.
+
+    Raises:
+        OSError: If the input file cannot be read.
+        UnicodeError: If the file is not valid UTF-8.
+    """
     refs: dict[str, list[str]] = {}
     current = None
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -280,7 +403,20 @@ def parse_refs(path: Path) -> dict[str, list[str]]:
 def match_files(
     titles: dict[str, str], files: list[Path]
 ) -> tuple[dict[str, Path], list[str]]:
-    """Match each video id to its transcript file, using the title map. Returns a dict of matched files and a list of issues (missing files, fuzzy matches, unused files)."""
+    """Match titles to transcript files and report unmatched or fuzzy cases.
+
+    Exact matches use normalized alphanumeric keys. If none exists, the closest
+    filename key at the configured similarity cutoff is used and reported.
+
+    Args:
+        titles: Mapping of video IDs to their canonical titles.
+        files: Candidate transcript paths, whose stems are compared to titles.
+
+    Returns:
+        ``(matched, issues)`` where ``matched`` maps video IDs to paths and
+        ``issues`` describes fuzzy matches, missing transcripts, and unused
+        files.
+    """
     by_key = {key(f.stem): f for f in files}
     matched, issues = {}, []
     for vid, title in titles.items():
@@ -302,6 +438,23 @@ def match_files(
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Run transcript cleaning and write the corpus ingestion outputs.
+
+    Args:
+        argv: Optional command-line argument list; ``None`` uses process
+            arguments.
+
+    Returns:
+        ``None``; creates passage and clean-text files plus manifest and
+        correction log CSVs.
+
+    Raises:
+        SystemExit: For invalid command-line arguments.
+        OSError: If inputs cannot be read or output files cannot be written.
+        UnicodeError: If an input transcript is not valid UTF-8.
+        json.JSONDecodeError: If the correction configuration is invalid JSON.
+        re.error: If a correction pattern is invalid.
+    """
     configure_logging("ingestion")
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter

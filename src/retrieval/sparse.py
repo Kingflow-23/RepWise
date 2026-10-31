@@ -14,7 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 def terms(text: str) -> list[str]:
-    """Tokenize French and English text without introducing a large dependency."""
+    """Tokenize text into case- and accent-folded word terms.
+
+    Args:
+        text: French or English text to tokenize.
+
+    Returns:
+        Unicode word tokens with accents removed and original punctuation
+        omitted.
+    """
     folded = unicodedata.normalize("NFKD", text.casefold())
     without_accents = "".join(
         character for character in folded if not unicodedata.combining(character)
@@ -28,10 +36,19 @@ class BM25Retriever:
     """
 
     def __init__(self, chunks: list[RetrievedChunk], k1: float = 1.5, b: float = 0.75):
-        # Commercial passages should never be candidate evidence.
-        self.chunks = [
-            chunk for chunk in chunks if not {"sponsor", "cta"} & set(chunk.flags)
-        ]
+        """Index chunk text and metadata for BM25 search.
+
+        The searchable text combines title, body, topics, and body-part labels.
+        IDF is computed once from document frequency; ``k1`` and ``b`` retain
+        the usual term-frequency saturation and length-normalization roles.
+
+        Args:
+            chunks: Corpus chunks to rank; their order breaks score ties.
+            k1: BM25 term-frequency saturation parameter.
+            b: BM25 document-length normalization parameter, conventionally
+                between zero and one.
+        """
+        self.chunks = chunks
         self.k1 = k1
         self.b = b
         self.documents = [
@@ -55,7 +72,17 @@ class BM25Retriever:
         }
 
     def search(self, query: str, top_k: int) -> list[RetrievedChunk]:
-        """Return the top chunks and attach the BM25 score and rank."""
+        """Return positive-scoring chunks ranked by BM25.
+
+        Args:
+            query: Query tokenized with :func:`terms`.
+            top_k: Maximum number of results to return.
+
+        Returns:
+            At most ``top_k`` copies of matching chunks, ordered by descending
+            BM25 score and then original corpus order, with rank and score
+            attached. Chunks with no query-term match are omitted.
+        """
         scores = []
         for position, document in enumerate(self.documents):
             score = 0.0

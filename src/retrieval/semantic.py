@@ -19,7 +19,21 @@ logger = logging.getLogger(__name__)
 
 
 def load_chunks(chunk_dir: str | Path) -> list[RetrievedChunk]:
-    """Read all per-video JSONL files in a deterministic order."""
+    """Read and validate per-video JSONL chunks in sorted path order.
+
+    Args:
+        chunk_dir: Directory containing one or more per-video ``.jsonl`` files.
+
+    Returns:
+        Validated chunks in filename and line order.
+
+    Raises:
+        FileNotFoundError: If no JSONL chunks are found.
+        ValueError: If a record is invalid, lacks a chunk ID, or IDs are
+            duplicated.
+        OSError: If a chunk file cannot be read.
+        json.JSONDecodeError: If a non-empty line is not valid JSON.
+    """
     started = perf_counter()
     chunks = []
     for path in sorted(Path(chunk_dir).glob("*.jsonl")):
@@ -53,7 +67,16 @@ def load_chunks(chunk_dir: str | Path) -> list[RetrievedChunk]:
 
 
 def corpus_fingerprint(chunks: list[RetrievedChunk]) -> str:
-    """Hash the text and IDs that determine the vectors."""
+    """Hash fields that determine the stored semantic vectors.
+
+    Args:
+        chunks: Ordered chunks used to build or validate an index.
+
+    Returns:
+        SHA-256 hex digest over each chunk's ID, title, text, and body parts in
+        iteration order. Other metadata is intentionally excluded because it
+        does not contribute to passage embeddings.
+    """
     digest = hashlib.sha256()
     for chunk in chunks:
         digest.update(chunk.chunk_id.encode("utf-8"))
@@ -68,7 +91,18 @@ def corpus_fingerprint(chunks: list[RetrievedChunk]) -> str:
 
 
 def _load_model(model_name: str):
-    """Import the optional embedding package only when retrieval is requested."""
+    """Load a locally cached Sentence Transformers model on demand.
+
+    Args:
+        model_name: Hugging Face model identifier to load from the local cache.
+
+    Returns:
+        A ``SentenceTransformer`` configured for local-files-only loading.
+
+    Raises:
+        RuntimeError: If the optional package is missing or the model cannot be
+            loaded from the local cache. The original error is chained.
+    """
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError as error:
@@ -93,7 +127,27 @@ def build_index(
     index_path: str | Path,
     model_name: str = DEFAULT_MODEL,
 ) -> Path:
-    """Embed corpus chunks locally and save a reproducible NumPy index."""
+    """Embed corpus chunks locally and save vectors with corpus identity.
+
+    E5 passage prefixes and normalized embeddings are used, while the index
+    stores vectors, ordered chunk IDs, model name, and a corpus fingerprint.
+
+    Args:
+        chunk_dir: Directory containing per-video corpus chunk JSONL files.
+        index_path: Destination ``.npz`` path; parent directories are created.
+        model_name: Locally cached embedding model identifier.
+
+    Returns:
+        Destination path of the newly written compressed NumPy index.
+
+    Raises:
+        RuntimeError: If NumPy or the Sentence Transformers dependency/model is
+            unavailable.
+        FileNotFoundError: If no chunks are present.
+        ValueError: If the model returns vectors of an invalid shape or
+            dimension.
+        OSError: If the destination index cannot be created or written.
+    """
     started = perf_counter()
     logger.info("Embedding index build started model=%s", model_name)
     try:
@@ -102,15 +156,7 @@ def build_index(
         raise RuntimeError(
             "Index creation needs NumPy. Install requirements.txt."
         ) from error
-    chunks = [
-        chunk
-        for chunk in load_chunks(chunk_dir)
-        if not {"sponsor", "cta"} & set(chunk.flags)
-    ]
-    if not chunks:
-        raise ValueError(
-            "No eligible chunks remain after excluding sponsor and CTA content."
-        )
+    chunks = load_chunks(chunk_dir)
     model = _load_model(model_name)
     # E5 uses task prefixes to distinguish searches from stored passages.
     passages = [
@@ -153,7 +199,12 @@ def build_index(
 
 
 class SemanticRetriever:
-    """Rank local corpus chunks by cosine similarity to an E5 query vector."""
+    """Rank local corpus chunks by cosine similarity to an E5 query vector.
+
+    The saved index is checked against ordered chunk IDs, a fingerprint, and
+    the configured model before it is used. Text and metadata remain sourced
+    from the caller-provided chunks rather than serialized into the index.
+    """
 
     def __init__(
         self,
@@ -161,6 +212,21 @@ class SemanticRetriever:
         index_path: str | Path,
         model_name: str = DEFAULT_MODEL,
     ):
+        """Load and validate vectors for the supplied ordered chunks.
+
+        Args:
+            chunks: Corpus chunks corresponding exactly to the saved index's
+                ordered chunk IDs.
+            index_path: Compressed NumPy index created by :func:`build_index`.
+            model_name: Model identifier required by both the index and local
+                model cache.
+
+        Raises:
+            RuntimeError: If NumPy or the embedding model dependency is missing.
+            FileNotFoundError: If the index file does not exist.
+            ValueError: If chunks or the index are invalid, stale, use another
+                model, or have an incompatible vector dimension.
+        """
         started = perf_counter()
         logger.info(
             "Semantic retriever initialization started model=%s chunks=%s",
@@ -174,9 +240,7 @@ class SemanticRetriever:
                 "Semantic search needs NumPy. Install requirements.txt."
             ) from error
         self.np = np
-        self.chunks = [
-            chunk for chunk in chunks if not {"sponsor", "cta"} & set(chunk.flags)
-        ]
+        self.chunks = chunks
         ids = [chunk.chunk_id for chunk in self.chunks]
         if not ids or any(not chunk_id for chunk_id in ids):
             raise ValueError(
@@ -239,7 +303,21 @@ class SemanticRetriever:
         )
 
     def search(self, query: str, top_k: int) -> list[RetrievedChunk]:
-        """Return the highest cosine-similarity chunks with stable ranks."""
+        """Return the highest cosine-similarity chunks with stable ranks.
+
+        Args:
+            query: User query encoded with the E5 ``query:`` prefix.
+            top_k: Maximum number of corpus chunks to return.
+
+        Returns:
+            Chunks ordered by descending cosine similarity, with one-based
+            ranks and floating-point similarity scores attached. A stable sort
+            preserves corpus order for ties.
+
+        Raises:
+            ValueError: If the model returns a query vector with an incompatible
+                shape.
+        """
         started = perf_counter()
         query_vectors = self.np.asarray(
             self.model.encode([f"query: {query}"], normalize_embeddings=True),

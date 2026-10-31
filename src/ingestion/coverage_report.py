@@ -27,6 +27,29 @@ logger = logging.getLogger(__name__)
 
 
 def main(corpus: Path = CORPUS, lexicon_path: Path | None = None) -> None:
+    """Generate video/topic coverage CSVs and a human-readable summary.
+
+    A topic match identifies a passage to review; it is not evidence that the
+    passage supports a training recommendation. Sponsor passages are omitted
+    from counts and hit records.
+
+    Args:
+        corpus: Directory containing the manifest and passages folder.
+        lexicon_path: Topic lexicon JSON path; defaults to the repository's
+            ``config/topic_lexicon.json``.
+
+    Returns:
+        ``None``; writes ``coverage_matrix.csv``, ``coverage_hits.csv``, and
+        ``coverage_summary.md`` under ``corpus``, then prints the summary.
+
+    Raises:
+        OSError: If required inputs cannot be read or output files cannot be
+            written.
+        json.JSONDecodeError: If the topic lexicon or a passage is invalid JSON.
+        KeyError: If required fields are missing from the lexicon, manifest, or
+            passage records.
+        re.error: If a lexicon pattern is invalid.
+    """
     corpus = Path(corpus)
     lexicon_path = lexicon_path or REPO / "config" / "topic_lexicon.json"
     logger.info("Coverage report started corpus_dir=%s", corpus)

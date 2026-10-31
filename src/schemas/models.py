@@ -12,7 +12,13 @@ class Model(BaseModel):
 
 
 class UserProfile(Model):
-    """Small set of student-provided details useful for a workout plan."""
+    """Student-provided constraints used to personalize a workout plan.
+
+    ``available_days`` and ``session_minutes`` constrain the schedule;
+    ``equipment`` constrains exercise selection. ``experience``, ``goal``, and
+    optional ``preferences`` provide context for query construction and
+    generation, but are not independently verified facts.
+    """
 
     experience: str = Field(
         description="For example: beginner, intermediate or advanced"
@@ -25,14 +31,23 @@ class UserProfile(Model):
 
 
 class AccountCredentials(Model):
-    """Credentials accepted only by the local account registration and login routes."""
+    """Credentials accepted by local account registration and login routes.
+
+    ``full_name`` is the user-facing account identifier and must be unique in
+    the repository. ``password`` is accepted only at the API boundary and is
+    stored as a password hash, never as plaintext.
+    """
 
     full_name: str = Field(min_length=3, max_length=100)
     password: str = Field(min_length=8, max_length=200)
 
 
 class AccessToken(Model):
-    """Standard bearer token response returned after successful login."""
+    """Bearer-token response returned after successful account authentication.
+
+    ``user_id`` is the internal account ID used to scope later API operations;
+    ``token_type`` identifies how clients present ``access_token``.
+    """
 
     access_token: str
     user_id: str
@@ -41,21 +56,72 @@ class AccessToken(Model):
 
 
 class PlanOptions(Model):
-    """The current request sent alongside a saved student profile."""
+    """Request-specific focus and schedule, separate from a saved profile.
+
+    ``workouts_per_week`` may be omitted to use the profile-based default.
+    ``extra_constraints`` carries additional natural-language requirements
+    without expanding the fixed profile schema for each new request.
+    """
 
     focus: str = Field(min_length=3, max_length=300)
-    weeks: int = Field(default=4, ge=1, le=12)
+    workouts_per_week: int | None = Field(default=None, ge=1, le=7)
     extra_constraints: list[str] = Field(default_factory=list, max_length=10)
 
 
 class PlanRequest(PlanOptions):
-    """Complete input used inside the generation pipeline."""
+    """Complete input to generation, combining request options and a saved profile.
 
+    If no weekly workout count is supplied, the pipeline targets up to three
+    workouts, limited by the profile's available days.
+    """
+
+    weeks: int = Field(default=1, ge=1, le=12)
     profile: UserProfile
+
+    @model_validator(mode="after")
+    def weekly_workouts_fit_available_days(self) -> "PlanRequest":
+        """Reject an explicit schedule that exceeds the profile's available days.
+
+        Args:
+            self: Validated request whose requested workout count and profile days
+                are being compared.
+
+        Returns:
+            This request when its weekly workout count fits the available days.
+
+        Raises:
+            ValueError: If the explicit count exceeds the number of available days.
+        """
+        if self.workouts_per_week is not None and self.workouts_per_week > len(
+            self.profile.available_days
+        ):
+            raise ValueError("workouts_per_week cannot exceed available_days")
+        return self
+
+    @property
+    def target_workouts_per_week(self) -> int:
+        """Resolve the explicit weekly count or its profile-based default.
+
+        Args:
+            self: Request whose optional count and profile availability determine
+                the target.
+
+        Returns:
+            The requested count, or the smaller of three and the available-day
+            count when no explicit count was supplied.
+        """
+        return self.workouts_per_week or min(3, len(self.profile.available_days))
 
 
 class RetrievedChunk(Model):
-    """A chunk returned by the retrieval layer owned by the ingestion team."""
+    """Indexable transcript chunk and provenance returned by a retriever.
+
+    ``text`` is the complete chunk used as evidence, not a display excerpt.
+    ``chunk_id`` and ``passage_ids`` connect ranking back to corpus records;
+    video IDs, timestamps, title, and URL support source display. Topics and
+    body-part tags are retrieval metadata, while score and rank describe a
+    particular search result rather than permanent corpus content.
+    """
 
     text: str = Field(min_length=1)
     chunk_id: str | None = None
@@ -73,13 +139,19 @@ class RetrievedChunk(Model):
     scientific_references: list[str] = Field(default_factory=list)
     reference_review_status: str | None = None
     word_count: int | None = Field(default=None, ge=0)
-    flags: list[str] = Field(default_factory=list)
     score: float | None = None
     rank: int | None = Field(default=None, ge=1)
 
 
 class Source(Model):
-    """A short link back to evidence used by the model."""
+    """A prompt-scoped citation pointing back to retrieved corpus evidence.
+
+    ``source_id`` is the citation key supplied to the model. ``chunk_id`` is
+    the underlying corpus identity and may differ. ``excerpt`` is suitable for
+    concise display; ``evidence_text`` retains the full text used to validate
+    supporting quotes. ``matched_terms`` are review highlights, not an
+    explanation of model reasoning.
+    """
 
     source_id: str
     title: str
@@ -93,32 +165,66 @@ class Source(Model):
     video_url: str | None = None
     start_url: str | None = None
     evidence_text: str | None = None
+    matched_terms: list[str] = Field(default_factory=list)
+
+
+class EvidenceQuote(Model):
+    """A verbatim passage excerpt tied to one retrieved source."""
+
+    source_id: str
+    quote: str = Field(min_length=12, max_length=500)
 
 
 class Exercise(Model):
-    name: str
+    """One prescribed movement with dosage, coaching, equipment, and citations.
+
+    ``source_ids`` identify supplied evidence; ``supporting_evidence`` records
+    exact quotes from those sources. The validator checks quote presence and
+    source membership, not whether the quote semantically justifies the
+    exercise.
+    """
+
+    name: str = Field(min_length=3, max_length=100)
     sets: int = Field(ge=1, le=10)
     repetitions: str
-    rest_seconds: int = Field(ge=0, le=600)
+    rest_seconds: int = Field(ge=0, le=300)
     coaching_note: str
     source_ids: list[str] = Field(default_factory=list)
+    supporting_evidence: list[EvidenceQuote] = Field(default_factory=list)
     equipment: list[str] = Field(default_factory=list)
 
 
 class Workout(Model):
+    """A single scheduled workout within a plan week.
+
+    ``estimated_minutes`` is checked against the student's requested session
+    duration. ``focus`` describes this workout and is distinct from the
+    request-wide focus.
+    """
+
     day: str
     focus: str
-    estimated_minutes: int = Field(ge=1, le=180)
+    estimated_minutes: int = Field(ge=1, le=120)
     exercises: list[Exercise] = Field(min_length=1, max_length=10)
 
 
 class Week(Model):
+    """A numbered plan week with an objective and scheduled workouts."""
+
     number: int = Field(ge=1)
     objective: str
     workouts: list[Workout] = Field(min_length=1, max_length=7)
 
 
 class TrainingPlan(Model):
+    """Structured plan payload returned by successful generation.
+
+    The application currently requests one week per interaction, while the
+    shared schema can represent multiple weeks for validation and evaluation.
+    ``assumptions`` expose model assumptions and ``safety_note`` is always part
+    of the user-facing plan; neither makes the plan medically authoritative.
+    """
+
     title: str
     summary: str
     weeks: list[Week] = Field(min_length=1, max_length=12)
@@ -127,7 +233,13 @@ class TrainingPlan(Model):
 
 
 class PlanResult(Model):
-    """Result returned by the pipeline and sent back by the API."""
+    """Pipeline outcome shared with the API, including optional source records.
+
+    ``status`` distinguishes completion from retrieval, evidence, and
+    generation failures. A completed result must include a plan; the current
+    pipeline omits it on failures. Sources can still be returned when generation
+    was attempted but validation failed.
+    """
 
     status: str
     message: str
@@ -136,6 +248,17 @@ class PlanResult(Model):
 
     @model_validator(mode="after")
     def completed_result_has_plan(self) -> "PlanResult":
+        """Require a plan payload when the result reports successful completion.
+
+        Args:
+            self: Pipeline result whose status and optional plan are checked.
+
+        Returns:
+            This result when its status and plan payload are consistent.
+
+        Raises:
+            ValueError: If the status is ``completed`` but no plan is present.
+        """
         if self.status == "completed" and self.plan is None:
             raise ValueError("a completed result needs a plan")
         return self

@@ -10,15 +10,45 @@ logger = logging.getLogger(__name__)
 
 
 class HybridRetriever:
-    """Combine two ranked lists without comparing unlike score scales."""
+    """Fuse lexical and semantic ranked lists with Reciprocal Rank Fusion.
+
+    RRF uses each retriever's rank rather than its raw score, allowing BM25 and
+    cosine-similarity results to be combined despite their different scales.
+    """
 
     def __init__(self, lexical, semantic, rrf_constant: int = 60):
+        """Store the two retrievers and rank-fusion smoothing constant.
+
+        Args:
+            lexical: Retriever supplying the lexical ranking (typically BM25).
+            semantic: Retriever supplying the semantic ranking.
+            rrf_constant: Offset added to each one-based rank in the RRF
+                contribution.
+        """
         self.lexical = lexical
         self.semantic = semantic
         self.rrf_constant = rrf_constant
 
     def search(self, query: str, top_k: int) -> list[RetrievedChunk]:
-        """Score each chunk as 1/(constant + rank) in each list where it appears."""
+        """Fuse both rankings and return the highest-scoring unique chunks.
+
+        Each source contributes ``1 / (rrf_constant + rank)`` for a chunk it
+        returns. To provide candidates for fusion, each retriever is asked for
+        four times ``top_k`` results (or ``top_k`` when larger).
+
+        Args:
+            query: Query passed unchanged to each underlying retriever.
+            top_k: Maximum number of fused chunks to return.
+
+        Returns:
+            Unique chunks ordered by descending RRF score, with fused one-based
+            ranks and scores attached.
+
+        Raises:
+            AttributeError: If a returned chunk has neither ``chunk_id`` nor a
+                passage ID usable as its identity.
+            IndexError: If a chunk has no passage IDs and no chunk ID.
+        """
         # Ask each retriever for enough candidates to give fusion useful options.
         candidate_count = max(top_k * 4, top_k)
         lists = [

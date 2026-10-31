@@ -21,16 +21,44 @@ LOG_LEVELS = {
 
 
 class RequestContextFilter(logging.Filter):
-    """Attach the active request ID to every formatted log record."""
+    """Attach the active request ID to log records that lack one.
+
+    Existing non-default ``request_id`` values are preserved so explicit
+    per-record context is not overwritten.
+    """
 
     def filter(self, record: logging.LogRecord) -> bool:
+        """Populate ``record.request_id`` and allow the record through.
+
+        Args:
+            record: Log record being processed by a handler.
+
+        Returns:
+            Always ``True``; this filter enriches records but never suppresses
+            them.
+        """
         if not getattr(record, "request_id", None) or record.request_id == "-":
             record.request_id = request_id_context.get()
         return True
 
 
 def configure_logging(service: str) -> None:
-    """Configure console and rotating-file logging once for a service."""
+    """Configure root console and per-service rotating-file handlers.
+
+    Handler names prevent duplicate installation on repeated calls. The level
+    and directory are read from ``REPWISE_LOG_LEVEL`` and ``REPWISE_LOG_DIR``,
+    defaulting to ``INFO`` and ``logs``.
+
+    Args:
+        service: Service label used in the log filename and handler name.
+
+    Returns:
+        ``None``.
+
+    Raises:
+        ValueError: If ``REPWISE_LOG_LEVEL`` is not a supported logging level.
+        OSError: If the log directory cannot be created or opened.
+    """
     level_name = os.getenv("REPWISE_LOG_LEVEL", "INFO").upper()
     level = LOG_LEVELS.get(level_name)
     if level is None:

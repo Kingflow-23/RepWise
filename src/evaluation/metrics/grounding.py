@@ -22,18 +22,44 @@ EVIDENCE_KINDS = {"evidence"}
 
 
 def normalise(text: str) -> str:
+    """Lowercase, fold accents, and retain only space-separated word tokens.
+
+    Args:
+        text: Claim quote or source text to normalize.
+
+    Returns:
+        Text with combining marks and punctuation removed.
+    """
     text = unicodedata.normalize("NFD", text.lower())
     text = "".join(c for c in text if unicodedata.category(c) != "Mn")
     return " ".join(re.findall(r"\w+", text))
 
 
 def quote_found(quote: str, source: str) -> bool:
-    """True when the quote appears word for word in the source, ignoring case, accents and punctuation."""
+    """Check whether a normalized quote is a substring of normalized source.
+
+    Args:
+        quote: Citation excerpt supplied for a claim.
+        source: Full cited chunk text.
+
+    Returns:
+        ``True`` when the quote occurs contiguously after case, accent, and
+        punctuation normalization; this does not establish claim entailment.
+    """
     return normalise(quote) in normalise(source)
 
 
 @dataclass
 class CitationCheck:
+    """Outcome for one citation attempt attached to a claim.
+
+    Attributes:
+        claim_index: Zero-based position of the claim in the input list.
+        chunk_id: Referenced chunk ID, or ``None`` if absent.
+        status: One of ``supported``, ``quote_mismatch``, ``missing_quote``,
+            ``unknown_chunk``, or ``not_retrieved``.
+    """
+
     claim_index: int
     chunk_id: str | None
     status: str  # supported | quote_mismatch | missing_quote | unknown_chunk | not_retrieved
@@ -41,6 +67,17 @@ class CitationCheck:
 
 @dataclass
 class GroundingReport:
+    """Accumulated citation and evidence-claim counts for one output.
+
+    Attributes:
+        n_evidence_claims: Number of claims labeled as evidence.
+        n_assumption_claims: Number of non-evidence claims.
+        n_uncited_claims: Evidence claims without citation records.
+        supported_claims: Evidence claims with at least one source quote match.
+        grounded_claims: Supported claims whose source was in retrieved context.
+        checks: Per-citation outcomes in claim and citation order.
+    """
+
     n_evidence_claims: int = 0
     n_assumption_claims: int = 0
     n_uncited_claims: int = 0
@@ -50,6 +87,12 @@ class GroundingReport:
 
     @property
     def citation_precision(self) -> Ratio:
+        """Return the fraction of citation checks that match real source quotes.
+
+        Returns:
+            Ratio counting ``supported`` and ``not_retrieved`` as valid quote
+            matches over all citation checks; undefined when there are none.
+        """
         return Ratio(
             sum(c.status in {"supported", "not_retrieved"} for c in self.checks),
             len(self.checks),
@@ -57,20 +100,45 @@ class GroundingReport:
 
     @property
     def faithfulness(self) -> Ratio:
+        """Return grounded evidence claims divided by evidence claims.
+
+        Returns:
+            Ratio of retrieved-context-supported evidence claims to all
+            evidence claims; undefined when no evidence claims were evaluated.
+        """
         return Ratio(self.grounded_claims, self.n_evidence_claims)
 
     @property
     def fabricated_citations(self) -> int:
+        """Count citations that refer to chunk IDs absent from the corpus.
+
+        Returns:
+            Number of ``unknown_chunk`` citation checks.
+        """
         return sum(c.status == "unknown_chunk" for c in self.checks)
 
 
 def check_claims(
     claims: list[dict], corpus: dict[str, str], retrieved_ids: set[str] | None = None
 ) -> GroundingReport:
-    """corpus maps chunk_id -> chunk text; retrieved_ids is what the generator was given.
+    """Check citation quotes against the corpus and retrieved context.
 
-    supported: the quote matches a real chunk.
-    grounded:  supported AND that chunk was part of the retrieved context.
+    Only ``kind="evidence"`` claims are scored; other claim kinds are counted
+    as assumptions/policies and excluded from grounded rates. A quote must
+    contain at least :data:`MIN_QUOTE_WORDS` normalized words.
+
+    Args:
+        claims: Claim dictionaries, optionally containing ``kind`` and a list
+            of citations with ``chunk_id`` and ``quote``.
+        corpus: Mapping from known chunk IDs to their full text.
+        retrieved_ids: Chunk IDs supplied to the generator. ``None`` means
+            context membership is not being checked; an empty set means no
+            cited source was retrieved.
+
+    Returns:
+        Counts and per-citation statuses. A quote match is ``supported``;
+        it is ``grounded`` only when the matching chunk is in retrieved
+        context.
     """
     report = GroundingReport()
     for i, claim in enumerate(claims):
@@ -118,6 +186,14 @@ def abstention_outcome(expected: str, actual: str) -> str | None:
 
     Returns "correct_abstention", "missed_abstention", "false_abstention",
     "answered" or None when the case is not about abstention.
+
+    Args:
+        expected: Expected case status.
+        actual: Status returned by the system.
+
+    Returns:
+        One of the documented outcome strings for ``abstain`` or ``ok`` cases;
+        otherwise ``None`` for statuses outside this abstention comparison.
     """
     if expected in ABSTAIN_STATUSES:
         return (
@@ -129,6 +205,16 @@ def abstention_outcome(expected: str, actual: str) -> str | None:
 
 
 def abstention_metrics(outcomes: list[str | None]) -> dict[str, Ratio]:
+    """Aggregate abstention accuracy and false-abstention rate.
+
+    Args:
+        outcomes: Per-case labels from :func:`abstention_outcome`; ``None`` and
+            unrelated outcomes are ignored.
+
+    Returns:
+        Ratios named ``abstention_accuracy`` and ``false_abstention_rate``.
+        Each denominator includes only cases applicable to that metric.
+    """
     needs = [o for o in outcomes if o in {"correct_abstention", "missed_abstention"}]
     answerable = [o for o in outcomes if o in {"false_abstention", "answered"}]
     return {

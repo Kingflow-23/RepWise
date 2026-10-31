@@ -9,6 +9,16 @@ HIGHER_IS_BETTER = {
 
 
 def _arrow(name: str, ascii_only: bool = False) -> str:
+    """Choose a direction marker for one metric.
+
+    Args:
+        name: Metric name used to look up its optimization direction.
+        ascii_only: Whether to use console-safe ``(+)``/``(-)`` text.
+
+    Returns:
+        Up/higher-is-better or down/lower-is-better marker. Unlisted metrics
+        default to higher-is-better.
+    """
     up = HIGHER_IS_BETTER.get(name, True)
     if ascii_only:  # Windows consoles often cannot print arrows
         return "(+)" if up else "(-)"
@@ -16,10 +26,31 @@ def _arrow(name: str, ascii_only: bool = False) -> str:
 
 
 def _metric_rows(metrics: dict) -> list[str]:
+    """Render a mapping of named ratios as Markdown table rows.
+
+    Args:
+        metrics: Metric names mapped to ratio-like values with ``fmt()``.
+
+    Returns:
+        One formatted Markdown row per metric, preserving mapping order.
+    """
     return [f"| {name} {_arrow(name)} | {r.fmt()} |" for name, r in metrics.items()]
 
 
 def render(meta: dict, results: dict, gates: list[dict]) -> str:
+    """Render a complete Markdown evaluation report.
+
+    Args:
+        meta: Run metadata including timestamp, modes, models, corpus, and
+            optional warnings.
+        results: Mapping of suite names to result objects with pass rate,
+            metrics, and optional latency values.
+        gates: Release-gate dictionaries containing gate, status, and value.
+
+    Returns:
+        Markdown report text. Detailed failures are referenced in
+        ``results.json`` rather than expanded inline.
+    """
     lines = [
         "# RepWise evaluation report",
         "",
@@ -61,7 +92,17 @@ def render(meta: dict, results: dict, gates: list[dict]) -> str:
 
 
 def render_console(results: dict, gates: list[dict]) -> str:
-    """Plain-ASCII summary; (+) higher is better, (-) lower is better."""
+    """Render a plain-ASCII console summary.
+
+    Args:
+        results: Suite names mapped to results with pass rates, metrics, and
+            optional failure records.
+        gates: Release-gate dictionaries to include after the suite summaries.
+
+    Returns:
+        Console-ready text using ``(+)`` for higher-is-better and ``(-)`` for
+        lower-is-better.
+    """
     out = []
     for name, r in results.items():
         out.append(f"\n== {name} ==  pass rate {r.pass_rate.fmt()}")
@@ -81,7 +122,18 @@ def render_console(results: dict, gates: list[dict]) -> str:
 
 
 def render_comparison(meta: dict, retrieval: dict, generation: dict) -> str:
-    """Render the retrieval ranking and controlled RAG/no-RAG generation comparison."""
+    """Render retrieval rankings and the controlled generation comparison.
+
+    Args:
+        meta: Comparison metadata including rankings, selected retriever,
+            models, corpus, and generation case IDs.
+        retrieval: Retriever names mapped to their evaluation results.
+        generation: Generation-arm labels mapped to their evaluation results.
+
+    Returns:
+        Markdown comparing retrieval strategies and the RAG/no-RAG generation
+        arms, including an interpretation caveat.
+    """
     lines = [
         "# RepWise benchmark comparison",
         "",

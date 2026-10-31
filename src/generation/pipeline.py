@@ -7,32 +7,62 @@ import re
 from time import perf_counter
 
 from ..llm.ollama import PlanGenerator
-from ..rag.context import make_query, select_evidence
+from ..rag.context import make_highlight_query, make_query, select_evidence
 from ..rag.prompt import load_system_prompt, make_user_prompt, plan_response_schema
 from ..retrieval.base import Retriever
 from ..schemas.models import PlanRequest, PlanResult, TrainingPlan
 
 logger = logging.getLogger(__name__)
+MINIMUM_RETRIEVED_CHUNKS = 5
 
 
 class PlanPipeline:
-    """Connect retrieval, evidence selection, Ollama and local validation."""
+    """Connect retrieval, evidence selection, generation, and local validation.
+
+    Retrieval is configured to request at least five chunks, and generation is
+    stopped when fewer than five are returned so the model has a minimum evidence
+    base.
+    """
 
     def __init__(self, retriever: Retriever, generator: PlanGenerator, top_k: int = 5):
+        """Store the services used to create plans.
+
+        Args:
+            retriever: Service that searches the prepared training corpus.
+            generator: Service that returns structured training plans.
+            top_k: Preferred retrieval count; values below five are raised to five.
+        """
         self.retriever = retriever
         self.generator = generator
-        self.top_k = top_k
+        self.top_k = max(MINIMUM_RETRIEVED_CHUNKS, top_k)
 
     def create_plan(self, request: PlanRequest) -> PlanResult:
-        """Create one grounded plan, or return a clear status when this fails."""
+        """Retrieve evidence, generate a plan, and validate it against the request.
+
+        Args:
+            self: Pipeline holding the configured retrieval and generation
+                services and the minimum retrieval count.
+            request: Validated profile and plan requirements for this generation.
+
+        Returns:
+            A result with status ``completed`` and the plan when validation
+            succeeds; otherwise a result with ``retrieval_error``,
+            ``insufficient_evidence``, or ``generation_error`` and an explanatory
+            message. Retrieved sources are included when generation was attempted.
+
+        Notes:
+            Generation is attempted up to three times: once initially and twice
+            more with a correction prompt after validation or provider errors.
+        """
         logger.info(
             "Plan generation started weeks=%s top_k=%s",
             request.weeks,
             self.top_k,
         )
         retrieval_started = perf_counter()
+        query = make_query(request)
         try:
-            chunks = self.retriever.search(make_query(request), self.top_k)
+            chunks = self.retriever.search(query, self.top_k)
         except Exception as error:
             logger.exception(
                 "Plan retrieval failed elapsed_ms=%.1f",
@@ -51,7 +81,24 @@ class PlanPipeline:
             len(chunks),
             (perf_counter() - retrieval_started) * 1000,
         )
-        evidence, sources = select_evidence(chunks)
+        if len(chunks) < MINIMUM_RETRIEVED_CHUNKS:
+            logger.warning(
+                "Plan generation stopped reason=insufficient_retrieval_count "
+                "retrieved=%s minimum=%s",
+                len(chunks),
+                MINIMUM_RETRIEVED_CHUNKS,
+            )
+            return PlanResult(
+                status="insufficient_evidence",
+                message=(
+                    f"Retrieval returned {len(chunks)} chunks; at least "
+                    f"{MINIMUM_RETRIEVED_CHUNKS} are required."
+                ),
+            )
+
+        evidence, sources = select_evidence(
+            chunks, query=make_highlight_query(request)
+        )
         if not evidence:
             logger.warning("Plan generation stopped reason=no_usable_evidence")
             return PlanResult(
@@ -86,7 +133,15 @@ class PlanPipeline:
                     attempt + 1,
                     (perf_counter() - generation_started) * 1000,
                 )
-                validate_plan(plan, request, {source.source_id for source in sources})
+                validate_plan(
+                    plan,
+                    request,
+                    {source.source_id for source in sources},
+                    source_evidence={
+                        source.source_id: source.evidence_text or ""
+                        for source in sources
+                    },
+                )
                 break
             except (OSError, ValueError, RuntimeError) as error:
                 last_error = error
@@ -122,9 +177,26 @@ def validate_plan(
     request: PlanRequest,
     source_ids: set[str],
     *,
+    source_evidence: dict[str, str] | None = None,
     require_citations: bool = True,
 ) -> None:
-    """Check the plan against the student request and supplied evidence."""
+    """Validate schedule, equipment, and citations against the request and sources.
+
+    Args:
+        plan: Generated plan to check.
+        request: Student requirements against which each week and workout is checked.
+        source_ids: IDs of sources supplied to the model.
+        source_evidence: Full text for each source, used to verify exact quote
+            membership when citations are required.
+        require_citations: Whether each exercise must cite supplied sources and
+            include a quote matching the cited source text.
+
+    Raises:
+        ValueError: If the plan has the wrong number or numbering of weeks,
+            incorrect workout counts, unavailable or duplicate workout days,
+            overlong sessions, non-specific or repeated exercise names, unavailable
+            equipment, or missing/unknown/unsupported citations.
+    """
     if len(plan.weeks) != request.weeks:
         raise ValueError("the number of weeks does not match the request")
     if {week.number for week in plan.weeks} != set(range(1, request.weeks + 1)):
@@ -157,6 +229,15 @@ def validate_plan(
     }
 
     def canonical_equipment(items: list[str]) -> set[str]:
+        """Map recognized equipment aliases to canonical names.
+
+        Args:
+            items: Equipment names supplied by a profile or exercise.
+
+        Returns:
+            A set with known English/French aliases normalized and unknown names
+            preserved in case-folded form.
+        """
         result = set()
         for item in items:
             folded = item.casefold()
@@ -173,7 +254,21 @@ def validate_plan(
         return result
 
     available_equipment = canonical_equipment(request.profile.equipment)
+    non_exercise_labels = {
+        "back",
+        "chest",
+        "core",
+        "full body",
+        "legs",
+        "lower body",
+        "push pull legs",
+        "upper body",
+    }
     for week in plan.weeks:
+        if len(week.workouts) != request.target_workouts_per_week:
+            raise ValueError(
+                "each week must have exactly the requested number of workouts"
+            )
         if len(week.workouts) > len(available_days):
             raise ValueError("a week has more workouts than available days")
         workout_days = [workout.day for workout in week.workouts]
@@ -186,7 +281,18 @@ def validate_plan(
                 raise ValueError(
                     "a workout is longer than the requested session duration"
                 )
+            exercise_names: set[str] = set()
             for exercise in workout.exercises:
+                normalized_name = " ".join(
+                    re.findall(r"[a-z0-9]+", exercise.name.casefold())
+                )
+                if normalized_name in non_exercise_labels:
+                    raise ValueError(
+                        "exercise names must identify a specific movement, not a body part or workout split"
+                    )
+                if normalized_name in exercise_names:
+                    raise ValueError("a workout cannot repeat the same exercise")
+                exercise_names.add(normalized_name)
                 required_equipment = canonical_equipment(exercise.equipment)
                 name = exercise.name.casefold()
                 for equipment, terms in equipment_aliases.items():
@@ -205,3 +311,20 @@ def validate_plan(
                     raise ValueError(
                         "an exercise cites a source that was not retrieved"
                     )
+                if require_citations:
+                    quotes = exercise.supporting_evidence
+                    quoted_source_ids = {item.source_id for item in quotes}
+                    if not quotes or quoted_source_ids != set(exercise.source_ids):
+                        raise ValueError(
+                            "each cited source must include a supporting evidence quote"
+                        )
+                    if source_evidence is None:
+                        raise ValueError(
+                            "source text is required to validate supporting evidence quotes"
+                        )
+                    for item in quotes:
+                        source_text = source_evidence.get(item.source_id)
+                        if source_text is None or item.quote not in source_text:
+                            raise ValueError(
+                                "a supporting evidence quote does not match its cited source"
+                            )

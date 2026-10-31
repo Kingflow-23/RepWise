@@ -1,3 +1,5 @@
+"""Build retrieval-ready chunks from cleaned, timestamped video passages."""
+
 import re
 import json
 import logging
@@ -16,14 +18,36 @@ logger = logging.getLogger(__name__)
 
 
 def read_json_file(text_json_path: str):
-    """
-    Read Json file of one video
+    """Read one video's line-delimited passage records into a DataFrame.
+
+    Args:
+        text_json_path: Path to the video's JSONL passage file.
+
+    Returns:
+        A pandas DataFrame containing the decoded records.
+
+    Raises:
+        FileNotFoundError: If the input path does not exist.
+        ValueError: If pandas cannot decode the JSONL records.
     """
     json_object = pd.read_json(text_json_path, lines=True)
     return json_object
 
 
 def read_manifest(manifest_path: str, coverage_path: str):
+    """Read the video manifest and topic coverage tables.
+
+    Args:
+        manifest_path: CSV path containing video metadata and references.
+        coverage_path: CSV path containing per-video topic counts.
+
+    Returns:
+        ``(manifest_dataframe, coverage_dataframe)`` in that order.
+
+    Raises:
+        FileNotFoundError: If either CSV is missing.
+        pandas.errors.ParserError: If either CSV is malformed.
+    """
     manifest_dataframe, coverage_dataframe = pd.read_csv(manifest_path), pd.read_csv(
         coverage_path
     )
@@ -31,11 +55,59 @@ def read_manifest(manifest_path: str, coverage_path: str):
 
 
 def word_count(text: str):
+    """Count regex word tokens in a passage.
+
+    Args:
+        text: Passage text to count.
+
+    Returns:
+        Number of ``\\w+`` matches, rather than whitespace-delimited tokens.
+    """
     return len(re.findall(r"\w+", text))
 
 
+def _is_unflagged(flags):
+    """Return whether a flags cell is empty or missing.
+
+    Args:
+        flags: A decoded collection, null-like value, or CSV cell value.
+
+    Returns:
+        ``True`` for an empty collection, missing value, or blank string;
+        otherwise ``False``.
+    """
+    if isinstance(flags, (list, tuple, set)):
+        return not flags
+    if flags is None or pd.isna(flags):
+        return True
+    return not str(flags).strip()
+
+
 def create_chunk(text_json_path: str):
+    """Merge a video's passages into overlapping chunks under the word cap.
+
+    Flagged passages are excluded when a ``flags`` column is present. Chunk
+    identifiers derive from the video and passage range, making them stable
+    while that source range remains unchanged.
+
+    Args:
+        text_json_path: Path to one video's JSONL passage file.
+
+    Returns:
+        An insertion-ordered mapping from internal keys to chunk records. Each
+        record contains text, word count, source passage IDs, times, URL, and
+        video ID; adjacent chunks overlap by one passage.
+
+    Raises:
+        FileNotFoundError: If the passage file is missing.
+        ValueError: If pandas cannot decode the passage records.
+        AttributeError: If a passage ID or URL does not match the expected
+            format.
+    """
     json_object = read_json_file(text_json_path)
+    if "flags" in json_object:
+        json_object = json_object.loc[json_object["flags"].map(_is_unflagged)]
+        json_object = json_object.reset_index(drop=True)
 
     n_rows = len(json_object)
     start_index = 0
@@ -48,7 +120,7 @@ def create_chunk(text_json_path: str):
     while start_index < n_rows:
         row_index = start_index
         word_total = 0
-        texts, flags, passage_ids = [], set(), []
+        texts, passage_ids = [], []
 
         start_time = json_object.iloc[row_index]["start"]
         start_passage_id = re.search(
@@ -63,7 +135,6 @@ def create_chunk(text_json_path: str):
                 break
 
             texts.append(row["text"])
-            flags.update(row["flags"])
             passage_ids.append(row["passage_id"])
             word_total += n_words
             row_index += 1
@@ -83,7 +154,6 @@ def create_chunk(text_json_path: str):
             # Stable while the source video and passage range stay unchanged.
             "chunk_id": f"{video_id}{start_passage_id}-{end_time_passage_id}",
             "text": " ".join(texts),
-            "flags": sorted(flags),
             "word_count": word_total,
             "passage_ids": passage_ids,
             "start": start_time,
@@ -107,8 +177,27 @@ def final_metadata_match(
     topic_min_count=TOPIC_MIN_COUNT,
     speaker="Nassim Sahili",
 ):
-    """Attach video-level metadata to every chunk of one video.
-    Returns a list of flat chunk records."""
+    """Attach topic, source, citation, and timing metadata to every chunk.
+
+    Topics are included when their passage counts meet ``topic_min_count``.
+    Scientific references are split from the manifest's pipe-delimited value;
+    body parts are detected from each chunk's text.
+
+    Args:
+        chunk_dict: Non-empty chunk mapping returned by :func:`create_chunk`.
+        coverage_df: Coverage matrix with one row per video and topic columns.
+        manifest_df: Manifest with matching video metadata and references.
+        topic_min_count: Minimum coverage count required to attach a topic.
+        speaker: Speaker label stored on each output chunk.
+
+    Returns:
+        Flat chunk records enriched with citation and retrieval metadata.
+
+    Raises:
+        StopIteration: If ``chunk_dict`` is empty.
+        IndexError: If the video has no matching row in either input table.
+        KeyError: If a required metadata column is absent.
+    """
 
     video_id = next(iter(chunk_dict.values()))["video_id"]
 
@@ -156,6 +245,19 @@ def save_chunk(records: list, out_dir: str | Path | None = None):
 
     Each record is a dict produced by final_metadata_match() and contains all the
     metadata needed for retrieval and citation.
+
+    Args:
+        records: Flat records for a single video. An empty list is a no-op.
+        out_dir: Destination directory; defaults to the repository's chunks
+            directory.
+
+    Returns:
+        A one-element list containing the written path, or an empty list when
+        there are no records.
+
+    Raises:
+        OSError: If the output directory or file cannot be created or written.
+        KeyError: If a non-empty record set lacks ``video_id``.
     """
     if out_dir is None:
         out_dir = REPO / "data" / "corpus" / "chunks"
@@ -176,12 +278,34 @@ def save_chunk(records: list, out_dir: str | Path | None = None):
 
 
 def main():
-    """Build chunk files for all videos in the cleaned corpus."""
+    """Build chunk files from the repository's cleaned corpus.
+
+    Returns:
+        Paths of the chunk JSONL files written.
+    """
     return build_chunks(REPO / "data" / "corpus")
 
 
 def build_chunks(corpus_dir: str | Path):
-    """Build chunks using one corpus directory (also used by fast fixture tests)."""
+    """Build and enrich chunk files for each passage file in a corpus.
+
+    Empty videos have stale chunk files removed. Files are processed in sorted
+    filename order for reproducible outputs.
+
+    Args:
+        corpus_dir: Directory containing ``manifest.csv``,
+            ``coverage_matrix.csv``, and ``passages``.
+
+    Returns:
+        Paths of chunk JSONL files written for non-empty videos.
+
+    Raises:
+        FileNotFoundError: If required corpus files or passages are unavailable.
+        KeyError: If a passage or metadata record lacks a required field.
+        IndexError: If a video's manifest or coverage row is absent.
+        OSError: If stale files cannot be removed or output files cannot be
+            written.
+    """
     corpus_dir = Path(corpus_dir)
     manifest_path = corpus_dir / "manifest.csv"
     coverage_path = corpus_dir / "coverage_matrix.csv"
@@ -195,6 +319,9 @@ def build_chunks(corpus_dir: str | Path):
         video_id = video_file.stem
         chunk_dict = create_chunk(str(video_file))
         if not chunk_dict:
+            stale_chunk_file = corpus_dir / "chunks" / f"{video_id}.jsonl"
+            if stale_chunk_file.exists():
+                stale_chunk_file.unlink()
             continue
 
         records = final_metadata_match(

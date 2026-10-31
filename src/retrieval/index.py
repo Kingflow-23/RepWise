@@ -13,6 +13,23 @@ logger = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse index-build options and create a local semantic index.
+
+    Args:
+        argv: Optional command-line argument list; ``None`` uses process
+            arguments.
+
+    Returns:
+        Exit status zero after the index has been written.
+
+    Raises:
+        SystemExit: If ``--build`` is omitted or arguments are invalid.
+        RuntimeError: If NumPy, Sentence Transformers, or the local model is
+            unavailable.
+        FileNotFoundError: If the chunks directory is missing or empty.
+        ValueError: If corpus chunks or generated vectors are invalid.
+        OSError: If the index cannot be written.
+    """
     parser = argparse.ArgumentParser(
         description="Build RepWise's local embedding index."
     )

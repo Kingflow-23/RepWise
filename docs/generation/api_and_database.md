@@ -50,7 +50,7 @@ The secret used to sign tokens comes from `REPWISE_AUTH_SECRET`. Without it, reg
 
 Only completed plans are inserted. A failed generation result is returned as an API error and is not saved. SQLite is local and initialized when the API starts.
 
-Existing databases are migrated from username-based ownership to generated account IDs while preserving users, profiles, and plans. Legacy usernames become full names. If legacy profile rows have no matching user, startup stops with an explicit reconciliation error rather than discarding or assigning those rows. Plans created before full request snapshots were introduced retain their original options and plan/source JSON, but their historical profile cannot be recovered if it was not stored at creation time; new plans persist the exact profile and options used.
+The application creates the SQLite database automatically, but does not migrate older schemas. If you have a database from before account IDs were introduced, startup reports that its schema is unsupported. Keep a backup if you need its data, then set `REPWISE_DATABASE_PATH` to a new database file to start fresh.
 
 ## Local-demo threat model
 

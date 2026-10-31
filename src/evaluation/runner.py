@@ -3,6 +3,7 @@
 import argparse
 import json
 import logging
+import math
 import statistics
 import sys
 import time
@@ -22,6 +23,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Failure:
+    """One failed check recorded by a benchmark suite.
+
+    Attributes:
+        case_id: Identifier of the benchmark case.
+        layer: Evaluation layer, such as retrieval or generation.
+        category: Machine-readable failure category.
+        detail: Human-readable explanation with contextual values.
+    """
+
     case_id: str
     layer: str
     category: str
@@ -30,6 +40,18 @@ class Failure:
 
 @dataclass
 class SuiteResult:
+    """Aggregated metrics, pass count, and failures for one evaluation suite.
+
+    Attributes:
+        name: Suite label.
+        n_cases: Number of applicable evaluated cases.
+        n_passed: Number of evaluated cases without failures.
+        metrics: Named metric ratios.
+        extra: Additional suite-specific measurements and configuration.
+        failures: Failure details collected across cases.
+        case_ids: All case IDs visited, including skipped retrieval cases.
+    """
+
     name: str
     n_cases: int = 0
     n_passed: int = 0
@@ -40,28 +62,92 @@ class SuiteResult:
 
     @property
     def pass_rate(self) -> Ratio:
+        """Return passed cases divided by applicable cases.
+
+        Returns:
+            Ratio representing the suite pass rate; an empty suite has an
+            undefined value because its denominator is zero.
+        """
         return Ratio(self.n_passed, self.n_cases)
 
 
 def _percentile(values: list[float], q: float) -> float | None:
+    """Return the nearest-rank percentile of numeric observations.
+
+    Args:
+        values: Measurements to summarize.
+        q: Quantile in the closed interval from zero to one.
+
+    Returns:
+        The sorted observation at ``ceil(q * n) - 1`` (bounded below by zero),
+        or ``None`` for no observations.
+
+    Raises:
+        ValueError: If ``q`` is outside ``[0, 1]``.
+    """
     if not values:
         return None
+    if not 0 <= q <= 1:
+        raise ValueError("percentile must be between 0 and 1")
     ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, round(q * (len(ordered) - 1)))]
+    return ordered[max(0, math.ceil(q * len(ordered)) - 1)]
 
 
 # ---------------------------------------------------------------- retrieval
 
 
-def evaluate_retrieval(cases, retriever, ks=None, main_k=None) -> SuiteResult:
-    ks = ks or config.K_VALUES
-    main_k = main_k or config.MAIN_K
+def evaluate_retrieval(
+    cases, retriever, ks: tuple[int, ...] | None = None, main_k: int | None = None
+) -> SuiteResult:
+    """Evaluate a retriever against answerable, span-labelled query cases.
+
+    Unanswerable cases are recorded as seen but skipped because they have no
+    relevance spans; generation is responsible for abstention evaluation.
+    Retrieval passes only when every labelled span is covered within ``main_k``.
+
+    Args:
+        cases: Retrieval cases with IDs, queries, answerability, and spans.
+        retriever: Callable accepting ``(query, depth)`` and returning ranked
+            chunk mappings.
+        ks: Cutoffs for recall and precision; defaults to configured values.
+        main_k: Cutoff used to determine case pass/fail; defaults to the
+            configured main cutoff.
+
+    Returns:
+        A retrieval ``SuiteResult`` with per-query averaged metrics, latency,
+        skipped-case count, and failure details.
+
+    Raises:
+        ValueError: If ``ks`` is empty, contains duplicates or non-positive /
+            non-integer values, or ``main_k`` is a boolean or non-positive.
+        Exception: Exceptions raised by the supplied retriever propagate.
+    """
+    ks = config.K_VALUES if ks is None else ks
+    main_k = config.MAIN_K if main_k is None else main_k
+    if (
+        not ks
+        or len(set(ks)) != len(ks)
+        or any(isinstance(k, bool) or not isinstance(k, int) or k < 1 for k in ks)
+    ):
+        raise ValueError("retrieval cutoffs must contain positive integers")
+    if isinstance(main_k, bool) or main_k < 1:
+        raise ValueError("main_k must be a positive integer")
     res = SuiteResult("retrieval")
     per_query: dict[str, list[float]] = {}
     latencies = []
+    retrieval_depth = max(max(ks), main_k, config.RETRIEVAL_DEPTH)
 
     def add(bucket: dict, key: str, value):
+        """Append a defined metric value to its per-query aggregation bucket.
 
+        Args:
+            bucket: Metric-name to observation-list mapping.
+            key: Metric name.
+            value: Observation; ``None`` values are ignored.
+
+        Returns:
+            ``None``.
+        """
         if value is not None:
             bucket.setdefault(key, []).append(value)
 
@@ -71,7 +157,7 @@ def evaluate_retrieval(cases, retriever, ks=None, main_k=None) -> SuiteResult:
             # No relevance labels exist for these cases; generation checks abstention.
             continue
         t0 = time.perf_counter()
-        ranking = retriever(case.query, max(max(ks), config.RETRIEVAL_DEPTH))
+        ranking = retriever(case.query, retrieval_depth)
         latencies.append((time.perf_counter() - t0) * 1000)
         res.n_cases += 1
         j = judge_ranking(case.spans, ranking)
@@ -114,6 +200,8 @@ def evaluate_retrieval(cases, retriever, ks=None, main_k=None) -> SuiteResult:
     res.metrics = {name: mean_ratio(vals) for name, vals in per_query.items()}
     res.extra = {
         "main_k": main_k,
+        "retrieval_depth": retrieval_depth,
+        "cutoffs": list(ks),
         "n_unanswerable_skipped": sum(not c.answerable for c in cases),
         "latency_ms_median": statistics.median(latencies) if latencies else None,
         "latency_ms_p95": _percentile(latencies, 0.95),
@@ -125,6 +213,17 @@ def evaluate_retrieval(cases, retriever, ks=None, main_k=None) -> SuiteResult:
 
 
 def plan_schema_errors(plan) -> list[str]:
+    """Check the minimum nested structure required for a generated plan.
+
+    Args:
+        plan: Candidate plan object, expected to contain non-empty sessions and
+            named exercises.
+
+    Returns:
+        Human-readable schema problems, or an empty list when the minimal
+        structure is valid. This is a lightweight check; full model validation
+        is performed separately.
+    """
     if not isinstance(plan, dict):
         return ["plan is not an object"]
     sessions = plan.get("sessions")
@@ -146,6 +245,29 @@ def plan_schema_errors(plan) -> list[str]:
 def evaluate_generation(
     cases, planner, corpus: dict[str, str] | None, llm_mode: str = "mocked"
 ) -> SuiteResult:
+    """Evaluate planner outputs for status, plan validity, constraints, and citations.
+
+    Planner exceptions are captured as per-case failures so one crash does not
+    stop the suite. Optional corpus text enables quote-grounding metrics.
+
+    Args:
+        cases: Generation cases with expected statuses and validation rules.
+        planner: Callable accepting a case-input mapping and returning its
+            generation result mapping.
+        corpus: Optional mapping of chunk IDs to source text for grounding
+            checks; ``None`` disables those checks.
+        llm_mode: Label recorded in result extras, such as ``"mocked"`` or
+            ``"real Ollama"``.
+
+    Returns:
+        A generation ``SuiteResult`` containing pass count, status/structure/
+        citation/grounding metrics, latency, and case-level failures.
+
+    Raises:
+        Exception: Errors outside the per-case planner call or handled plan
+            validation may propagate, including failures from evaluation
+            dependencies.
+    """
     from ..generation.pipeline import validate_plan
     from ..schemas.models import PlanRequest, TrainingPlan, UserProfile
 
@@ -161,7 +283,20 @@ def evaluate_generation(
         res.n_cases += 1
         t0 = time.perf_counter()
         try:
-            out = planner({"request": case.request, "profile": case.profile})
+            out = planner(
+                {
+                    "id": case.id,
+                    "request": case.request,
+                    "profile": case.profile,
+                    "weeks": case.weeks,
+                    "workouts_per_week": case.workouts_per_week,
+                    "extra_constraints": case.extra_constraints,
+                }
+            )
+            if not isinstance(out, dict):
+                raise TypeError(
+                    f"planner returned {type(out).__name__}; expected a dictionary"
+                )
             error = None
         except (
             Exception
@@ -172,6 +307,16 @@ def evaluate_generation(
         fails: list[Failure] = []
 
         def fail(category: str, detail: str):
+            """Record a generation failure for the current case.
+
+            Args:
+                category: Machine-readable failure category.
+                detail: Human-readable failure explanation.
+
+            Returns:
+                ``None``; appends a :class:`Failure` to the current case's
+                failure list.
+            """
             fails.append(Failure(case.id, "generation", category, detail))
 
         if error:
@@ -214,6 +359,7 @@ def evaluate_generation(
                     request = PlanRequest(
                         focus=case.request,
                         weeks=case.weeks,
+                        workouts_per_week=case.workouts_per_week,
                         extra_constraints=case.extra_constraints,
                         profile=UserProfile.model_validate(case.profile),
                     )
@@ -221,6 +367,7 @@ def evaluate_generation(
                         TrainingPlan.model_validate(plan),
                         request,
                         set(out.get("available_source_ids") or []),
+                        source_evidence=out.get("available_source_evidence"),
                         require_citations=out.get("rag_enabled", True),
                     )
                     constraint_compliant += 1
@@ -294,7 +441,20 @@ def evaluate_generation(
 
 
 def release_gates(results: dict[str, SuiteResult]) -> list[dict]:
-    """MVP engineering gates from the project note (section 6)."""
+    """Evaluate format-validity and red-team safety release gates.
+
+    Args:
+        results: Suite results keyed by suite name. The generation suite is
+            optional; retrieval-only runs have no generation gates.
+
+    Returns:
+        Gate dictionaries with a human-readable gate, ``pass``, ``fail``, or
+        ``not measured`` status, and a displayed value.
+
+    Raises:
+        DatasetError: If loading the configured red-team cases fails.
+        KeyError: If a generation result lacks its output-schema metric.
+    """
     gates = []
     gen = results.get("generation")
     if gen:
@@ -311,7 +471,6 @@ def release_gates(results: dict[str, SuiteResult]) -> list[dict]:
                 "value": validity.fmt(),
             }
         )
-        unsafe = [f for f in gen.failures if f.category == "unsafe_release"]
         safety_case_ids = {case.id for case in safety_cases}
         unsafe_failures = [
             failure
@@ -346,6 +505,18 @@ def release_gates(results: dict[str, SuiteResult]) -> list[dict]:
 
 
 def parse_args(argv=None):
+    """Parse command-line options for a unified evaluation run.
+
+    Args:
+        argv: Optional argument sequence; ``None`` parses process arguments.
+
+    Returns:
+        An ``argparse.Namespace`` with suite, retriever, LLM, label, and model
+        selections.
+
+    Raises:
+        SystemExit: If arguments are invalid or ``--help`` is requested.
+    """
     p = argparse.ArgumentParser(
         description="Run the RepWise retrieval and generation benchmark. Settings are in config/evaluation_config.py."
     )
@@ -386,13 +557,38 @@ def run_evaluation(
 ) -> dict:
     """Evaluate one retriever / planner pair on the benchmark cases.
 
-    Writes results.json and report.md in a new run folder and returns
-    {"run_dir", "payload", "results", "gates"}.
+    Writes ``results.json`` and ``report.md`` in a new run folder.
+
+    Args:
+        suite: Suite selector, such as ``retrieval``, ``generation``, ``all``,
+            or ``red-team``.
+        retriever_name: Retrieval strategy used for retrieval and generation.
+        planner_name: Planner adapter name selected for generation.
+        label: Optional suffix included in the output folder and report.
+        generation_model: Optional model override for the generation planner.
+
+    Returns:
+        Mapping with ``run_dir``, serialized ``payload``, in-memory ``results``,
+        and release ``gates``.
+
+    Raises:
+        DatasetError: If a selected benchmark dataset is invalid.
+        ValueError: If environment configuration or suite-specific input is
+            invalid.
+        OSError: If report output cannot be created or written.
     """
     results: dict[str, SuiteResult] = {}
     warnings: list[str] = []
 
     def warn(message: str):
+        """Record and print a non-fatal setup or evaluation warning.
+
+        Args:
+            message: Warning text to include in run metadata and stderr.
+
+        Returns:
+            ``None``.
+        """
         warnings.append(message)
         print(f"[warn] {message}", file=sys.stderr)
 
@@ -429,12 +625,31 @@ def run_evaluation(
             planner = adapters.make_mock_naive(chunks)
         else:
             runtime_settings = AppConfig.from_environment()
-            planner = adapters.build_planner(
-                planner_name,
-                planner_chunks_dir,
-                model_name=generation_model or runtime_settings.ollama_model,
-                retriever_name=retriever_name,
-            )
+            try:
+                planner = adapters.build_planner(
+                    planner_name,
+                    planner_chunks_dir,
+                    model_name=generation_model or runtime_settings.ollama_model,
+                    retriever_name=retriever_name,
+                )
+            except (ImportError, OSError, RuntimeError, ValueError) as error:
+                setup_error = str(error)
+                warn(f"Planner setup failed: {setup_error}")
+
+                def planner(_case, error_message=setup_error):
+                    """Raise the captured setup error when a case is evaluated.
+
+                    Args:
+                        _case: Generation case mapping; its ID is added to the
+                            error message when available.
+                        error_message: Captured planner initialization failure.
+
+                    Raises:
+                        RuntimeError: Always, to turn the setup failure into a
+                            per-case planner failure.
+                    """
+                    case_id = _case.get("id", "unknown")
+                    raise RuntimeError(f"{error_message} (case: {case_id})")
         results["generation"] = evaluate_generation(
             cases,
             planner,
@@ -448,12 +663,10 @@ def run_evaluation(
 
     gates = release_gates(results)
     runtime_settings = AppConfig.from_environment()
-    effective_retriever = (
-        config.RETRIEVER
-        if suite != "retrieval" and planner_name == "ollama-rag"
-        else retriever_name
-    )
-    if suite == "generation" and planner_name not in {
+    effective_retriever = retriever_name
+    if planner_name == "ollama-no-rag":
+        effective_retriever = "none (no RAG)"
+    elif suite == "generation" and planner_name not in {
         "ollama-rag",
         "ollama-no-rag",
     }:
@@ -514,6 +727,15 @@ def run_evaluation(
 
 
 def _serialize_result(result: SuiteResult) -> dict:
+    """Convert a suite result into JSON-compatible values.
+
+    Args:
+        result: In-memory suite result to serialize.
+
+    Returns:
+        Mapping containing counts, ratio dictionaries, extras, and serialized
+        failure records.
+    """
     return {
         "n_cases": result.n_cases,
         "n_passed": result.n_passed,
@@ -530,7 +752,33 @@ def run_comparison(
     model_b: str | None = None,
     label: str = "",
 ) -> dict:
-    """Rank retrievers, then compare two RAG models against model A without RAG."""
+    """Rank retrievers, then compare two RAG models against model A without RAG.
+
+    Retrieval strategy selection is based on recall, then MRR, then median
+    latency unless ``requested_retriever`` explicitly overrides it. The same
+    cases and selected retriever are used across generation arms.
+
+    Args:
+        requested_retriever: Optional explicit strategy (``bm25``, ``semantic``,
+            or ``hybrid``) for the generation comparison.
+        model_a: First Ollama model; defaults to configured primary model.
+        model_b: Second Ollama model; defaults to configured comparison model.
+        label: Optional suffix included in the report output folder.
+
+    Returns:
+        Mapping with ``run_dir``, JSON-compatible ``payload``, in-memory suite
+        ``results``, and rendered comparison ``report``.
+
+    Raises:
+        ValueError: If both model IDs are equal or the selected retriever is
+            unknown.
+        DatasetError: If the benchmark datasets are invalid.
+        FileNotFoundError: If corpus chunks or required local indexes are
+            missing.
+        RuntimeError: If a selected embedding model or Ollama planner cannot be
+            initialized.
+        OSError: If run output cannot be written.
+    """
     settings = AppConfig.from_environment()
     model_a = model_a or settings.ollama_model
     model_b = model_b or settings.ollama_comparison_model
@@ -540,15 +788,26 @@ def run_comparison(
     chunks = adapters.load_chunks(config.CHUNKS_DIR)
     corpus = {chunk["chunk_id"]: chunk.get("text", "") for chunk in chunks}
     retrieval_cases = datasets.load_retrieval_cases()
-    retrieval_results = {}
     strategies = ["bm25", "semantic", "hybrid"]
+    retrievers = adapters.build_retrievers(
+        strategies, config.CHUNKS_DIR, chunks=chunks
+    )
+    retrieval_results = {}
     for strategy in strategies:
-        retriever = adapters.build_retriever(strategy, config.CHUNKS_DIR)
         retrieval_results[strategy] = evaluate_retrieval(
-            retrieval_cases, retriever
+            retrieval_cases, retrievers[strategy]
         )
 
     def retrieval_rank(strategy: str) -> tuple[float, float, float]:
+        """Build the descending-priority key for one retrieval strategy.
+
+        Args:
+            strategy: Retriever key in the evaluated results.
+
+        Returns:
+            Tuple of Recall@MAIN_K, MRR, and negative median latency, using
+            sentinel values when a metric is undefined.
+        """
         result = retrieval_results[strategy]
         recall = result.metrics.get(f"recall@{config.MAIN_K}")
         mrr = result.metrics.get("mrr")
@@ -571,9 +830,7 @@ def run_comparison(
         (f"{model_b} + RAG", "ollama-rag", model_b),
         (f"{model_a} without RAG", "ollama-no-rag", model_a),
     ]
-    shared_retriever = adapters.build_retriever(
-        best_retriever, config.CHUNKS_DIR
-    )
+    shared_retriever = retrievers[best_retriever]
     for arm, planner_name, model_name in generation_arms:
         planner = adapters.build_planner(
             planner_name,
@@ -590,9 +847,26 @@ def run_comparison(
         )
 
     def generation_rank(arm: str) -> tuple[float, float, float, float]:
+        """Build the priority key for one generation comparison arm.
+
+        Args:
+            arm: Generation-arm label in the evaluated results.
+
+        Returns:
+            Tuple ordered by pass rate, request compliance, schema validity,
+            and negative median latency.
+        """
         result = generation_results[arm]
 
         def metric(name: str) -> float:
+            """Read one defined generation metric or use the ranking sentinel.
+
+            Args:
+                name: Metric key in the arm's result.
+
+            Returns:
+                Metric value, or ``-1.0`` when absent or not applicable.
+            """
             ratio = result.metrics.get(name)
             return ratio.value if ratio and ratio.value is not None else -1.0
 
@@ -646,6 +920,23 @@ def run_comparison(
 
 
 def main(argv=None) -> int:
+    """Run the selected benchmark mode and print its concise report.
+
+    Args:
+        argv: Optional command-line argument sequence; ``None`` uses
+            ``sys.argv``.
+
+    Returns:
+        Process status: zero on normal completion, or one when configured
+        release gates fail.
+
+    Raises:
+        SystemExit: If command-line arguments are invalid.
+        ValueError: If red-team mode is requested without the real Ollama
+            planner or a selected configuration is invalid.
+        DatasetError: If the selected dataset fails validation.
+        OSError: If run outputs cannot be written.
+    """
     args = parse_args(argv)
     configure_logging("evaluation")
     logger.info(

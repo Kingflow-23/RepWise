@@ -17,67 +17,66 @@ logger = logging.getLogger(__name__)
 
 
 def now() -> str:
-    """Return a consistent UTC timestamp."""
+    """Return the current UTC time as an ISO-8601 string.
+
+    Returns:
+        An aware UTC timestamp suitable for the repository's text columns.
+    """
     return datetime.now(UTC).isoformat()
 
 
 class StudentRepository:
-    """Keep only the data needed to personalise and revisit generated plans."""
+    """Persist account, profile, and plan records in one configured SQLite file."""
 
     def __init__(self, database_path: str | Path):
+        """Configure the SQLite database location.
+
+        Args:
+            database_path: File path for the database; parent directories are
+                created when :meth:`initialize` is called.
+        """
         self.database_path = str(database_path)
 
     def initialize(self) -> None:
-        """Create tables and migrate username-owned rows to generated account IDs."""
+        """Create the repository tables for a fresh or current-schema database.
+
+        Raises:
+            RuntimeError: If an existing database uses an unsupported schema.
+            sqlite3.Error: If SQLite cannot create the schema.
+        """
         logger.info("Initializing SQLite repository")
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
-            connection.executescript("""
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     full_name TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL UNIQUE,
                     password_hash TEXT NOT NULL,
                     created_at TEXT NOT NULL
-                );
+                )
             """)
             user_columns = {
                 row[1] for row in connection.execute("PRAGMA table_info(users)")
             }
-            if "username" in user_columns and "full_name" not in user_columns:
-                connection.execute(
-                    "ALTER TABLE users RENAME COLUMN username TO full_name"
+            required_user_columns = {
+                "full_name",
+                "user_id",
+                "password_hash",
+                "created_at",
+            }
+            if not required_user_columns <= user_columns:
+                raise RuntimeError(
+                    "The existing database uses an unsupported schema. "
+                    "Back it up and configure a fresh database path; automatic "
+                    "schema migration is not supported."
                 )
-                user_columns.remove("username")
-                user_columns.add("full_name")
-            if "user_id" not in user_columns:
-                connection.execute("ALTER TABLE users ADD COLUMN user_id TEXT")
-            for (full_name,) in connection.execute(
-                "SELECT full_name FROM users WHERE user_id IS NULL OR user_id=''"
-            ).fetchall():
-                connection.execute(
-                    "UPDATE users SET user_id=? WHERE full_name=?",
-                    (str(uuid.uuid4()), full_name),
-                )
-            connection.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS users_by_id ON users(user_id)"
-            )
-            connection.executescript("""
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS student_profiles (
                     student_id TEXT PRIMARY KEY,
                     profile_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(student_id) REFERENCES users(user_id) ON DELETE CASCADE
-                );
-                CREATE TABLE IF NOT EXISTS training_plans (
-                    id TEXT PRIMARY KEY,
-                    student_id TEXT NOT NULL,
-                    request_json TEXT NOT NULL,
-                    plan_json TEXT NOT NULL,
-                    sources_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY(student_id) REFERENCES student_profiles(student_id) ON DELETE CASCADE
-                );
-                CREATE INDEX IF NOT EXISTS plans_by_student ON training_plans(student_id, created_at DESC);
+                )
             """)
             profile_foreign_keys = connection.execute(
                 "PRAGMA foreign_key_list(student_profiles)"
@@ -86,49 +85,13 @@ class StudentRepository:
                 row[2] == "users" and row[3] == "student_id" and row[4] == "user_id"
                 for row in profile_foreign_keys
             ):
-                connection.commit()
-                self._migrate_profile_owner_ids(connection)
-        logger.info("SQLite repository initialized")
-
-    def _migrate_profile_owner_ids(self, connection: sqlite3.Connection) -> None:
-        """Preserve old account data while replacing username ownership with user IDs."""
-        orphan_profiles = connection.execute("""
-            SELECT COUNT(*) FROM student_profiles p
-            LEFT JOIN users u ON u.full_name=p.student_id
-            WHERE u.user_id IS NULL
-            """).fetchone()[0]
-        orphan_plans = connection.execute("""
-            SELECT COUNT(*) FROM training_plans t
-            LEFT JOIN student_profiles p ON p.student_id=t.student_id
-            WHERE p.student_id IS NULL
-            """).fetchone()[0]
-        if orphan_profiles or orphan_plans:
-            raise RuntimeError(
-                "Cannot add account ownership constraints: the existing database has "
-                f"{orphan_profiles} profiles without users and {orphan_plans} plans "
-                "without profiles. Reconcile those rows before restarting RepWise."
-            )
-
-        connection.execute("PRAGMA foreign_keys=OFF")
-        try:
-            connection.execute("BEGIN IMMEDIATE")
-            connection.execute("DROP INDEX IF EXISTS plans_by_student")
-            connection.execute(
-                "ALTER TABLE training_plans RENAME TO training_plans_legacy"
-            )
-            connection.execute(
-                "ALTER TABLE student_profiles RENAME TO student_profiles_legacy"
-            )
-            connection.execute("""
-                CREATE TABLE student_profiles (
-                    student_id TEXT PRIMARY KEY,
-                    profile_json TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    FOREIGN KEY(student_id) REFERENCES users(user_id) ON DELETE CASCADE
+                raise RuntimeError(
+                    "The existing database uses an unsupported profile ownership "
+                    "schema. Back it up and configure a fresh database path; "
+                    "automatic schema migration is not supported."
                 )
-            """)
             connection.execute("""
-                CREATE TABLE training_plans (
+                CREATE TABLE IF NOT EXISTS training_plans (
                     id TEXT PRIMARY KEY,
                     student_id TEXT NOT NULL,
                     request_json TEXT NOT NULL,
@@ -138,45 +101,25 @@ class StudentRepository:
                     FOREIGN KEY(student_id) REFERENCES student_profiles(student_id) ON DELETE CASCADE
                 )
             """)
-            connection.execute("""
-                INSERT INTO student_profiles(student_id, profile_json, updated_at)
-                SELECT u.user_id, p.profile_json, p.updated_at
-                FROM student_profiles_legacy p
-                JOIN users u ON u.full_name=p.student_id
-            """)
-            connection.execute("""
-                INSERT INTO training_plans(
-                    id, student_id, request_json, plan_json, sources_json, created_at
-                )
-                SELECT t.id, p.student_id, t.request_json, t.plan_json,
-                    t.sources_json, t.created_at
-                FROM training_plans_legacy t
-                JOIN student_profiles_legacy old_p ON old_p.student_id=t.student_id
-                JOIN users u ON u.full_name=old_p.student_id
-                JOIN student_profiles p ON p.student_id=u.user_id
-            """)
-            connection.execute("DROP TABLE training_plans_legacy")
-            connection.execute("DROP TABLE student_profiles_legacy")
-            connection.execute("""
-                CREATE INDEX plans_by_student
-                ON training_plans(student_id, created_at DESC)
-            """)
-            violations = connection.execute("PRAGMA foreign_key_check").fetchall()
-            if violations:
-                raise RuntimeError(
-                    "Database ownership migration would leave foreign-key violations. "
-                    "Reconcile the affected profile and plan rows before restarting RepWise."
-                )
-            connection.commit()
-        except BaseException:
-            if connection.in_transaction:
-                connection.rollback()
-            raise
-        finally:
-            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS plans_by_student "
+                "ON training_plans(student_id, created_at DESC)"
+            )
+        logger.info("SQLite repository initialized")
 
     def create_user(self, full_name: str, password_hash: str) -> str:
-        """Create a named account and return its generated internal ID."""
+        """Create an account and return its generated internal ID.
+
+        Args:
+            full_name: Account name, which must be unique.
+            password_hash: Encoded password hash; plaintext is not stored here.
+
+        Returns:
+            The UUID string used as the account's internal identity.
+
+        Raises:
+            sqlite3.IntegrityError: If the full name is already registered.
+        """
         user_id = str(uuid.uuid4())
         with self._connect() as connection:
             connection.execute(
@@ -188,7 +131,14 @@ class StudentRepository:
         return user_id
 
     def get_password_hash(self, full_name: str) -> str | None:
-        """Return the stored hash for login verification, if the account exists."""
+        """Look up a password hash by account name.
+
+        Args:
+            full_name: Name identifying the account.
+
+        Returns:
+            The stored encoded hash, or ``None`` if no account has that name.
+        """
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT password_hash FROM users WHERE full_name=?", (full_name,)
@@ -196,7 +146,15 @@ class StudentRepository:
         return row[0] if row else None
 
     def get_account_by_name(self, full_name: str) -> tuple[str, str, str] | None:
-        """Return the internal ID, password hash, and stored name for login."""
+        """Look up the account fields needed for login.
+
+        Args:
+            full_name: Name identifying the account.
+
+        Returns:
+            A tuple of ``(user_id, password_hash, full_name)``, or ``None`` if
+            no account has that name.
+        """
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT user_id, password_hash, full_name FROM users WHERE full_name=?",
@@ -205,7 +163,15 @@ class StudentRepository:
         return tuple(row) if row else None
 
     def save_profile(self, student_id: str, profile: UserProfile) -> None:
-        """Create or replace the profile deliberately supplied by a student."""
+        """Create or replace a student's saved profile.
+
+        Args:
+            student_id: Internal account ID that owns the profile.
+            profile: Validated profile supplied by that account.
+
+        Raises:
+            sqlite3.IntegrityError: If ``student_id`` is not a registered account.
+        """
         with self._connect() as connection:
             connection.execute(
                 """
@@ -218,7 +184,14 @@ class StudentRepository:
         logger.info("Database profile saved")
 
     def get_profile(self, student_id: str) -> UserProfile | None:
-        """Return one profile, or ``None`` when it has not been saved yet."""
+        """Load a student's saved profile.
+
+        Args:
+            student_id: Internal account ID that owns the profile.
+
+        Returns:
+            The validated profile, or ``None`` if no profile has been saved.
+        """
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT profile_json FROM student_profiles WHERE student_id=?",
@@ -229,7 +202,20 @@ class StudentRepository:
     def save_plan(
         self, student_id: str, request: PlanRequest, result: PlanResult
     ) -> str:
-        """Save a completed plan, its full request, and source evidence snapshots."""
+        """Persist a completed plan with its request and evidence snapshot.
+
+        Args:
+            student_id: Internal account ID that owns the plan.
+            request: Validated request used to generate the plan.
+            result: Completed pipeline result, including the plan and sources.
+
+        Returns:
+            The generated UUID string identifying the saved plan.
+
+        Raises:
+            ValueError: If ``result`` is not completed or contains no plan.
+            sqlite3.IntegrityError: If ``student_id`` has no saved profile.
+        """
         if result.status != "completed" or result.plan is None:
             raise ValueError("only completed plans can be saved")
         plan_id = str(uuid.uuid4())
@@ -254,7 +240,19 @@ class StudentRepository:
         return plan_id
 
     def list_plans(self, student_id: str, limit: int = 20) -> list[dict[str, object]]:
-        """List recent plans without exposing data belonging to other students."""
+        """List the most recent saved plans for one student.
+
+        Args:
+            student_id: Internal account ID whose plans are requested.
+            limit: Maximum number of plans to return, from 1 through 100.
+
+        Returns:
+            Plan records ordered newest first, each containing its ID, original
+            request, plan, sources, and creation timestamp.
+
+        Raises:
+            ValueError: If ``limit`` is not an integer from 1 through 100.
+        """
         if (
             isinstance(limit, bool)
             or not isinstance(limit, int)
@@ -282,7 +280,16 @@ class StudentRepository:
         ]
 
     def update_plan(self, student_id: str, plan_id: str, plan: TrainingPlan) -> bool:
-        """Update a saved plan only when its owner matches the authenticated account."""
+        """Replace a saved plan only when it belongs to the given student.
+
+        Args:
+            student_id: Internal account ID that must own the plan.
+            plan_id: ID of the saved plan to replace.
+            plan: Validated replacement plan.
+
+        Returns:
+            ``True`` if one owned plan was updated, otherwise ``False``.
+        """
         with self._connect() as connection:
             cursor = connection.execute(
                 "UPDATE training_plans SET plan_json=? WHERE id=? AND student_id=?",
@@ -292,7 +299,15 @@ class StudentRepository:
         return cursor.rowcount == 1
 
     def delete_plan(self, student_id: str, plan_id: str) -> bool:
-        """Delete one saved plan only when its owner matches the account."""
+        """Delete a saved plan only when it belongs to the given student.
+
+        Args:
+            student_id: Internal account ID that must own the plan.
+            plan_id: ID of the saved plan to delete.
+
+        Returns:
+            ``True`` if one owned plan was deleted, otherwise ``False``.
+        """
         with self._connect() as connection:
             cursor = connection.execute(
                 "DELETE FROM training_plans WHERE id=? AND student_id=?",
@@ -303,7 +318,15 @@ class StudentRepository:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        """Yield one foreign-key-enabled connection and always close it."""
+        """Provide a connection that commits on success and rolls back on failure.
+
+        Returns:
+            A context manager yielding a SQLite connection with foreign-key
+            enforcement enabled. The connection is always closed on exit.
+
+        Notes:
+            Exceptions from the database operation are rolled back and re-raised.
+        """
         connection = sqlite3.connect(self.database_path)
         try:
             connection.execute("PRAGMA foreign_keys = ON")
