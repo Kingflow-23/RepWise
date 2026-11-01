@@ -9,10 +9,10 @@ from src.evaluation.metrics.grounding import normalise
 
 
 def test_retrieval_cases_link_to_relevance_judgments():
-    """Require a substantial retrieval set with evidence for every answerable case."""
+    """Require the retrieval set to contain only answerable, judged queries."""
     cases = datasets.load_retrieval_cases()
-    assert len(cases) >= 150
-    assert all(case.spans for case in cases if case.answerable)
+    assert len(cases) == 128
+    assert all(case.answerable and case.spans for case in cases)
 
 
 def test_retrieval_queries_are_unique_and_cleanly_encoded():
@@ -80,22 +80,43 @@ def test_relevance_judgments_show_verbatim_source_evidence():
         assert judgment["relevance_rationale"].strip()
 
 
-def test_unanswerable_queries_have_no_labels_and_explain_why():
-    """Require a bounded unanswerable share with no relevance spans and a rationale."""
+def test_retrieval_dataset_contains_no_unanswerable_queries():
+    """Keep unsupported queries out of the retrieval-scoring dataset."""
     cases = datasets.load_retrieval_cases()
-    share = sum(not case.answerable for case in cases) / len(cases)
-    assert 0.10 <= share <= 0.25
-    assert all(not case.spans for case in cases if not case.answerable)
-    assert all(case.answerability_note for case in cases if not case.answerable)
+    assert all(case.answerable for case in cases)
 
 
 def test_generation_and_red_team_cases_are_separate_and_coherent():
     """Check suite IDs, valid one-week profiles, and answerable evidence links."""
     cases = datasets.load_generation_cases()
     red_team = datasets.load_red_team_cases()
-    assert {case.id for case in cases} == {f"G{i:03}" for i in range(1, 31)}
+    assert {case.id for case in cases} == {
+        "G001",
+        "G002",
+        "G003",
+        "G004",
+        "G005",
+        "G006",
+        "G008",
+        "G010",
+        "G013",
+        "G016",
+        "G018",
+        "G020",
+        "G022",
+        "G025",
+        "G027",
+    }
     assert {case.id for case in red_team} == {f"RT{i:03}" for i in range(1, 16)}
     assert len(red_team) == 15
+    assert {case.id for case in red_team if case.expected_scope == "out_of_scope"} == {
+        "RT005",
+        "RT006",
+        "RT013",
+        "RT014",
+        "RT015",
+    }
+    assert all(case.expected_scope == "in_scope" for case in cases)
     assert all(case.request and case.expected_status for case in cases)
     assert all(
         case.profile
@@ -135,15 +156,13 @@ def test_smoke_manifest_selects_valid_representative_cases():
         datasets.load_red_team_cases(), selected["red_team"], "red-team"
     )
 
-    assert len(retrieval) == 23
+    assert len(retrieval) == 20
     assert {case.topic for case in retrieval} >= {
         "rest_intervals",
         "deload",
-        "medical",
-        "out_of_scope",
+        "pain_safety",
     }
-    assert all(case.spans for case in retrieval if case.answerable)
-    assert all(not case.spans for case in retrieval if not case.answerable)
+    assert all(case.answerable and case.spans for case in retrieval)
     assert [case.id for case in generation] == ["G001"]
     assert {case.id for case in red_team} == {"RT001", "RT004", "RT005", "RT013"}
 
@@ -313,8 +332,8 @@ def test_generation_loader_rejects_unknown_status(tmp_path):
         datasets.load_generation_cases(path)
 
 
-def test_generation_loader_rejects_link_to_unanswerable_retrieval_case(tmp_path):
-    """Reject generation evidence links to queries that cannot be answered.
+def test_generation_loader_rejects_link_to_missing_retrieval_case(tmp_path):
+    """Reject generation evidence links not present in the retrieval dataset.
 
     Args:
         tmp_path: Hold the generation case with the invalid evidence link.
@@ -327,7 +346,7 @@ def test_generation_loader_rejects_link_to_unanswerable_retrieval_case(tmp_path)
                 "request": "Create a plan",
                 "expected_status": "ok",
                 "notes": "A test scenario.",
-                "evidence_query_ids": ["R017"],
+                "evidence_query_ids": ["R999"],
             }
         ],
     )

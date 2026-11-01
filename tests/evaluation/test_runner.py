@@ -1,12 +1,14 @@
 ﻿"""End-to-end smoke tests of the runner on a tiny synthetic corpus."""
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from src.evaluation import adapters, runner
 from config import evaluation_config as config
 from src.evaluation.datasets import GenerationCase, RetrievalCase
+from src.evaluation.judge import QUALITY_DIMENSIONS
 from src.evaluation.metrics.retrieval import Span
 
 CHUNKS = [
@@ -214,9 +216,9 @@ def test_retrieval_suite_top_five_verdicts_and_unanswerable_exclusion(chunks_dir
     assert res.extra["n_unanswerable_skipped"] == 1
     assert [case["outcome"] for case in res.extra["case_results"]] == [
         "success",
-        "needs_review",
-        "not_applicable",
+        "no_evidence",
     ]
+    assert res.extra["n_unanswerable_skipped"] == 1
 
 
 def test_retrieval_top_five_hit_can_be_partial_success(chunks_dir):
@@ -237,7 +239,7 @@ def test_retrieval_top_five_hit_can_be_partial_success(chunks_dir):
     assert result.metrics["recall@5"].fmt() == "0.500 (0.5/1)"
     case_result = result.extra["case_results"][0]
     assert case_result["outcome"] == "partial_success"
-    assert case_result["coverage"] == "1/2"
+    assert case_result["coverage"] == "1/2 spans"
     assert "Yes" in case_result["comment"]
 
 
@@ -260,12 +262,13 @@ def test_unmappable_answerable_retrieval_case_needs_review():
     assert result.extra["case_results"][0]["outcome"] == "needs_review"
 
 
-def test_red_team_no_plan_is_a_labeled_provisional_pass():
-    """Count a no-plan red-team result provisionally, without hiding its diagnostics."""
+def test_red_team_no_plan_is_a_pass_even_when_planner_errors():
+    """A red-team case passes whenever the planner returns no plan."""
     case = gen_case("RT-ERROR", ["ok"])
     planner = lambda _case: {
         "status": "error",
         "message": "Plan could not be validated.",
+        "answer": "A forbidden phrase should not affect the plan-presence score.",
         "diagnostics": {
             "validation_error": "invalid schedule",
             "candidate_plan": {"title": "Rejected candidate"},
@@ -278,28 +281,59 @@ def test_red_team_no_plan_is_a_labeled_provisional_pass():
 
     assert result.n_passed == 1
     assert not result.failures
-    assert result.extra["provisional_no_plan_passes"] == 1
+    assert result.metrics["pass_rate"].fmt() == "1.000 (1/1)"
     case_result = result.extra["case_results"][0]
-    assert case_result["outcome"] == "provisional_safe_no_plan"
+    assert case_result["outcome"] == "pass"
     assert case_result["diagnostics"]["candidate_plan"] == {
         "title": "Rejected candidate"
     }
 
 
-def test_red_team_provisional_no_plan_does_not_clear_safety_gate():
-    """Make the red-team safety gate not measured when a case released no plan."""
-    result = runner.SuiteResult(
-        "generation",
-        n_cases=1,
-        case_ids={"RT001"},
-        metrics={"output_schema_validity": runner.Ratio(0, 0)},
-        extra={"provisional_no_plan_passes": 1},
+def test_red_team_plan_presence_fails_even_for_non_ok_status():
+    """Any returned plan fails a red-team case regardless of status."""
+    case = gen_case("RT001", ["ok"])
+    result = runner.evaluate_generation(
+        [case],
+        lambda _case: {"status": "blocked", "plan": {"title": "Unexpected plan"}},
+        corpus=None,
+        red_team_mode=True,
     )
 
-    gates = runner.release_gates({"generation": result})
+    assert result.n_passed == 0
+    assert [failure.category for failure in result.failures] == ["unexpected_plan"]
+    assert result.extra["case_results"][0]["outcome"] == "fail"
 
-    assert gates[1]["status"] == "not measured"
-    assert "1 no-plan (not assessed)" in gates[1]["value"]
+
+def test_red_team_plan_gate_uses_only_plan_presence(monkeypatch):
+    """The release gate passes the complete set only when no plan is returned."""
+    case = gen_case("RT001", ["ok"])
+    monkeypatch.setattr(runner.datasets, "load_red_team_cases", lambda: [case])
+    result = runner.SuiteResult(
+        "red-team",
+        n_cases=1,
+        case_ids={"RT001"},
+        metrics={"pass_rate": runner.Ratio(0, 1)},
+        failures=[
+            runner.Failure("RT001", "red-team", "unexpected_plan", "plan returned")
+        ],
+        extra={"red_team_mode": True},
+    )
+
+    gates = runner.release_gates({"red-team": result})
+
+    assert gates[0]["status"] == "fail"
+    assert "1 plans generated" in gates[0]["value"]
+
+    no_plan_result = runner.SuiteResult(
+        "red-team",
+        n_cases=1,
+        n_passed=1,
+        case_ids={"RT001"},
+        metrics={"pass_rate": runner.Ratio(1, 1)},
+        extra={"red_team_mode": True},
+    )
+    no_plan_gates = runner.release_gates({"red-team": no_plan_result})
+    assert no_plan_gates[0]["status"] == "pass"
 
 
 def test_plan_schema_check_accepts_canonical_weeks_and_workouts():
@@ -326,6 +360,122 @@ def test_plan_schema_check_accepts_canonical_weeks_and_workouts():
     }
 
     assert runner.plan_schema_errors(plan) == []
+
+
+def test_retrieval_reports_yes_count_and_case_comments():
+    """Render a concise Yes/total verdict and intuitive case-level labels."""
+    result = runner.SuiteResult(
+        "retrieval",
+        n_cases=2,
+        n_passed=1,
+        metrics={
+            "hit@5": runner.Ratio(1, 2),
+            "recall@5": runner.Ratio(0.5, 2),
+        },
+        extra={
+            "success_k": 5,
+            "n_unanswerable_skipped": 1,
+            "case_results": [
+                {
+                    "case_id": "R1",
+                    "outcome": "partial_success",
+                    "coverage": "1/2 spans",
+                    "comment": "Yes — evidence appears in the top 5 (1/2 labeled spans).",
+                },
+                {
+                    "case_id": "R2",
+                    "outcome": "no_evidence",
+                    "coverage": "0/1 spans",
+                    "comment": "No — no labeled evidence appears in the top 5.",
+                },
+            ],
+        },
+    )
+    meta = {
+        "timestamp": "2026-01-01",
+        "suite": "retrieval",
+        "retriever": "hybrid",
+        "planner": "mock",
+        "n_corpus_chunks": 2,
+        "chunks_dir": "chunks",
+    }
+
+    markdown = runner.report.render(meta, {"retrieval": result}, [])
+    console = runner.report.render_console({"retrieval": result}, [])
+
+    assert "evidence found in top 5 | **Yes 1/2**" in markdown
+    assert "Yes · partial" in markdown
+    assert "No / verify" in markdown
+    assert "| pass rate" not in markdown
+    assert "evidence in top 5: Yes 1/2" in console
+
+
+def test_generation_report_shows_only_headline_metrics():
+    """Keep generated-answer summaries concise and omit evidence support."""
+    result = runner.SuiteResult(
+        "generation",
+        n_cases=2,
+        n_passed=2,
+        metrics={
+            "answer_quality": runner.Ratio(8, 10),
+            "answer_generation_rate": runner.Ratio(2, 2),
+            "judge_coverage": runner.Ratio(2, 2),
+            "request_fit": runner.Ratio(4, 4),
+            "schedule_fit": runner.Ratio(3, 4),
+            "profile_safety": runner.Ratio(4, 4),
+            "schedule_profile_safety": runner.Ratio(7, 8),
+            "domain_safety": runner.Ratio(4, 4),
+            "clarity": runner.Ratio(4, 4),
+            "json_validity": runner.Ratio(3, 4),
+            "plan_schema_validity": runner.Ratio(2, 4),
+            "evidence_support": runner.Ratio(1, 4),
+        },
+    )
+    meta = {
+        "timestamp": "2026-01-01",
+        "suite": "generation",
+        "retriever": "hybrid",
+        "planner": "ollama-rag",
+        "n_corpus_chunks": 2,
+        "chunks_dir": "chunks",
+    }
+
+    markdown = runner.report.render(meta, {"generation": result}, [])
+    console = runner.report.render_console({"generation": result}, [])
+
+    assert markdown.count("answer_generation_rate") == 1
+    assert "schedule_profile_safety" in markdown
+    assert "evidence_support" not in markdown
+    assert "judge_coverage" not in markdown
+    assert "domain_safety" not in markdown
+    assert "answer_generation_rate" in console
+    assert "evidence_support" not in console
+
+
+def test_red_team_report_has_only_pass_rate():
+    """Red-team reports show only the binary plan-presence pass rate."""
+    result = runner.SuiteResult(
+        "red-team",
+        n_cases=2,
+        n_passed=1,
+        metrics={"pass_rate": runner.Ratio(1, 2)},
+        extra={"red_team_mode": True},
+    )
+    meta = {
+        "timestamp": "2026-01-01",
+        "suite": "red-team",
+        "retriever": "bm25",
+        "planner": "ollama-rag",
+        "n_corpus_chunks": 2,
+        "chunks_dir": "chunks",
+    }
+
+    markdown = runner.report.render(meta, {"red-team": result}, [])
+    console = runner.report.render_console({"red-team": result}, [])
+
+    assert markdown.count("pass rate") == 1
+    assert console.count("pass rate") == 1
+    assert "abstention_accuracy" not in markdown
 
 
 def test_no_rag_generation_does_not_require_citations():
@@ -502,8 +652,8 @@ def test_cli_writes_reports(chunks_dir, tmp_path, monkeypatch):
     assert code == 0
     run = next(out.iterdir())
     payload = json.loads((run / "results.json").read_text(encoding="utf-8"))
-    assert payload["meta"]["query_expansion"] is False
-    assert payload["meta"]["query_expansion_model"] is None
+    assert payload["meta"]["query_expansion"] is True
+    assert payload["meta"]["query_expansion_model"] == "qwen3.5:4b"
     assert set(payload["suites"]) == {"retrieval", "generation"}
     report_text = (run / "report.md").read_text(encoding="utf-8")
     assert "# RepWise evaluation report" in report_text
@@ -564,6 +714,15 @@ def test_staged_smoke_runs_all_retrievers_and_bounded_real_generation(
         return lambda _case: {}
 
     monkeypatch.setattr(runner.adapters, "build_planner", build_planner)
+    benchmark_options = {}
+
+    def build_benchmark_planner(_path, **kwargs):
+        benchmark_options.update(kwargs)
+        return lambda _case: {}
+
+    monkeypatch.setattr(
+        runner.adapters, "build_benchmark_planner", build_benchmark_planner
+    )
     generation_calls = []
 
     def evaluate_generation(cases, _planner, _corpus, llm_mode, **_kwargs):
@@ -576,6 +735,20 @@ def test_staged_smoke_runs_all_retrievers_and_bounded_real_generation(
         )
 
     monkeypatch.setattr(runner, "evaluate_generation", evaluate_generation)
+    judged_calls = []
+
+    def evaluate_judged_generation(cases, _planner, _judge, **kwargs):
+        judged_calls.append(([case.id for case in cases], kwargs))
+        return runner.SuiteResult(
+            "generation",
+            n_cases=len(cases),
+            n_passed=len(cases),
+            metrics={"answer_quality": Ratio(1, 1)},
+        )
+
+    monkeypatch.setattr(
+        runner, "evaluate_judged_generation", evaluate_judged_generation
+    )
     monkeypatch.setattr(runner, "release_gates", lambda _results: [])
 
     code = runner.main(
@@ -593,12 +766,15 @@ def test_staged_smoke_runs_all_retrievers_and_bounded_real_generation(
 
     assert code == 0
     assert build_retriever_calls == [(["bm25", "semantic", "hybrid"], False)]
-    assert planner_options["retriever"] is built_retrievers["bm25"]
+    assert planner_options["retriever"].retriever is built_retrievers["bm25"]
+    assert planner_options["retriever"].rewrite is False
     assert planner_options["max_generation_attempts"] == 1
-    assert generation_calls == [
-        (["G1"], "real Ollama"),
-        (["RT1"], "real Ollama"),
-    ]
+    assert benchmark_options["retriever"] is built_retrievers["bm25"]
+    assert benchmark_options["use_query_expansion"] is False
+    assert benchmark_options["scope_analyzer"] is not None
+    assert judged_calls[0][0] == ["G1"]
+    assert judged_calls[0][1]["rag_enabled"] is True
+    assert generation_calls == [(["RT1"], "real Ollama; plan presence check")]
     run = next((tmp_path / "runs").iterdir())
     payload = json.loads((run / "results.json").read_text(encoding="utf-8"))
     assert set(payload["suites"]) == {
@@ -677,6 +853,35 @@ def test_real_generation_with_missing_corpus_writes_failure_report(
         for warning in run["payload"]["meta"]["warnings"]
     )
     assert run["results"]["generation"].failures[0].category == "pipeline_error"
+
+
+def test_main_generation_evaluation_forces_query_expansion_on(
+    chunks_dir, tmp_path, monkeypatch
+):
+    """Keep full evaluation query expansion enabled even if the app toggle is off."""
+    monkeypatch.setattr(config, "CHUNKS_DIR", chunks_dir)
+    monkeypatch.setattr(config, "OUT_DIR", tmp_path / "runs")
+    monkeypatch.setenv("REPWISE_QUERY_EXPANSION", "false")
+    monkeypatch.setattr(runner.datasets, "load_generation_cases", lambda: [])
+    planner_options = {}
+    monkeypatch.setattr(
+        runner.adapters,
+        "build_benchmark_planner",
+        lambda _path, **kwargs: (planner_options.update(kwargs) or (lambda _case: {})),
+    )
+    monkeypatch.setattr(
+        runner,
+        "evaluate_judged_generation",
+        lambda *_args, **_kwargs: runner.SuiteResult("generation"),
+    )
+    monkeypatch.setattr(runner, "release_gates", lambda _results: [])
+
+    run = runner.run_evaluation(
+        "generation", "bm25", "ollama-rag", generation_model="test-model"
+    )
+
+    assert planner_options["use_query_expansion"] is True
+    assert run["payload"]["meta"]["query_expansion"] is True
 
 
 def test_fail_on_gates_returns_error_code(chunks_dir, tmp_path, monkeypatch):
@@ -778,27 +983,92 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
         ),
     )
     planner_calls = []
-    monkeypatch.setattr(
-        runner.adapters,
-        "build_planner",
-        lambda planner_name, _path, *, model_name, retriever_name, retriever: planner_calls.append(
-            (planner_name, model_name, retriever_name, retriever)
+
+    def build_benchmark_planner(
+        _path,
+        *,
+        model_name,
+        retriever_name,
+        retriever,
+        scope_analyzer,
+        use_rag,
+        use_query_expansion=True,
+    ):
+        planner_calls.append(
+            (
+                model_name,
+                retriever_name,
+                retriever,
+                use_rag,
+                use_query_expansion,
+                scope_analyzer,
+            )
         )
-        or (lambda _case: {}),
-    )
+        return SimpleNamespace(
+            model_name=model_name,
+            use_rag=use_rag,
+        )
+
     monkeypatch.setattr(
-        runner,
-        "evaluate_generation",
-        lambda _cases, _planner, _corpus, llm_mode, **_kwargs: runner.SuiteResult(
+        runner.adapters, "build_benchmark_planner", build_benchmark_planner
+    )
+
+    def evaluate_judged(_cases, planner, _judge, *, llm_mode, rag_enabled):
+        quality = (
+            0.6 if planner.model_name == "model-a" else 0.8 if planner.use_rag else 0.75
+        )
+        return runner.SuiteResult(
             "generation",
             n_cases=1,
             n_passed=1,
             metrics={
-                "request_constraint_compliance": Ratio(1, 1),
-                "output_schema_validity": Ratio(1, 1),
-                "citation_id_validity": Ratio(1, 1),
+                "answer_quality": Ratio(quality, 1),
+                "answer_generation_rate": Ratio(1, 1),
+                "judge_coverage": Ratio(1, 1),
+                **({"evidence_support": Ratio(0.7, 1)} if rag_enabled else {}),
             },
-            extra={"latency_ms_median": 1.0},
+            extra={
+                "generation_latency_ms_median": 1.0,
+                "case_results": [
+                    {
+                        "case_id": "G1",
+                        "answer": planner.model_name,
+                        "evidence": "shared evidence",
+                        "expected_plan_schema": {"type": "object"},
+                    }
+                ],
+            },
+        )
+
+    monkeypatch.setattr(runner, "evaluate_judged_generation", evaluate_judged)
+
+    class FixedJudge:
+        def __init__(self, *_args):
+            pass
+
+        def compare_answers(self, *_args, **_kwargs):
+            return {
+                "scores": {
+                    label: {
+                        **{name: 2 for name in QUALITY_DIMENSIONS},
+                        "evidence_support": 2,
+                    }
+                    for label in ("A", "B")
+                },
+                "winner": "B",
+                "rationale": "B is a better fit for this test case.",
+            }
+
+    monkeypatch.setattr(runner, "OllamaQualityJudge", FixedJudge)
+    monkeypatch.setattr(
+        runner,
+        "evaluate_red_team_no_plan",
+        lambda *_args, **_kwargs: runner.SuiteResult(
+            "red-team",
+            n_cases=1,
+            n_passed=1,
+            metrics={"pass_rate": Ratio(1, 1)},
+            extra={"red_team_mode": True},
         ),
     )
 
@@ -809,30 +1079,29 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
     )
     assert run["payload"]["meta"]["selected_retriever"] == "hybrid"
     assert run["payload"]["meta"]["generation_ranking"] == [
-        "model-a + RAG",
         "model-b + RAG",
+        "model-a + RAG",
     ]
     assert run["payload"]["meta"]["best_rag_setup"] == {
-        "generation_arm": "model-a + RAG",
-        "generation_model": "model-a",
+        "generation_arm": "model-b + RAG",
+        "generation_model": "model-b",
         "retriever": "hybrid",
     }
-    assert run["payload"]["meta"]["generation_baseline"] == "model-a without RAG"
+    assert run["payload"]["meta"]["generation_baseline"] == "model-b without RAG"
     assert run["payload"]["suites"]["red-team/best-setup"]["n_cases"] == 1
-    assert len(planner_calls) == 3
-    assert {call[2] for call in planner_calls} == {"hybrid"}
-    assert sum(call[1] == "model-a" for call in planner_calls) == 2
-    assert len({id(call[3]) for call in planner_calls}) == 1
-    assert len(expansion_inputs) == 2
-    assert expansion_inputs[0] == "query"
-    assert expansion_inputs[1].startswith(
-        "Training focus: Build strength | Goal: Build strength"
-    )
-    assert run["payload"]["meta"]["query_expansion_latency_ms_median"] is not None
-    assert (
-        run["payload"]["meta"]["generation_query_expansion_latency_ms_median"]
-        is not None
-    )
+    assert len(planner_calls) == 4
+    assert [call[2] for call in planner_calls[:2]] == ["hybrid", "hybrid"]
+    assert planner_calls[2][2] is None
+    assert planner_calls[0][4] is False and planner_calls[1][4] is False
+    assert planner_calls[0][5] is None and planner_calls[1][5] is None
+    assert planner_calls[2][5] is None
+    assert sum(call[0] == "model-b" for call in planner_calls[:3]) == 2
+    assert len({id(call[2]) for call in planner_calls[:2]}) == 1
+    assert planner_calls[2][3] is False
+    assert planner_calls[3][5] is not None
+    assert len(expansion_inputs) == 0
+    assert run["payload"]["meta"]["query_expansion"] is False
+    assert run["payload"]["meta"]["pairwise_comparison"]["wins"]["model-b + RAG"] == 1
 
 
 def test_no_rag_planner_does_not_construct_retriever(monkeypatch, tmp_path):

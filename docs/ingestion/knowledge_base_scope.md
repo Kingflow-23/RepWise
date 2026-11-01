@@ -110,9 +110,13 @@ The rest of this document details each element.
 
 ## 5. Adaptation engine: what each rule can rest on
 
-The following adaptation dimensions are an evidence-gap analysis, not a feature
-list: the current application generates one-week plans and does not implement
-multi-session adaptation.
+The following adaptation dimensions are an evidence-gap analysis for
+longitudinal training rules, not a feature list. The application can log
+feedback on a saved workout and make a targeted change to the next unlogged
+workout in that same plan. It does not implement progressive overload,
+multi-week progression, or corpus-derived adaptation thresholds. The feedback
+adjustment is a model-generated change to a fixed workout, not a claim that the
+corpus supports the change.
 
 | Adaptation | Level | What the corpus supports | What will be an implementation assumption |
 |---|---|---|---|
@@ -125,11 +129,11 @@ multi-session adaptation.
 | **Break / return after time off** | Partial | Pause and deload video | How to resume (loads after a break) |
 | **Pain** | Not grounded, by design | Only general advice (good technique reduces injury risk) | Safety handling is a policy, never a corpus claim. RepWise must not diagnose or treat. |
 
-Bottom line for any future adaptation feature: the **direction** of most rules
-is grounded, but almost all **thresholds** (how many sessions, how many kg, how
+Bottom line for longitudinal adaptation: the **direction** of most rules is
+grounded, but almost all **thresholds** (how many sessions, how many kg, how
 many sets, which pattern triggers a deload) would be implementation
 assumptions. Keep those assumptions explicit and report them separately in any
-evaluation.
+evaluation. The current feedback adjustment does not implement these rules.
 
 ---
 

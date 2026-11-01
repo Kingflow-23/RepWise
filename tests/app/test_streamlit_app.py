@@ -36,6 +36,35 @@ def set_signed_in_state(app: AppTest) -> None:
     }
 
 
+def test_scope_refusal_shows_analysis_message_without_plan(monkeypatch: Any) -> None:
+    """Display the scope analysis response directly and keep plan history intact."""
+    refusal = (
+        "RepWise cannot diagnose pain or prescribe treatment. "
+        "Please consult a health professional."
+    )
+
+    def fake_request(method: str, url: str, **kwargs: Any) -> FakeResponse:
+        if url.endswith("/api/v1/health"):
+            return health_response()
+        if method == "POST" and url.endswith("/plans"):
+            return FakeResponse({"status": "out_of_scope", "message": refusal})
+        raise AssertionError(f"Unexpected API request: {method} {url}")
+
+    monkeypatch.setattr("requests.request", fake_request)
+    app = AppTest.from_file(str(APP_PATH))
+    set_signed_in_state(app)
+    app.session_state["plan_history"] = []
+    app.run(timeout=20)
+
+    app.text_input(key="plan-focus").set_value("Diagnose my knee pain")
+    app.form_submit_button[1].click().run(timeout=20)
+
+    assert any(refusal in message.value for message in app.info)
+    assert app.session_state["plan_history"] == []
+    assert "latest_plan" not in app.session_state
+    assert "plan_generation_error" not in app.session_state
+
+
 def test_generation_failure_explains_reason_and_retries_last_request(
     monkeypatch: Any,
 ) -> None:

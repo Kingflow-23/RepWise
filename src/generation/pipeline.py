@@ -16,6 +16,7 @@ from ..rag.prompt import (
     plan_response_schema,
 )
 from ..retrieval.base import QueryAwareRetriever, Retriever
+from ..retrieval.query_expansion import ScopeRefusalError
 from ..schemas.models import PlanRequest, PlanResult, TrainingPlan
 
 logger = logging.getLogger(__name__)
@@ -77,9 +78,10 @@ class PlanPipeline:
 
         Returns:
             A result with status ``completed`` and the plan when validation
-            succeeds; otherwise a result with ``retrieval_error``,
-            ``insufficient_evidence``, or ``generation_error`` and an explanatory
-            message. Retrieved sources are included when generation was attempted.
+            succeeds; otherwise a result with an explanatory status such as
+            ``out_of_scope``, ``retrieval_error``, ``insufficient_evidence``, or
+            ``generation_error``. Retrieved sources are included when generation
+            was attempted.
 
         Notes:
             Generation is attempted up to ``max_generation_attempts`` times,
@@ -100,6 +102,16 @@ class PlanPipeline:
                 )
             else:
                 chunks = self.retriever.search(query, self.top_k)
+        except ScopeRefusalError as error:
+            logger.info(
+                "Plan request declined by scope gate scope=%s message=%s",
+                error.scope,
+                error.user_message,
+            )
+            return PlanResult(
+                status="out_of_scope",
+                message=error.user_message,
+            )
         except Exception as error:
             logger.exception(
                 "Plan retrieval failed elapsed_ms=%.1f",
@@ -149,9 +161,13 @@ class PlanPipeline:
         response_schema = plan_response_schema(request)
         plan = None
         last_candidate_plan = None
+        last_candidate_attempt = None
+        last_raw_output = None
         last_error: Exception | None = None
+        last_error_stage = None
         for attempt in range(self.max_generation_attempts):
             generation_started = perf_counter()
+            error_stage = "generation"
             try:
                 if attempt:
                     logger.warning(
@@ -185,6 +201,9 @@ class PlanPipeline:
                     system_prompt, user_prompt, response_schema
                 )
                 last_candidate_plan = plan
+                last_candidate_attempt = attempt + 1
+                last_raw_output = getattr(self.generator, "_last_raw_output", None)
+                error_stage = "validation"
                 logger.info(
                     "Model returned plan attempt=%s elapsed_ms=%.1f",
                     attempt + 1,
@@ -202,6 +221,8 @@ class PlanPipeline:
                 break
             except (OSError, ValueError, RuntimeError) as error:
                 last_error = error
+                last_error_stage = error_stage
+                last_raw_output = getattr(self.generator, "_last_raw_output", None)
                 logger.warning(
                     "Generated plan rejected attempt=%s error_type=%s",
                     attempt + 1,
@@ -213,19 +234,22 @@ class PlanPipeline:
             result = PlanResult(
                 status="generation_error",
                 message=(
-                    "The plan could not be validated after "
-                    f"{self.max_generation_attempts - 1} correction attempts: "
-                    f"{last_error}"
+                    "The plan could not be generated or validated after "
+                    f"{self.max_generation_attempts} attempt(s); last error during "
+                    f"{last_error_stage}: {last_error}"
                 ),
                 sources=sources,
             )
             result._evaluation_diagnostics = {
-                "validation_error": str(last_error),
+                "error_stage": last_error_stage,
+                "last_error": f"{type(last_error).__name__}: {last_error}",
+                "candidate_attempt": last_candidate_attempt,
                 "candidate_plan": (
                     last_candidate_plan.model_dump(mode="json")
                     if last_candidate_plan is not None
                     else None
                 ),
+                "raw_model_output": last_raw_output,
             }
             return result
 

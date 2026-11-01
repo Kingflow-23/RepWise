@@ -11,6 +11,7 @@ from src.rag.prompt import (
     plan_response_schema,
 )
 from src.retrieval import BM25Retriever
+from src.retrieval.query_expansion import ScopeRefusalError
 from src.schemas import PlanRequest, RetrievedChunk, TrainingPlan, UserProfile
 
 
@@ -375,6 +376,29 @@ def test_pipeline_returns_valid_plan_with_mocked_dependencies():
     assert result.sources[0].evidence_text == chunk().text
 
 
+def test_pipeline_returns_scope_message_without_calling_generator():
+    """Return user-facing scope guidance rather than a retrieval error."""
+
+    class RefusingRetriever:
+        def search(self, query, top_k):
+            raise ScopeRefusalError(
+                "out_of_scope",
+                "RepWise cannot diagnose pain. Please consult a health professional.",
+            )
+
+    class UnusedGenerator:
+        def generate(self, *_args, **_kwargs):
+            pytest.fail("generation must not run after scope refusal")
+
+    result = PlanPipeline(RefusingRetriever(), UnusedGenerator()).create_plan(request())
+
+    assert result.status == "out_of_scope"
+    assert result.message == (
+        "RepWise cannot diagnose pain. Please consult a health professional."
+    )
+    assert result.plan is None
+
+
 def test_pipeline_highlights_the_exact_rewritten_query_used_for_retrieval():
     """Keep translated retrieval terms available to evidence relevance review."""
 
@@ -586,10 +610,25 @@ def test_pipeline_can_disable_retries_for_bounded_smoke_runs():
 
     assert result.status == "generation_error"
     assert generator.calls == 1
-    assert "0 correction attempts" in result.message
-    assert result._evaluation_diagnostics["validation_error"]
+    assert "1 attempt(s)" in result.message
+    assert result._evaluation_diagnostics["error_stage"] == "validation"
+    assert result._evaluation_diagnostics["last_error"]
     assert result._evaluation_diagnostics["candidate_plan"]["title"]
     assert "candidate_plan" not in result.model_dump()
+
+
+def test_ollama_generator_retains_raw_response_when_plan_parsing_fails(monkeypatch):
+    """Keep the exact provider response available to evaluation diagnostics."""
+    from src.llm.ollama import OllamaGenerator
+
+    raw_output = '{"weeks":[]}'
+    generator = OllamaGenerator("test-model")
+    monkeypatch.setattr(generator, "_generate_content", lambda *_args: (raw_output, 1))
+
+    with pytest.raises(RuntimeError, match="valid plan"):
+        generator.generate("system", "user")
+
+    assert generator._last_raw_output == raw_output
 
 
 def test_prompt_and_structured_schema_require_exact_requested_week_count():

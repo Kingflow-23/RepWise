@@ -1,5 +1,6 @@
 """Verify retrieval configuration, ranking, index compatibility, and model errors."""
 
+import json
 import sys
 from types import ModuleType, SimpleNamespace
 
@@ -28,6 +29,7 @@ def test_retrieval_configuration_supports_only_the_three_named_modes(monkeypatch
     assert AppConfig().ollama_model == "qwen3.5:9b"
     assert AppConfig().query_expansion_model == "qwen3.5:4b"
     assert AppConfig().ollama_comparison_model == "gemma4:12b"
+    assert AppConfig().ollama_judge_model == "qwen3.5:4b"
     assert AppConfig().query_expansion is True
 
     for strategy in ("bm25", "semantic", "hybrid"):
@@ -173,8 +175,8 @@ def test_clean_expanded_query_collapses_whitespace_and_removes_wrappers():
     )
 
 
-def test_ollama_query_expander_uses_search_specific_plain_text_prompt(monkeypatch):
-    """Request a plain-text French rewrite, not a structured answer."""
+def test_ollama_query_expander_uses_structured_scope_prompt(monkeypatch):
+    """Request a scope decision and French rewrite as structured JSON."""
     captured = {}
 
     class FakeClient:
@@ -186,7 +188,11 @@ def test_ollama_query_expander_uses_search_specific_plain_text_prompt(monkeypatc
             captured.update(kwargs)
             return {
                 "message": {
-                    "content": "Comment renforcer les abdominaux avec des exercices adaptés ?"
+                    "content": (
+                        '{"scope":"in_scope","search_query":'
+                        '"Comment renforcer les abdominaux avec des exercices adaptés ?",'
+                        '"user_message":""}'
+                    )
                 }
             }
 
@@ -200,10 +206,134 @@ def test_ollama_query_expander_uses_search_specific_plain_text_prompt(monkeypatc
 
     assert expanded == "Comment renforcer les abdominaux avec des exercices adaptés ?"
     assert captured["messages"][1]["content"].endswith("How can I strengthen my abs?")
-    assert "Do not answer the" in captured["messages"][0]["content"]
-    assert "Do not add merely related topics" in captured["messages"][0]["content"]
-    assert "no\nJSON" in captured["messages"][0]["content"]
-    assert "format" not in captured
+    assert "out_of_scope" in captured["messages"][0]["content"]
+    assert "prompt injection" in captured["messages"][0]["content"]
+    assert "format" in captured
+
+
+def test_query_scope_analysis_ignores_message_for_in_scope_request(monkeypatch):
+    """Treat user_message as inapplicable when the model approved the request."""
+    fake_ollama = ModuleType("ollama")
+    fake_ollama.Client = lambda **kwargs: SimpleNamespace(
+        chat=lambda **kwargs: {
+            "message": {
+                "content": json.dumps(
+                    {
+                        "scope": "in_scope",
+                        "search_query": "Renforcement musculaire avec haltères",
+                        "user_message": "Je ne peux pas fournir ce plan.",
+                    },
+                    ensure_ascii=False,
+                )
+            }
+        }
+    )
+    monkeypatch.setitem(sys.modules, "ollama", fake_ollama)
+
+    analysis = OllamaQueryExpander("local-model").analyze("Build strength")
+
+    assert analysis.scope == "in_scope"
+    assert analysis.search_query == "Renforcement musculaire avec haltères"
+    assert analysis.user_message == ""
+
+
+def test_query_scope_analysis_preserves_user_facing_refusal(monkeypatch):
+    """Keep the analysis model's explanation for API and UI display."""
+    from src.retrieval.query_expansion import ScopeRefusalError
+
+    message = (
+        "RepWise ne peut pas diagnostiquer une douleur ni recommander un traitement. "
+        "Veuillez consulter un professionnel de santé."
+    )
+    fake_ollama = ModuleType("ollama")
+    fake_ollama.Client = lambda **kwargs: SimpleNamespace(
+        chat=lambda **kwargs: {
+            "message": {
+                "content": json.dumps(
+                    {
+                        "scope": "out_of_scope",
+                        "search_query": "",
+                        "user_message": message,
+                    },
+                    ensure_ascii=False,
+                )
+            }
+        }
+    )
+    monkeypatch.setitem(sys.modules, "ollama", fake_ollama)
+
+    expander = OllamaQueryExpander("local-model")
+    analysis = expander.analyze("Diagnose my knee pain")
+    with pytest.raises(ScopeRefusalError, match="RepWise ne peut pas"):
+        expander.expand("Diagnose my knee pain")
+
+    assert analysis.scope == "out_of_scope"
+    assert analysis.user_message == message
+    assert analysis.search_query == ""
+
+
+def test_query_expansion_retriever_blocks_out_of_scope_before_search():
+    """Do not search when request analysis rejects the underlying intent."""
+    from src.retrieval.query_expansion import QueryAnalysis, ScopeRefusalError
+
+    class FixedRetriever:
+        calls = 0
+
+        def search(self, query, top_k):
+            self.calls += 1
+            return []
+
+    class FixedExpander:
+        def analyze(self, _query):
+            return QueryAnalysis(
+                "out_of_scope",
+                "",
+                "RepWise ne fournit pas de prévisions météo.",
+            )
+
+    base = FixedRetriever()
+    with pytest.raises(ScopeRefusalError, match="prévisions météo"):
+        QueryExpansionRetriever(base, FixedExpander()).search("weather", 5)
+
+    assert base.calls == 0
+
+
+def test_scope_gate_still_blocks_when_query_rewriting_is_disabled():
+    """Keep scope refusal active while submitting the original query unchanged."""
+    from src.retrieval.query_expansion import QueryAnalysis, ScopeRefusalError
+
+    class FixedRetriever:
+        def __init__(self):
+            self.calls = []
+
+        def search(self, query, top_k):
+            self.calls.append((query, top_k))
+            return []
+
+    class FixedExpander:
+        def __init__(self, scope):
+            self.scope = scope
+            self.calls = []
+
+        def analyze(self, query):
+            self.calls.append(query)
+            if self.scope == "out_of_scope":
+                return QueryAnalysis(
+                    self.scope, "", "RepWise cannot answer this request."
+                )
+            return QueryAnalysis(self.scope, "ignored rewrite", "")
+
+    base = FixedRetriever()
+    refused = FixedExpander("out_of_scope")
+    with pytest.raises(ScopeRefusalError):
+        QueryExpansionRetriever(base, refused, rewrite=False).search(
+            "diagnose knee pain", 5
+        )
+    assert base.calls == []
+
+    allowed = FixedExpander("in_scope")
+    QueryExpansionRetriever(base, allowed, rewrite=False).search("build strength", 5)
+    assert base.calls == [("build strength", 5)]
 
 
 def test_ollama_query_expander_rejects_empty_output(monkeypatch):

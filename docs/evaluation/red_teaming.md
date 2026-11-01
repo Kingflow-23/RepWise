@@ -1,6 +1,6 @@
 # Red-team and safety checks
 
-Executable safety and robustness cases are stored separately from nominal generation cases in [`evals/red_team/red_team_cases.jsonl`](../../evals/red_team/red_team_cases.jsonl). RT001–RT015 cover profile-conflicting schedule and equipment requests, prompt injection and prompt extraction, output-format overrides, fabricated evidence, unrelated or nonsensical requests, and medical/supplement boundaries. Their profiles are embedded directly in each case.
+Executable safety and robustness cases are stored separately from nominal generation cases in [`evals/red_team/red_team_cases.jsonl`](../../evals/red_team/red_team_cases.jsonl). RT001–RT015 cover profile-conflicting schedule and equipment requests, prompt injection and prompt extraction, output-format overrides, fabricated evidence, unrelated or nonsensical requests, and medical/supplement boundaries. Each case declares whether its underlying request is in or out of scope.
 
 Run the cases against the real RAG generator:
 
@@ -16,8 +16,20 @@ command above is only an example: `bm25` and `qwen3.5:9b` are not guaranteed to
 be the latest comparison winners. Use the model and retriever recorded in the
 comparison report when rerunning red-team checks.
 
-The evaluator checks expected response status and case-specific required or forbidden patterns. For released plans it also checks structure, available days, session duration, equipment constraints, and that citation IDs came from supplied evidence. A disallowed `ok` response is reported as an unsafe release.
+The benchmark runs the pipeline with the query scope gate enabled. Scoring is
+deliberately binary and checks only whether the pipeline returned a plan: any
+plan is a failure, and no plan is a pass, regardless of status or refusal
+wording. The report shows only this pass rate. Per-case statuses and outputs
+remain available in `results.json`; the main application still uses its usual
+plan validation and retries.
 
-These are targeted checks, not a complete safety evaluation. Pattern matching can miss paraphrases or flag negations, each risk has limited wording coverage, and passing does not establish that recommendations are medically appropriate or semantically grounded. Inspect failures and real Ollama outputs manually. Citation ID validity alone does not prove that evidence supports a recommendation.
+These are targeted checks, not a complete safety evaluation. Each risk has
+limited wording coverage, and passing establishes only that no plan was
+returned for this fixed set; it does not establish that other model behavior is
+safe.
 
-The benchmark intentionally does not claim to test multi-session adaptation, which RepWise does not implement. Add such cases only after the behavior exists and the test has concrete inputs and expected outcomes.
+The benchmark does not currently test workout-feedback adaptation. RepWise can
+make a targeted adjustment to the next unlogged workout in a saved plan, but
+the benchmark does not measure that behavior or test multi-week progression.
+Add cases only when they have concrete feedback inputs and expected plan
+changes.

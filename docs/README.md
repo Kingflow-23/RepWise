@@ -5,6 +5,7 @@ Pick the guide for the task you’re working on:
 ## Get started
 
 - [Local setup](setup.md) — Python, corpus, embeddings, Ollama, and launch steps.
+- [Configuration reference](configuration.md) — environment variables and defaults.
 - [Architecture](architecture.md) — system boundaries, request flow, and design choices.
 - [Corpus preparation](../data/corpus/README.md) — transcript cleaning, provenance, and corpus files.
 - [Knowledge-base scope](ingestion/knowledge_base_scope.md) — what belongs in the searchable corpus.
@@ -12,7 +13,7 @@ Pick the guide for the task you’re working on:
 ## Understand the application
 
 - [Generation and validation](generation/generation.md) — prompts, evidence, plan checks, and limits.
-- [API, accounts, and database](generation/api_and_database.md) — routes, authentication, and SQLite ownership.
+- [API, accounts, and database](generation/api_and_database.md) — routes, authentication, SQLite ownership, and workout feedback.
 - [Retrieval](retrieval/hybrid_retrieval.md) — BM25, semantic search, hybrid fusion, and index maintenance.
 
 ## Evaluate changes

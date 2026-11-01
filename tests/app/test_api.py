@@ -18,6 +18,22 @@ from src.schemas.models import (
     UserProfile,
     Workout,
 )
+from src.retrieval.query_expansion import QueryAnalysis
+
+
+@pytest.fixture(autouse=True)
+def allow_test_request_scope(monkeypatch):
+    """Keep API tests independent of the local Ollama service."""
+
+    class InScopeAnalyzer:
+        def analyze(self, query):
+            return QueryAnalysis("in_scope", query, "")
+
+    monkeypatch.setattr(
+        api_module,
+        "OllamaQueryExpander",
+        lambda *_args: InScopeAnalyzer(),
+    )
 
 
 class FakeRetriever:
@@ -271,6 +287,60 @@ def test_api_saves_profile_and_completed_plan(tmp_path, monkeypatch):
         ).status_code
         == 204
     )
+    assert client.get(f"/api/v1/students/{user_id}/plans", headers=headers).json() == []
+
+
+def test_scope_refusal_is_returned_without_saving_a_plan(tmp_path, monkeypatch):
+    """Expose the scope model's message as a successful non-plan response."""
+    monkeypatch.setattr(api_module, "read_access_token", lambda token, secret: token)
+
+    class RefusingRetriever:
+        def search(self, query, top_k):
+            pytest.fail("out-of-scope requests must not reach retrieval")
+
+    class RefusingScopeAnalyzer:
+        def analyze(self, _query):
+            return QueryAnalysis(
+                "out_of_scope",
+                "",
+                "RepWise cannot diagnose pain. Please consult a health professional.",
+            )
+
+    class UnusedGenerator:
+        def generate(self, *_args, **_kwargs):
+            pytest.fail("the generator must not run for a refused request")
+
+    database_path = str(tmp_path / "repwise.sqlite3")
+    repository = StudentRepository(database_path)
+    repository.initialize()
+    user_id = repository.create_user("Alex Example", "test-hash")
+    app = create_app(
+        AppConfig(database_path=database_path, auth_secret="test-secret"),
+        repository=repository,
+        retriever=RefusingRetriever(),
+        scope_analyzer=RefusingScopeAnalyzer(),
+        generator=UnusedGenerator(),
+    )
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {user_id}"}
+    profile = {
+        "experience": "beginner",
+        "goal": "general strength",
+        "available_days": ["Monday"],
+        "session_minutes": 45,
+        "equipment": ["bodyweight"],
+    }
+    client.put(f"/api/v1/students/{user_id}/profile", json=profile, headers=headers)
+
+    response = client.post(
+        f"/api/v1/students/{user_id}/plans",
+        json={"focus": "Diagnose my knee pain"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "out_of_scope"
+    assert "cannot diagnose pain" in response.json()["message"]
     assert client.get(f"/api/v1/students/{user_id}/plans", headers=headers).json() == []
 
 

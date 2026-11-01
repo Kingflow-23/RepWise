@@ -34,6 +34,8 @@ python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
 Never commit the resulting `.env` or share its secret.
+See the [configuration reference](configuration.md) for every supported
+environment variable and its default.
 
 ## 2. Prepare the transcript corpus
 

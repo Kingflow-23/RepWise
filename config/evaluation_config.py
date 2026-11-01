@@ -16,7 +16,10 @@ CHUNKS_DIR = (
 
 # Retrieval scoring
 K_VALUES = (1, 3, 5, 10)  # Recall@k, Precision@k are computed at these k
-MAIN_K = 10  # a retrieval case passes when all relevant chunks are in the top 10
+MAIN_K = 10  # comparison ranking cutoff for Recall@k
+RETRIEVAL_SUCCESS_K = (
+    5  # an answerable query succeeds when any evidence is in the top 5
+)
 RETRIEVAL_DEPTH = 50  # how many chunks we ask the retriever for
 EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
 EMBEDDING_INDEX = REPO / "data" / "corpus" / "index" / "semantic.npz"

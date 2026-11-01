@@ -56,6 +56,7 @@ responses throughout the application.
 | [`src/db/repository.py`](../src/db/repository.py) | SQLite schema and account-scoped persistence. |
 | [`src/schemas/models.py`](../src/schemas/models.py) | Shared input, retrieved-evidence, plan, and API data models. |
 | [`src/generation/pipeline.py`](../src/generation/pipeline.py) | Orchestrates retrieval, evidence selection, generation, retries, and final validation. |
+| [`src/generation/adaptation.py`](../src/generation/adaptation.py) | Applies feedback to one later, unlogged workout while preserving its exercises and source references. |
 | [`src/retrieval/`](../src/retrieval) | Common retriever protocol, BM25, local semantic search, hybrid rank fusion, and index construction. |
 | [`src/rag/`](../src/rag) | Query/evidence preparation and prompt/schema construction. |
 | [`src/llm/ollama.py`](../src/llm/ollama.py) | Small client boundary to the configured local Ollama service. |
@@ -97,6 +98,13 @@ corpora or environments.
 7. FastAPI saves successful plans and their source information. Streamlit
    renders the plan, source links, full evidence extracts, and saved history.
 
+Students can also log completion and difficulty for a saved workout. The API
+stores one feedback record per workout and may use it to adjust only the next
+unlogged workout in that plan. It preserves exercise identities and citations;
+feedback does not create a new plan or implement longitudinal progression.
+Comments matching the current English pain/discomfort safeguard are saved
+without changing a workout.
+
 The source IDs identify retrieved passages but do not prove that a passage
 semantically supports an exercise or that the plan is safe. The system is a
 training suggestion demo, not a medical or coaching authority. Plans are
@@ -135,6 +143,10 @@ student data by authenticated account ID. Passwords are stored as Argon2
 hashes; signed bearer tokens carry the internal account identity. Raw passwords
 and tokens are not persisted. Environment secrets belong in the local `.env`,
 not in source control.
+
+Workout feedback is stored separately and associated with its owned plan and
+week/workout position. A successful adaptation updates the plan and records
+which future workout was changed in the same database transaction.
 
 The API is the trust boundary for application operations. Streamlit is a
 separate process and calls that API. The demo has not been reviewed for

@@ -9,7 +9,7 @@ The runner reports retrieval, generation, and (in comparison mode) ranked result
 | Recall@k | Fraction of relevant chunk IDs retrieved in the top k. |
 | MRR | How high the first relevant chunk appears in the ranking. |
 | Hit@1 | Whether the first chunk is relevant. |
-| Top-five evidence verdict | Yes when any labeled evidence chunk appears in the top five; the report separately labels full, partial, or no coverage. |
+| Top-five evidence verdict | Yes when any labeled evidence chunk appears in the top five; the report separately labels full, partial, or no labeled-span coverage. |
 | Precision@k | Fraction of the top k chunk results marked relevant. |
 | Median and p95 latency | How long each retrieval request takes. |
 
@@ -19,14 +19,15 @@ Judgments are stored as auditable video time ranges rather than fixed chunk IDs.
 
 | Metric or check | What it tells us |
 |---|---|
-| Expected-status accuracy | Whether each case ended with an accepted status such as `ok`, `abstain`, or `clarify`. |
-| Output-schema validity | Whether released plans have readable sessions and named exercises. The application also applies Pydantic and deterministic plan checks before release. |
-| Citation ID validity | Whether cited passage IDs were actually supplied to the model. This is provenance validation, not proof of semantic grounding. |
-| Citation precision and faithfulness | Optional quote and claim checks when the adapter provides claims and citations. They may be `N/A` for the real `PlanPipeline` adapter, which does not currently produce separate claim annotations. |
-| Safety-case pass rate | Captured by generation pass rate across cases with expected status and required/forbidden text checks. |
-| Median and p95 latency | Time spent in the evaluated generation call. |
+| Answer quality | Normalized judge score across request fit, schedule, profile constraints, domain safety, clarity, JSON validity, and plan-schema validity. Each dimension is scored 0-2. |
+| Answer generation rate | Fraction of cases that produced an answer. |
+| Request fit | Whether the answer addresses the requested goal. |
+| Schedule/profile safety | Combined judge score for following the requested schedule and respecting profile constraints. |
+| Generation latency | Median raw model-generation time. |
 
 Generation reports must identify `mocked` versus `real Ollama`, retrieval strategy, embedding model, and generation model. Mock planners are small simulations for runner tests and deliberate failure examples, not performance evidence for the application.
+The report shows only these headline metrics; per-dimension scores, evidence
+support, and judge rationale remain available in `results.json`.
 
 The bounded `--mode smoke --llm ollama` workflow checks all three real retrievers
 on a curated retrieval subset, then runs one nominal generation case and four
@@ -36,9 +37,20 @@ no-RAG comparison, or full safety gate.
 
 ## Controlled comparison
 
-Comparison mode ranks BM25, semantic, and hybrid using chunk Recall@10 (`MAIN_K`, currently 10), MRR, and median retrieval latency (in that priority order); the simpler per-query verdict remains “any evidence in the top five.” BM25 and semantic components are initialized once and shared with hybrid. This retrieval ranking is reported but does not automatically choose the generation retriever: generation uses the configured strategy (hybrid by default), unless `--retriever` overrides it. It then runs the same one-week nominal cases, including explicit workout counts, against model A + RAG, model B + RAG, and model A without RAG. Both RAG arms share the selected generation retriever and its evidence-selection path; the no-RAG arm gets no retrieved chunks. Generation ranking is by case pass rate, request-constraint compliance, schema validity, and median latency, in that priority order.
+Comparison mode ranks BM25, semantic, and hybrid using chunk Recall@10
+(`MAIN_K`), MRR, and median retrieval latency; the per-query verdict remains
+"any evidence in the top five." It then runs both generation models with RAG on
+the same nominal cases and ranks them by the common LLM-judge answer-quality
+score. The selected model is then run on the same cases without RAG. Generation
+answers are preserved as raw text and are not passed through production plan
+schema or deterministic validation. The separate Qwen judge scores the same
+dimensions for each model and architecture arm; evidence support is reported
+only for RAG.
 
-Citation ID validity is N/A for the no-RAG arm because no sources are available or required. This is intentional and is not interpreted as either a perfect citation score or a failure. The comparison is descriptive and fixed-dataset only; it has no confidence intervals or significance tests.
+The red-team suite reports one metric: pass rate. Any returned plan fails;
+no returned plan passes, regardless of status or refusal wording. The
+comparison is descriptive and fixed-dataset only; it has no confidence
+intervals or significance tests.
 
 ## What the metrics cannot establish
 

@@ -34,7 +34,11 @@ from ..generation.pipeline import PlanPipeline, validate_plan
 from ..llm.ollama import OllamaGenerator, PlanGenerator
 from ..retrieval.base import MissingRetriever, Retriever
 from ..retrieval.hybrid import HybridRetriever
-from ..retrieval.query_expansion import OllamaQueryExpander, QueryExpansionRetriever
+from ..retrieval.query_expansion import (
+    OllamaQueryExpander,
+    QueryExpansionRetriever,
+    ScopeAnalyzer,
+)
 from ..retrieval.semantic import SemanticRetriever, load_chunks
 from ..retrieval.sparse import BM25Retriever
 from ..schemas.models import (
@@ -56,6 +60,7 @@ def create_app(
     *,
     repository: StudentRepository | None = None,
     retriever: Retriever | None = None,
+    scope_analyzer: ScopeAnalyzer | None = None,
     generator: PlanGenerator | None = None,
     workout_generator: WorkoutGenerator | None = None,
 ) -> FastAPI:
@@ -67,6 +72,8 @@ def create_app(
             the app is returned.
         retriever: Optional retrieval service. If omitted, the configured corpus
             and retrieval strategy are used.
+        scope_analyzer: Optional request-scope analyzer. If omitted, the
+            configured local Ollama model is used.
         generator: Optional plan-generation service; if omitted, a local Ollama
             generator is configured from the settings.
         workout_generator: Optional structured workout generator. The default
@@ -88,6 +95,10 @@ def create_app(
     repository = repository or StudentRepository(config.database_path)
     repository.initialize()
     logger.info("Database initialized")
+    if scope_analyzer is None:
+        scope_analyzer = OllamaQueryExpander(
+            config.query_expansion_model, config.ollama_url
+        )
     if retriever is None:
         retrieval_started = perf_counter()
         try:
@@ -110,19 +121,9 @@ def create_app(
                 retriever = HybridRetriever(lexical, semantic)
             else:
                 raise ValueError("REPWISE_RETRIEVAL must be bm25, semantic or hybrid.")
-            if config.query_expansion:
-                retriever = QueryExpansionRetriever(
-                    retriever,
-                    OllamaQueryExpander(
-                        config.query_expansion_model, config.ollama_url
-                    ),
-                )
             logger.info(
-                "Retriever initialized strategy=%s query_expansion=%s query_expansion_model=%s "
-                "chunks=%s elapsed_ms=%.1f",
+                "Retriever initialized strategy=%s chunks=%s elapsed_ms=%.1f",
                 config.retrieval_strategy,
-                config.query_expansion,
-                config.query_expansion_model if config.query_expansion else "disabled",
                 len(chunks),
                 (perf_counter() - retrieval_started) * 1000,
             )
@@ -136,6 +137,15 @@ def create_app(
             )
     else:
         logger.info("Using injected retriever service")
+    if not isinstance(retriever, QueryExpansionRetriever):
+        retriever = QueryExpansionRetriever(
+            retriever, scope_analyzer, rewrite=config.query_expansion
+        )
+    logger.info(
+        "Retriever scope gate enabled query_rewriting=%s model=%s",
+        config.query_expansion,
+        config.query_expansion_model,
+    )
     generator = generator or OllamaGenerator(config.ollama_model, config.ollama_url)
     if not isinstance(generator, OllamaGenerator):
         logger.info("Using injected plan generator service")
@@ -438,6 +448,9 @@ def create_app(
             plan_id = repository.save_plan(student_id, request, result)
             logger.info("Plan generated and saved")
             return {"plan_id": plan_id, **result.model_dump()}
+        if result.status == "out_of_scope":
+            logger.info("Plan request declined by scope gate")
+            return result.model_dump()
         logger.warning("Plan request ended status=%s", result.status)
         status_code = 503 if result.status == "retrieval_error" else 422
         raise HTTPException(status_code=status_code, detail=result.model_dump())

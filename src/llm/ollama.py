@@ -47,6 +47,7 @@ class OllamaGenerator:
         """
         self.model = model
         self.base_url = base_url
+        self._last_raw_output: str | None = None
 
     def generate(
         self,
@@ -71,12 +72,14 @@ class OllamaGenerator:
         """
         started = perf_counter()
         logger.info("Ollama generation started model=%s", self.model)
+        self._last_raw_output = None
         try:
             content, prompt_eval_tokens = self._generate_content(
                 system_prompt,
                 user_prompt,
                 response_schema or TrainingPlan.model_json_schema(),
             )
+            self._last_raw_output = content
             if isinstance(prompt_eval_tokens, bool) or not isinstance(
                 prompt_eval_tokens, int
             ):
@@ -103,6 +106,50 @@ class OllamaGenerator:
                 f"running and install the configured model with `ollama pull {self.model}`. "
                 f"Details: {error}"
             ) from error
+
+    def generate_text(self, system_prompt: str, user_prompt: str) -> str:
+        """Return the model's raw benchmark answer without schema validation."""
+        started = perf_counter()
+        logger.info("Ollama raw benchmark generation started model=%s", self.model)
+        try:
+            from ollama import Client
+
+            client = Client(host=self.base_url, timeout=300)
+            response = client.chat(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                options={"temperature": 0.2, "num_ctx": 32_768},
+                think=False,
+            )
+            content = (
+                response["message"]["content"]
+                if isinstance(response, dict)
+                else response.message.content
+            )
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError("Ollama returned an empty answer.")
+        except Exception as error:
+            logger.error(
+                "Ollama raw benchmark generation failed model=%s "
+                "error_type=%s elapsed_ms=%.1f",
+                self.model,
+                type(error).__name__,
+                (perf_counter() - started) * 1000,
+            )
+            raise RuntimeError(
+                f"Ollama could not generate a benchmark answer with {self.model!r}: "
+                f"{error}"
+            ) from error
+        logger.info(
+            "Ollama raw benchmark answer returned model=%s chars=%s elapsed_ms=%.1f",
+            self.model,
+            len(content),
+            (perf_counter() - started) * 1000,
+        )
+        return content
 
     def generate_workout(
         self,

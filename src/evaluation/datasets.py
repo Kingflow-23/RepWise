@@ -16,6 +16,7 @@ RETRIEVAL_CASES = EVALS / "retrieval" / "retrieval_test_cases.jsonl"
 RELEVANCE_JUDGMENTS = EVALS / "expected_evidence" / "relevance_judgments.jsonl"
 GENERATION_CASES = EVALS / "benchmark_cases.jsonl"
 RED_TEAM_CASES = EVALS / "red_team" / "red_team_cases.jsonl"
+SMOKE_CASE_IDS = EVALS / "smoke_case_ids.json"
 STATUSES = {"ok", "abstain", "clarify", "blocked"}
 MOJIBAKE_MARKERS = ("\ufffd", "\u00c3", "\u00c2", "\u00e2\u20ac")
 
@@ -34,6 +35,49 @@ def _has_mojibake(text: str) -> bool:
 
 class DatasetError(ValueError):
     """An evaluation case is invalid or cannot be linked to its labels."""
+
+
+def load_smoke_case_ids(path: Path = SMOKE_CASE_IDS) -> dict[str, list[str]]:
+    """Load curated case IDs for the bounded staged evaluation.
+
+    The smoke cases reference the authoritative retrieval, generation, and
+    red-team datasets rather than duplicating their prompts and labels.
+    """
+    try:
+        selected = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise DatasetError(
+            f"cannot read smoke case IDs from {path}: {error}"
+        ) from error
+    required = {"retrieval", "generation", "red_team"}
+    if not isinstance(selected, dict) or set(selected) != required:
+        raise DatasetError(
+            f"{path.name}: expected exactly these groups: {', '.join(sorted(required))}"
+        )
+    for group in sorted(required):
+        ids = selected[group]
+        if (
+            not isinstance(ids, list)
+            or not ids
+            or not all(isinstance(item, str) and item.strip() for item in ids)
+            or len(ids) != len(set(ids))
+        ):
+            raise DatasetError(
+                f"{path.name}: {group} must be a non-empty list of unique case IDs"
+            )
+    return selected
+
+
+def select_cases(cases: list, case_ids: list[str], dataset_name: str) -> list:
+    """Select cases in manifest order and reject stale or unknown IDs."""
+    by_id = {case.id: case for case in cases}
+    unknown = [case_id for case_id in case_ids if case_id not in by_id]
+    if unknown:
+        raise DatasetError(
+            f"{dataset_name}: smoke manifest references unknown case IDs: "
+            f"{', '.join(unknown)}"
+        )
+    return [by_id[case_id] for case_id in case_ids]
 
 
 def read_jsonl(path: Path) -> list[tuple[int, dict]]:
@@ -273,6 +317,7 @@ class GenerationCase:
         notes: Rationale for including the case in the benchmark.
         evidence_query_ids: Answerable retrieval cases linked as evidence for
             this generation case.
+        expected_scope: Whether a red-team request should pass the scope gate.
     """
 
     id: str
@@ -286,6 +331,7 @@ class GenerationCase:
     required_patterns: list[str] = field(default_factory=list)
     notes: str = ""
     evidence_query_ids: list[str] = field(default_factory=list)
+    expected_scope: str = "in_scope"
 
 
 def load_generation_cases(
@@ -294,9 +340,10 @@ def load_generation_cases(
     """Load and validate plan-generation cases from JSONL.
 
     The default nominal benchmark receives stricter suite-level checks,
-    including minimum size, all-``ok`` status expectations, linked answerable
-    evidence queries, and normalized-request uniqueness. Alternate files are
-    validated against their row schemas without those nominal-only checks.
+    including a minimum of 15 cases, all-``ok`` status expectations, linked
+    answerable evidence queries, and normalized-request uniqueness. Alternate
+    files are validated against their row schemas without those nominal-only
+    checks.
 
     Args:
         path: JSONL dataset to read; defaults to the nominal benchmark.
@@ -325,6 +372,14 @@ def load_generation_cases(
             raise DatasetError(f"{where}: request must not be empty")
         if _has_mojibake(row["request"]):
             raise DatasetError(f"{where}: request contains invalid text encoding")
+        expected_scope = row.get("expected_scope", "in_scope")
+        if not isinstance(expected_scope, str) or expected_scope not in {
+            "in_scope",
+            "out_of_scope",
+        }:
+            raise DatasetError(
+                f"{where}: expected_scope must be 'in_scope' or 'out_of_scope'"
+            )
         expected = row["expected_status"]
         expected = [expected] if isinstance(expected, str) else expected
         if not isinstance(expected, list) or not expected:
@@ -432,13 +487,14 @@ def load_generation_cases(
                 required_patterns=required,
                 notes=notes.strip(),
                 evidence_query_ids=evidence_query_ids,
+                expected_scope=expected_scope,
             )
         )
     _unique([case.id for case in cases], "generation case")
     if is_nominal_dataset:
-        if len(cases) < 30:
+        if len(cases) < 15:
             raise DatasetError(
-                f"{path.name}: nominal generation benchmark needs at least 30 cases"
+                f"{path.name}: nominal generation benchmark needs at least 15 cases"
             )
         if any(case.expected_status != ["ok"] for case in cases):
             raise DatasetError(

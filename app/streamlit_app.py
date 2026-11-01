@@ -67,6 +67,12 @@ def api_request(method: str, path: str, **kwargs: Any) -> Any:
         method: HTTP verb used for the API call.
         path: API route appended to the configured backend URL.
         **kwargs: Additional request options passed to ``requests.request``.
+
+    Returns:
+        Decoded response JSON, or ``None`` for an empty response.
+
+    Raises:
+        ApiError: If the backend cannot be reached or returns an error status.
     """
     # The backend derives ownership from this signed token, not a client-sent ID.
     token = st.session_state.get("access_token")
@@ -123,7 +129,14 @@ def api_request(method: str, path: str, **kwargs: Any) -> Any:
 
 
 def generation_error_message(error: ApiError) -> str:
-    """Turn a structured plan-generation failure into actionable user guidance."""
+    """Translate a plan-generation API failure into actionable retry guidance.
+
+    Args:
+        error: API failure, including any structured backend status and detail.
+
+    Returns:
+        A user-facing explanation that does not imply saved plans were changed.
+    """
     detail = error.detail if isinstance(error.detail, dict) else {}
     status = detail.get("status")
     reason = str(detail.get("message", str(error))).casefold()
@@ -167,8 +180,19 @@ def generation_error_message(error: ApiError) -> str:
 def save_generated_plan(
     student_id: str, payload: dict[str, Any], focus: str, workouts_per_week: int
 ) -> None:
-    """Generate a plan and update the UI's latest-plan and history state."""
+    """Generate a plan and update the UI's latest-plan and history state.
+
+    Args:
+        student_id: Authenticated account ID used by the backend route.
+        payload: Plan options submitted to the generation endpoint.
+        focus: Display label stored with the generated plan record.
+        workouts_per_week: Requested weekly workout count stored for display.
+
+    API failures and out-of-scope requests are represented in session state;
+    successful results are added to both the latest-plan and history state.
+    """
     logger.info("Plan generation requested through Streamlit")
+    st.session_state.pop("plan_scope_message", None)
     try:
         result = api_request(
             "POST",
@@ -181,6 +205,17 @@ def save_generated_plan(
             error.status_code or "unavailable",
         )
         st.session_state.plan_generation_error = generation_error_message(error)
+        return
+
+    if result.get("status") == "out_of_scope":
+        st.session_state.plan_scope_message = result.get(
+            "message",
+            "RepWise can't generate a plan for this request. Please revise it to fit "
+            "general fitness planning.",
+        )
+        st.session_state.pop("plan_generation_error", None)
+        st.session_state.pop("latest_plan", None)
+        logger.info("Plan request declined by scope gate")
         return
 
     record = {
@@ -204,6 +239,7 @@ def save_generated_plan(
         ],
     ]
     st.session_state.pop("plan_generation_error", None)
+    st.session_state.pop("plan_scope_message", None)
     logger.info("Plan generation completed through Streamlit")
     st.success("Your one-week plan was generated and saved.")
 
@@ -642,7 +678,9 @@ with plan_tab:
             }
             with st.spinner("Generating your plan…"):
                 save_generated_plan(sid, payload, focus.strip(), workouts_per_week)
-    if st.session_state.get("plan_generation_error"):
+    if st.session_state.get("plan_scope_message"):
+        st.info(st.session_state.plan_scope_message)
+    elif st.session_state.get("plan_generation_error"):
         st.error(
             st.session_state.plan_generation_error,
             title="Plan generation failed",

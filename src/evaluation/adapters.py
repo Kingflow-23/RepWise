@@ -34,6 +34,7 @@ import importlib
 import json
 import re
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Callable, Sequence
 
 from .metrics.grounding import normalise
@@ -294,9 +295,9 @@ def build_retriever(
         ImportError: If a custom callable's module cannot be imported.
     """
     if name in {"bm25", "semantic", "hybrid"}:
-        return build_retrievers(
-            [name], chunks_dir, query_expansion=query_expansion
-        )[name]
+        return build_retrievers([name], chunks_dir, query_expansion=query_expansion)[
+            name
+        ]
     return load_callable(name)
 
 
@@ -388,9 +389,11 @@ def build_retrievers(
             settings.query_expansion_model, settings.ollama_url
         )
         components = {
-            name: QueryExpansionRetriever(retriever, expander)
-            if retriever is not None
-            else None
+            name: (
+                QueryExpansionRetriever(retriever, expander)
+                if retriever is not None
+                else None
+            )
             for name, retriever in components.items()
         }
 
@@ -408,6 +411,7 @@ def build_planner(
     model_name: str | None = None,
     retriever_name: str | None = None,
     retriever: Retriever | None = None,
+    max_generation_attempts: int = 3,
 ) -> Planner:
     """Resolve a planner name to a mock, production, or configured callable.
 
@@ -424,6 +428,8 @@ def build_planner(
             it takes precedence over ``retriever_name`` so comparison arms can
             share the same fitted index and ranking configuration. Retriever-
             related options do not affect mocks, plugins, or no-RAG mode.
+        max_generation_attempts: Maximum number of real RAG generation attempts,
+            including the initial call; ignored by other planner types.
 
     Returns:
         A callable accepting the common planner case dictionary and returning
@@ -440,6 +446,7 @@ def build_planner(
             retriever_name=retriever_name,
             retriever=retriever,
             use_rag=name == "ollama-rag",
+            max_generation_attempts=max_generation_attempts,
         )
     return load_callable(name)
 
@@ -451,6 +458,7 @@ def build_real_pipeline_planner(
     retriever_name: str | None = None,
     retriever: Retriever | None = None,
     use_rag: bool = True,
+    max_generation_attempts: int = 3,
 ) -> Planner:
     """Adapt RepWise plan generation to the evaluation planner contract.
 
@@ -475,6 +483,8 @@ def build_real_pipeline_planner(
             over ``retriever_name``.
         use_rag: Selects retrieval-grounded generation when true and the
             matched no-context baseline when false.
+        max_generation_attempts: Maximum number of real RAG generation attempts,
+            including the initial call. The no-RAG path makes one model call.
 
     Returns:
         A planner callable that maps each case to the runner's normalized result
@@ -543,11 +553,17 @@ def build_real_pipeline_planner(
                     rows = selected_retriever(query, top_k)
                     effective_query = query
                 return [
-                    RetrievedChunk.model_validate(row)
-                    for row in rows
+                    RetrievedChunk.model_validate(row) for row in rows
                 ], effective_query
 
-        pipeline = PlanPipeline(PipelineRetriever(), generator, settings.top_k)
+        pipeline_options = (
+            {"max_generation_attempts": max_generation_attempts}
+            if max_generation_attempts != 3
+            else {}
+        )
+        pipeline = PlanPipeline(
+            PipelineRetriever(), generator, settings.top_k, **pipeline_options
+        )
 
     def plan(case: PlannerCase) -> PlannerResult:
         """Run one case and normalize its result for the evaluation runner.
@@ -561,10 +577,10 @@ def build_real_pipeline_planner(
             A normalized mapping containing status, message, plan, claims,
             retrieved chunk IDs, available citation IDs/evidence, and the RAG
             flag used by downstream schema and citation checks. The plan keeps
-            its week structure and also adds flattened ``sessions`` for the
-            runner's schedule checks. ``claims`` is empty because production
-            generation records evidence citations on exercises, not as the
-            claim-level objects used by mock planner fixtures.
+            its canonical week/workout structure for runner checks. Rejected
+            plan diagnostics are evaluation-only. ``claims`` is empty because
+            production generation records evidence citations on exercises,
+            not as the claim-level objects used by mock planner fixtures.
         """
         profile = UserProfile.model_validate(case["profile"])
         request = PlanRequest(
@@ -597,30 +613,21 @@ def build_real_pipeline_planner(
         status = {
             "completed": "ok",
             "insufficient_evidence": "abstain",
+            "out_of_scope": "blocked",
             "retrieval_error": "error",
             "generation_error": "error",
         }.get(result_status, "error")
-        plan_data = None
-        if plan_model is not None:
-            serialized_plan = plan_model.model_dump()
-            plan_data = {
-                **serialized_plan,
-                "sessions": [
-                    {
-                        "name": f"Week {week.number} · {workout.day}",
-                        "exercises": [
-                            exercise.model_dump() for exercise in workout.exercises
-                        ],
-                        "estimated_minutes": workout.estimated_minutes,
-                    }
-                    for week in plan_model.weeks
-                    for workout in week.workouts
-                ],
-            }
+        plan_data = (
+            plan_model.model_dump(mode="json") if plan_model is not None else None
+        )
+        diagnostics = (
+            dict(getattr(result, "_evaluation_diagnostics", {})) if use_rag else {}
+        )
         return {
             "status": status,
             "message": message,
             "plan": plan_data,
+            "diagnostics": diagnostics,
             "claims": [],
             "retrieved_ids": [source.chunk_id for source in sources if source.chunk_id],
             "available_source_ids": [source.source_id for source in sources],
@@ -631,6 +638,115 @@ def build_real_pipeline_planner(
         }
 
     return plan
+
+
+def build_benchmark_planner(
+    chunks_dir: Path,
+    *,
+    model_name: str,
+    retriever_name: str,
+    retriever: Retriever | None,
+    scope_analyzer: Any | None = None,
+    use_rag: bool,
+    use_query_expansion: bool = True,
+) -> Planner:
+    """Build raw generation for model judging, separate from production validation."""
+    from config.config import AppConfig
+    from ..llm.ollama import OllamaGenerator
+    from ..rag.context import make_highlight_query, make_query, select_evidence
+    from ..rag.prompt import make_benchmark_prompts, plan_response_schema
+    from ..retrieval.query_expansion import ScopeRefusalError
+    from ..schemas.models import PlanRequest, RetrievedChunk, UserProfile
+
+    settings = AppConfig.from_environment()
+    generator = OllamaGenerator(model_name, settings.ollama_url)
+    selected_retriever = retriever
+    if use_rag and selected_retriever is None:
+        selected_retriever = build_retriever(
+            retriever_name, chunks_dir, query_expansion=use_query_expansion
+        )
+
+    def generate(case: PlannerCase) -> PlannerResult:
+        profile = UserProfile.model_validate(case["profile"])
+        request = PlanRequest(
+            focus=case["request"],
+            weeks=case.get("weeks", 1),
+            workouts_per_week=case.get("workouts_per_week"),
+            profile=profile,
+            extra_constraints=case.get("extra_constraints", []),
+        )
+        query = make_query(request)
+        scope_started = perf_counter()
+        analysis = scope_analyzer.analyze(query) if scope_analyzer else None
+        scope_latency_ms = (perf_counter() - scope_started) * 1000
+        if analysis is not None and analysis.scope != "in_scope":
+            error = ScopeRefusalError(analysis.scope, analysis.user_message)
+            return {
+                "status": "blocked",
+                "message": error.user_message,
+                "answer": error.user_message,
+                "plan": None,
+                "retrieved_ids": [],
+                "available_source_ids": [],
+                "available_source_evidence": {},
+                "rag_enabled": use_rag,
+                "scope": analysis.scope,
+                "evidence": "",
+                "scope_analysis_latency_ms": scope_latency_ms,
+            }
+
+        chunks = []
+        retrieval_query = (
+            analysis.search_query
+            if analysis is not None and use_query_expansion
+            else query
+        )
+        retrieval_started = perf_counter()
+        if use_rag:
+            if selected_retriever is None:
+                raise RuntimeError("The benchmark RAG retriever was not initialized.")
+            if hasattr(selected_retriever, "search"):
+                rows = selected_retriever.search(retrieval_query, settings.top_k)
+            else:
+                rows = selected_retriever(retrieval_query, settings.top_k)
+            chunks = [RetrievedChunk.model_validate(row) for row in rows]
+            evidence, sources = select_evidence(
+                chunks,
+                query=make_highlight_query(request, retrieval_query=retrieval_query),
+            )
+        else:
+            evidence, sources = "", []
+        retrieval_latency_ms = (perf_counter() - retrieval_started) * 1000
+
+        generation_started = perf_counter()
+        system_prompt, user_prompt = make_benchmark_prompts(request, evidence)
+        answer = generator.generate_text(
+            system_prompt,
+            user_prompt,
+        )
+        generation_latency_ms = (perf_counter() - generation_started) * 1000
+        return {
+            "status": "ok",
+            "message": "Raw model answer captured; production plan validation was not run.",
+            "answer": answer,
+            "plan": None,
+            "retrieved_ids": [chunk.chunk_id for chunk in chunks],
+            "available_source_ids": [source.source_id for source in sources],
+            "available_source_evidence": {
+                source.source_id: source.evidence_text or "" for source in sources
+            },
+            "expected_plan_schema": plan_response_schema(request),
+            "rag_enabled": use_rag,
+            "scope": analysis.scope if analysis is not None else "unchecked",
+            "evidence": evidence,
+            "scope_analysis_latency_ms": (
+                scope_latency_ms if scope_analyzer is not None else None
+            ),
+            "retrieval_latency_ms": retrieval_latency_ms,
+            "generation_latency_ms": generation_latency_ms,
+        }
+
+    return generate
 
 
 def answer_text(output: PlannerResult) -> str:
@@ -647,7 +763,7 @@ def answer_text(output: PlannerResult) -> str:
         User-facing message, claims, plan prose and exercise names joined by
         newlines for regular-expression matching.
     """
-    parts = [output.get("message") or ""]
+    parts = [output.get("message") or "", output.get("answer") or ""]
     parts += [c.get("text", "") for c in output.get("claims") or []]
     plan = output.get("plan") or {}
     for key in ("title", "summary", "safety_note"):

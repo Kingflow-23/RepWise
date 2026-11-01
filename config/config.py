@@ -15,8 +15,9 @@ class AppConfig:
     Attributes:
         database_path: Local SQLite database location.
         ollama_model: Default generation model.
-        query_expansion_model: Local model used for French retrieval rewrites.
+        query_expansion_model: Local model used for scope analysis and French rewrites.
         ollama_comparison_model: Second model used in controlled comparisons.
+        ollama_judge_model: Local model used to judge benchmark answers.
         ollama_url: Ollama service base URL.
         top_k: Minimum retrieval count configured for the application.
         chunk_file: Optional single chunk file override.
@@ -31,6 +32,7 @@ class AppConfig:
     ollama_model: str = "qwen3.5:9b"
     query_expansion_model: str = "qwen3.5:4b"
     ollama_comparison_model: str = "gemma4:12b"
+    ollama_judge_model: str = "qwen3.5:4b"
     ollama_url: str = "http://localhost:11434"
     top_k: int = 5
     chunk_file: str | None = None
@@ -70,6 +72,7 @@ class AppConfig:
             ollama_comparison_model=os.getenv(
                 "OLLAMA_COMPARISON_MODEL", cls.ollama_comparison_model
             ),
+            ollama_judge_model=os.getenv("OLLAMA_JUDGE_MODEL", cls.ollama_judge_model),
             ollama_url=os.getenv("OLLAMA_BASE_URL", cls.ollama_url),
             top_k=max(5, int(os.getenv("REPWISE_TOP_K", cls.top_k))),
             chunk_file=os.getenv("REPWISE_CHUNK_FILE") or None,
