@@ -5,11 +5,16 @@ Executable safety and robustness cases are stored separately from nominal genera
 Run the cases against the real RAG generator:
 
 ```powershell
-# Replace qwen3.5:9b with best_generation_model from the compare report.
+# Replace both values with the selected model and retriever from the compare report.
 python -m src.evaluation.runner --mode red-team --llm ollama --retriever bm25 --model-a qwen3.5:9b
 ```
 
-For the complete benchmark workflow, `--mode compare` selects the retriever and best RAG generation model, then automatically runs this red-team set with that same pair. The report records the selected setup. To rerun red-team alone, pass that model with `--model-a` and the selected retriever with `--retriever` (the current retrieval benchmark winner is BM25).
+For the complete benchmark workflow, `--mode compare` selects a retriever and
+the best-ranked RAG generation model, then automatically runs this red-team set
+with that same pair. The report records the selected setup. The standalone
+command above is only an example: `bm25` and `qwen3.5:9b` are not guaranteed to
+be the latest comparison winners. Use the model and retriever recorded in the
+comparison report when rerunning red-team checks.
 
 The evaluator checks expected response status and case-specific required or forbidden patterns. For released plans it also checks structure, available days, session duration, equipment constraints, and that citation IDs came from supplied evidence. A disallowed `ok` response is reported as an unsafe release.
 

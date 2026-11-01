@@ -233,22 +233,37 @@ A header with the title and the link, then one passage per line with its time an
 
 | Input | Location (from the RepWise folder) | Shared through |
 |---|---|---|
-| Raw transcripts | `video_transcripts/*.txt` | private zip, never git |
-| Video id ↔ title | `../dictionnary_links.txt` | private zip |
-| Video ↔ papers | `../links.txt` | private zip |
+| Raw transcripts | `data/corpus/video_transcripts/*.txt` | private zip, never git |
+| Video id ↔ title | `data/dictionnary_links.txt` | private zip |
+| Video ↔ papers | `data/links.txt` | private zip |
 | Correction map | `config/term_corrections.json` | git |
 
-To set up, unzip the shared archive in the data/corpus/ folder, so that `video_transcripts/`, `dictionnary_links.txt` and `links.txt` are accessible from the repo but not pushed on git. Then, from the RepWise folder:
+To set up, unpack the authorized archive so the transcripts are under
+`data/corpus/video_transcripts/`, and place `dictionnary_links.txt` and
+`links.txt` under `data/`. These source files stay local and must not be
+committed. Then run the steps below from the repository root:
 
-```bash
-python src/ingestion/build_corpus.py        # step 1: clean the transcripts (this document)
-python src/ingestion/coverage_report.py     # step 2: map which videos cover which topic
-python src/ingestion/chunker.py             # step 3: group passages into chunks for retrieval
+```powershell
+python -m src.ingestion.build_corpus        # step 1: clean the transcripts (this document)
+python -m src.ingestion.coverage_report     # step 2: map which videos cover which topic
+python -m src.ingestion.chunker             # step 3: group passages into chunks for retrieval
 ```
 
-Run them in this order, since each step reads the previous one's output. Other options are listed by `python src/ingestion/build_corpus.py --help`: other input or output paths, and a custom `--corpus-version` label.
+Run them in this order, since each step reads the previous one's output. After
+chunking, build the local semantic index if you plan to use semantic or hybrid
+retrieval. BM25 does not need an embedding model or index.
 
-**Adding a correction:** open `config/term_corrections.json`, add an entry with a pattern, its replacement, a status and an example, then rerun all three steps. Check `corrections_log.csv` to see how many times the new rule fired.
+```powershell
+python -m src.retrieval.index --build --chunks data/corpus/chunks --index data/corpus/index/semantic.npz
+```
+
+Use `python -m src.ingestion.build_corpus --help` for alternate input/output
+paths and the `--corpus-version` option.
+
+**Adding a correction:** open `config/term_corrections.json`, add an entry
+with a pattern, its replacement, a status and an example, then rerun the three
+ingestion steps. If you use semantic or hybrid retrieval, rebuild the index as
+well. Check `corrections_log.csv` to see how many times the new rule fired.
 
 ---
 
@@ -258,7 +273,10 @@ Being clear about this matters for the evaluation and the presentation.
 
 - **No punctuation is added.** The 48 unpunctuated files stay lowercase without punctuation. Their passages are word windows, so a passage can start or end mid-sentence.
 - **Filler words are kept:** "euh", "bah", "ben", "hein", "ouais" and the like.
-- **Repeated words are kept:** stutters such as "le le" or "ça ça", and rolling captions that repeat the end of the previous line, both stay in the text.
+- **Some repetition is kept:** stutters such as "le le" or "ça ça" remain. For
+  rolling captions, the cleaner removes an immediately repeated caption or a
+  repeated prefix from its longer successor; other repeated wording is not
+  deduplicated.
 - **Speakers are not separated.** In training session videos with a guest, both voices are mixed in the same text with no label for who is speaking.
 - **Silences don't split passages.** A passage can join speech from before and after a long pause (music, an exercise set).
 - **Sponsor detection is partial.** Only passages containing a trigger expression are flagged. The rest of a sponsor read, in the neighbouring passages, can remain unflagged.

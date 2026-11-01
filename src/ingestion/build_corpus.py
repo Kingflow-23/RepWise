@@ -66,7 +66,9 @@ FULL DATA INGESTION PIPELINE (run from the RepWise folder, in this order)
            (passages merged into ~450-word chunks with one passage of
            overlap, enriched with title, topics, papers and timestamp
            links: the units that get embedded for retrieval)
-    4. Embedding and indexing of the chunks (not built yet).
+    4. Optionally build the semantic index with
+       ``python -m src.retrieval.index --build``. BM25 retrieval does not
+       require embeddings or an index.
 
     Rerun all steps in order after changing the raw files,
     term_corrections.json or topic_lexicon.json. The pipeline is

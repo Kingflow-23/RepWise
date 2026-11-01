@@ -8,7 +8,10 @@ RepWise evaluation has three distinct datasets and workflows:
 
 ## Prepare models and corpus
 
-The corpus is local and is not committed. Prepare it as described in the README, including the chunk JSONL files and semantic index. Install Ollama, then pull the two comparison chat models and the separate query-rewrite model. The Ollama
+The corpus is local and is not committed. Prepare it as described in the
+[corpus guide](../data/corpus/README.md), including chunk JSONL files and (for
+semantic or hybrid retrieval) a semantic index. Install Ollama, then pull the
+two comparison chat models and the separate query-rewrite model. The Ollama
 tags below select the instruct variants even though `-instruct` is not part of
 the tag:
 

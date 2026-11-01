@@ -110,7 +110,9 @@ The rest of this document details each element.
 
 ## 5. Adaptation engine: what each rule can rest on
 
-These are the five adaptation dimensions of the V2 note, plus holds and safety.
+The following adaptation dimensions are an evidence-gap analysis, not a feature
+list: the current application generates one-week plans and does not implement
+multi-session adaptation.
 
 | Adaptation | Level | What the corpus supports | What will be an implementation assumption |
 |---|---|---|---|
@@ -123,7 +125,11 @@ These are the five adaptation dimensions of the V2 note, plus holds and safety.
 | **Break / return after time off** | Partial | Pause and deload video | How to resume (loads after a break) |
 | **Pain** | Not grounded, by design | Only general advice (good technique reduces injury risk) | Safety handling is a policy, never a corpus claim. RepWise must not diagnose or treat. |
 
-Bottom line for the adaptation engine: the **direction** of most rules is grounded, but almost all **thresholds** (how many sessions, how many kg, how many sets, which pattern triggers a deload) will be implementation assumptions. That is acceptable, and the V2 note already plans for it. It just has to be labelled, frozen before evaluation, and reported honestly.
+Bottom line for any future adaptation feature: the **direction** of most rules
+is grounded, but almost all **thresholds** (how many sessions, how many kg, how
+many sets, which pattern triggers a deload) would be implementation
+assumptions. Keep those assumptions explicit and report them separately in any
+evaluation.
 
 ---
 
@@ -172,21 +178,21 @@ A large part of the corpus is about fat loss, cardio and nutrition (24 videos me
 
 | Case | Testable now? | Why |
 |---|---|---|
-| RT1 Beginner mismatch | Yes | Beginner level and program are grounded |
-| RT2 Unsupported detail | Yes, and the gaps make good test cases | Ask for RIR targets, kg increments, warm-up protocol, a 20-minute program: the correct behavior is "assumption" or abstention |
-| RT3 Time conflict 45 → 20 min | Validator: yes. Grounding: no | No short-session program in the corpus |
-| RT4 Pain or injury | Yes | Pure safety policy, no grounding needed |
-| RT5 Conflicting evidence | Partly | Real conflicts exist (rest times: 2 to 2.5 min in the dedicated video vs 45 to 90 s in his programs), but can't be resolved by date |
-| RT6 Missing information | Yes | Engine behavior |
-| RT7 Prompt injection | Yes | Engine behavior |
-| RT8 Impossible program | Yes | Validator behavior |
-| RT9 Duplicate / corrected log | Yes | Engine behavior, no corpus needed |
-| RT10 Missing or noisy sessions | Engine: yes. Grounding: no | Missed-session rules are assumptions |
-| RT11 Repeated fatigue | Partly | Deload grounded by one video, thresholds are assumptions |
-| RT12 Exercise substitution | Yes for gym equipment, no for home/bodyweight | |
-| RT13 Units and policy drift | Yes | Engine behavior |
-| RT14 Stale or foreign state | Yes | Engine behavior |
-| RT15 Evidence outage | Yes | Engine behavior |
+| RT001 Beginner mismatch | Yes | Beginner level and program are grounded |
+| RT002 Unsupported detail | Yes, and the gaps make good test cases | Ask for RIR targets, kg increments, warm-up protocol, a 20-minute program: the correct behavior is "assumption" or abstention |
+| RT003 Time conflict 45 → 20 min | Validator: yes. Grounding: no | No short-session program in the corpus |
+| RT004 Pain or injury | Yes | Pure safety policy, no grounding needed |
+| RT005 Conflicting evidence | Partly | Real conflicts exist (rest times: 2 to 2.5 min in the dedicated video vs 45 to 90 s in his programs), but can't be resolved by date |
+| RT006 Missing information | Yes | Engine behavior |
+| RT007 Prompt injection | Yes | Engine behavior |
+| RT008 Impossible program | Yes | Validator behavior |
+| RT009 Duplicate / corrected log | Yes | Engine behavior, no corpus needed |
+| RT010 Missing or noisy sessions | Engine: yes. Grounding: no | Missed-session rules are assumptions |
+| RT011 Repeated fatigue | Partly | Deload grounded by one video, thresholds are assumptions |
+| RT012 Exercise substitution | Yes for gym equipment, no for home/bodyweight | |
+| RT013 Units and policy drift | Yes | Engine behavior |
+| RT014 Stale or foreign state | Yes | Engine behavior |
+| RT015 Evidence outage | Yes | Engine behavior |
 
 ### Metrics
 
@@ -194,7 +200,7 @@ A large part of the corpus is about fat loss, cardio and nutrition (24 videos me
 |---|---|---|
 | Recall@K, MRR, nDCG | Yes, once labelled queries exist | Don't use chunk topics as relevance labels (6.1) |
 | Citation Precision | Yes | Will be lowered by non-Nassim passages (6.2) unless they are handled |
-| Grounded Claim Rate | Yes | **Can't reach 100% by design**: thresholds are assumptions. Report assumptions separately, as the V2 note says. |
+| Grounded Claim Rate | Yes | **Can't reach 100% by design** when assumptions are permitted. Report assumptions separately. |
 | Abstention accuracy | Yes | The gaps in this document are natural abstention cases |
 | Hard Constraint Adherence, Program Validity, Duration overrun | Yes | Validator metrics, independent of the corpus |
 | Adaptation agreement | Yes, with human labels | Reviewers judge against rules that are partly assumptions |
@@ -204,7 +210,7 @@ A large part of the corpus is about fat loss, cardio and nutrition (24 videos me
 - That RepWise programs are validated for home training, short sessions, 2 or 6 days a week, or specific populations.
 - That effort targets (RIR/RPE) or progression thresholds come from the sources.
 - That any claim is scientifically validated (references are `mentioned` only).
-- That the system produces better training results (the V2 note already excludes this).
+- That the system produces better training results; the project does not evaluate training outcomes.
 
 ---
 
