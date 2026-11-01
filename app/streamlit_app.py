@@ -201,8 +201,8 @@ def highlighted_evidence(text: str, matched_terms: list[str]) -> str:
 
     Args:
         text: Full retrieved extract to render without interpreting its HTML.
-        matched_terms: Literal terms derived from the request; these are
-            escaped and regex-quoted before matching so source text stays safe.
+        matched_terms: Literal terms from the request, profile, and effective
+            retrieval query; these are escaped and regex-quoted before matching.
 
     Returns:
         HTML with exact case-insensitive matches wrapped in ``<mark>`` tags.
@@ -283,7 +283,7 @@ def show_plan(record: dict[str, Any]) -> None:
                     matched_terms = source.get("matched_terms", [])
                     if matched_terms:
                         st.caption(
-                            f"Intent terms found in this extract ({len(matched_terms)}): "
+                            f"Search and profile terms found in this extract ({len(matched_terms)}): "
                             + ", ".join(matched_terms)
                         )
                     else:

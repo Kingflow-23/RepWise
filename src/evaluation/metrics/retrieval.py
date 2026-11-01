@@ -4,10 +4,10 @@ Two levels are supported:
 
 * ID level (``*_ids`` helpers): relevant items and the ranking are plain IDs.
   This is the textbook definition (course slides 30-32).
-* Span level (``judge_ranking``): relevance is labelled as a time span inside a
-  video (video_id, start, end, grade). A retrieved chunk is relevant when it
-  overlaps a labelled span. Labels therefore survive any re-chunking of the
-  corpus, and a span covered by two overlapping chunks is counted once.
+* Span level (``judge_ranking``): source evidence is labelled as a time span
+  inside a video. This is useful for source coverage and survives re-chunking.
+* Chunk level (``judge_chunk_ranking``): each chunk overlapping labelled source
+  evidence is a relevant retrieval item, so recall is measured over chunks.
 """
 
 from dataclasses import dataclass, field
@@ -100,33 +100,32 @@ class Span:
 
 @dataclass
 class RankingJudgement:
-    """Relevance of one ranked list against labelled spans.
+    """Relevance of one ranked list against labelled retrieval targets.
 
-    ``matches`` maps each retrieved rank to indexes of spans it overlaps.
+    ``matches`` maps each retrieved rank to indexes of relevant targets.
     """
 
-    n_spans: int
-    # For each rank: indices of labelled spans that the chunk overlaps.
+    n_relevant: int
+    # For each rank: indexes of labelled targets matched by the retrieved item.
     matches: list[list[int]] = field(default_factory=list)
 
     def recall_at_k(self, k: int) -> float | None:
-        """Compute span recall over the top ``k`` ranked chunks.
+        """Compute target recall over the top ``k`` ranked items.
 
         Args:
             k: Number of leading ranked chunks to evaluate.
 
         Returns:
-            Fraction of labelled spans covered at least once, or ``None`` when
-            no spans were labelled. Overlapping chunks do not count a span
-            more than once.
+            Fraction of relevant targets retrieved at least once, or ``None``
+            when no targets were labelled.
         """
-        if self.n_spans == 0:
+        if self.n_relevant == 0:
             return None
         covered = {i for m in self.matches[:k] for i in m}
-        return len(covered) / self.n_spans
+        return len(covered) / self.n_relevant
 
     def precision_at_k(self, k: int) -> float:
-        """Compute the share of top-``k`` ranks overlapping a labelled span.
+        """Compute the share of top-``k`` ranks matching a relevant target.
 
         Args:
             k: Number of top ranks used as the denominator.
@@ -137,7 +136,7 @@ class RankingJudgement:
         return sum(1 for m in self.matches[:k] if m) / k
 
     def hit_at_k(self, k: int) -> float:
-        """Return whether any of the first ``k`` ranks covers a labelled span.
+        """Return whether any of the first ``k`` ranks matches a target.
 
         Args:
             k: Number of leading ranks to inspect.
@@ -148,7 +147,7 @@ class RankingJudgement:
         return float(any(self.matches[:k]))
 
     def reciprocal_rank(self) -> float:
-        """Return the reciprocal rank of the first chunk covering a span.
+        """Return the reciprocal rank of the first relevant ranked item.
 
         Returns:
             ``1 / rank`` for the first relevant chunk, or zero if none is
@@ -160,7 +159,7 @@ class RankingJudgement:
         return 0.0
 
     def first_relevant_rank(self) -> int | None:
-        """Find the one-based rank of the first relevant chunk.
+        """Find the one-based rank of the first relevant item.
 
         Returns:
             One-based first relevant rank, or ``None`` if there is no match.
@@ -205,7 +204,7 @@ def judge_ranking(
         A judgement whose ``matches`` entry for each rank contains indexes of
         labelled spans overlapped by at least this many seconds.
     """
-    judgement = RankingJudgement(n_spans=len(spans))
+    judgement = RankingJudgement(n_relevant=len(spans))
     for chunk in ranking:
         hits = [
             i
@@ -215,4 +214,54 @@ def judge_ranking(
             >= min_overlap_s
         ]
         judgement.matches.append(hits)
+    return judgement
+
+
+def relevant_chunk_ids(
+    spans: list[Span], chunks: list[dict], min_overlap_s: float = 1.0
+) -> set[str]:
+    """Map source-evidence spans to the corpus chunks that contain them.
+
+    Args:
+        spans: Human-labelled evidence intervals.
+        chunks: Full corpus records; each must contain ``chunk_id``, ``video_id``,
+            ``start``, and ``end``.
+        min_overlap_s: Minimum intersection duration, inclusive, for relevance.
+
+    Returns:
+        IDs of all chunks that overlap at least one source-evidence span.
+
+    Raises:
+        KeyError: If a corpus chunk lacks a required field.
+    """
+    return {
+        chunk["chunk_id"]
+        for chunk in chunks
+        if any(
+            chunk["video_id"] == span.video_id
+            and overlap_seconds(chunk["start"], chunk["end"], span.start, span.end)
+            >= min_overlap_s
+            for span in spans
+        )
+    }
+
+
+def judge_chunk_ranking(
+    relevant_ids: set[str], ranking: list[dict]
+) -> RankingJudgement:
+    """Judge a ranked list of retrieved chunks against relevant chunk IDs.
+
+    Args:
+        relevant_ids: IDs of relevant chunks in the full corpus.
+        ranking: Retrieved chunk dictionaries in best-first order.
+
+    Returns:
+        A judgement whose recall denominator is the number of relevant chunks.
+    """
+    target_indexes = {chunk_id: index for index, chunk_id in enumerate(relevant_ids)}
+    judgement = RankingJudgement(n_relevant=len(relevant_ids))
+    for chunk in ranking:
+        chunk_id = chunk["chunk_id"]
+        index = target_indexes.get(chunk_id)
+        judgement.matches.append([] if index is None else [index])
     return judgement

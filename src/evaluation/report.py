@@ -60,6 +60,12 @@ def render(meta: dict, results: dict, gates: list[dict]) -> str:
         f"- **Retriever:** `{meta['retriever']}` · **Planner:** `{meta['planner']}`",
         f"- **Generation mode:** {meta.get('llm_mode', 'not reported')}",
         f"- **Models:** embedding `{meta.get('embedding_model') or 'not used'}` · generation `{meta.get('generation_model') or 'not used'}`",
+        f"- **French query expansion:** {'enabled' if meta.get('query_expansion') else 'disabled'}"
+        + (
+            f" · model `{meta['query_expansion_model']}`"
+            if meta.get("query_expansion_model")
+            else ""
+        ),
         f"- **Corpus:** {meta['n_corpus_chunks']} chunks from `{meta['chunks_dir']}`",
         "",
         "Values are shown as `value (numerator/denominator)`. `N/A (0/0)` means no applicable case, "
@@ -137,6 +143,26 @@ def render_comparison(
         Markdown comparing retrieval strategies and the RAG/no-RAG generation
         arms, including an interpretation caveat.
     """
+    main_k = next(
+        (
+            result.extra["main_k"]
+            for result in retrieval.values()
+            if isinstance(result.extra.get("main_k"), int)
+        ),
+        5,
+    )
+    rewrite_latency = meta.get("query_expansion_latency_ms_median")
+    rewrite_latency_text = (
+        f"{rewrite_latency:.1f} ms" if rewrite_latency is not None else "not measured"
+    )
+    generation_rewrite_latency = meta.get(
+        "generation_query_expansion_latency_ms_median"
+    )
+    generation_rewrite_latency_text = (
+        f"{generation_rewrite_latency:.1f} ms"
+        if generation_rewrite_latency is not None
+        else "not measured"
+    )
     lines = [
         "# RepWise benchmark comparison",
         "",
@@ -145,6 +171,14 @@ def render_comparison(
         f"- **Generation cases:** {len(meta['generation_case_ids'])} identical cases per arm",
         f"- **Ollama models:** A `{meta['model_a']}` · B `{meta['model_b']}`",
         f"- **Embedding model:** `{meta['embedding_model']}`",
+        f"- **French query expansion:** {'enabled' if meta.get('query_expansion') else 'disabled'}"
+        + (
+            f" · model `{meta['query_expansion_model']}`"
+            if meta.get("query_expansion_model")
+            else ""
+        ),
+        f"- **Median query rewrite latency:** {rewrite_latency_text}",
+        f"- **Median plan-query rewrite latency:** {generation_rewrite_latency_text}",
         f"- **Selected retrieval setup:** `{meta['selected_retriever']}`",
         f"- **Best RAG setup:** `{meta['best_rag_setup']['generation_model']} + "
         f"{meta['best_rag_setup']['retriever']}`",
@@ -152,17 +186,20 @@ def render_comparison(
         "## Retrieval ranking",
         "",
         "All retrievers use the same answerable questions and time-span relevance labels. "
-        "Ranking is by Recall@5, then MRR, then median latency; an explicit `--retriever` "
-        "overrides selection for the generation comparison.",
+        f"Ranking is by chunk Recall@{main_k}, then MRR, then median retrieval latency. "
+        "Rewrite latency is measured separately and shared equally across strategies; "
+        "generation uses the configured default strategy unless `--retriever` overrides it.",
         "",
-        "| Rank | Retriever | Recall@5 ↑ | MRR ↑ | Hit@1 ↑ | Median latency ↓ |",
+        f"| Rank | Retriever | Recall@{main_k} ↑ | MRR ↑ | Hit@1 ↑ | Median latency ↓ |",
         "|---:|---|---:|---:|---:|---:|",
     ]
     for rank, name in enumerate(meta["retrieval_ranking"], start=1):
         result = retrieval[name]
         latency = result.extra.get("latency_ms_median")
+        result_main_k = result.extra.get("main_k") or main_k
+        recall_key = f"recall@{result_main_k}"
         lines.append(
-            f"| {rank} | `{name}` | {result.metrics['recall@5'].fmt()} | "
+            f"| {rank} | `{name}` | {result.metrics[recall_key].fmt()} | "
             f"{result.metrics['mrr'].fmt()} | {result.metrics['hit@1'].fmt()} | "
             f"{latency:.1f} ms |"
         )

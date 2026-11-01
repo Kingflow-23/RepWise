@@ -37,12 +37,38 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from .metrics.grounding import normalise
+from ..retrieval.base import QueryAwareRetriever
+from ..schemas.models import RetrievedChunk
 
 Chunk = dict[str, Any]
 PlannerCase = dict[str, Any]
 PlannerResult = dict[str, Any]
 Retriever = Callable[[str, int], list[Chunk]]
 Planner = Callable[[PlannerCase], PlannerResult]
+
+
+class RetrieverAdapter:
+    """Keep evaluation callability while preserving production query metadata."""
+
+    def __init__(self, retriever: Any):
+        self.retriever = retriever
+
+    def search(self, query: str, top_k: int) -> list[RetrievedChunk]:
+        """Return production chunk objects for direct pipeline use."""
+        return self.retriever.search(query, top_k)
+
+    def search_with_query(
+        self, query: str, top_k: int
+    ) -> tuple[list[RetrievedChunk], str]:
+        """Return ranked chunks and preserve the effective query when available."""
+        if isinstance(self.retriever, QueryAwareRetriever):
+            return self.retriever.search_with_query(query, top_k)
+        return self.search(query, top_k), query
+
+    def __call__(self, query: str, top_k: int) -> list[Chunk]:
+        """Return JSON-compatible chunks for evaluation metrics."""
+        return [chunk.model_dump() for chunk in self.search(query, top_k)]
+
 
 # Resolve from this module so the default follows the repository checkout,
 # while callers can override it for isolated corpora and tests.
@@ -245,7 +271,9 @@ def load_callable(spec: str) -> Callable[..., Any]:
     return obj
 
 
-def build_retriever(name: str, chunks_dir: Path) -> Retriever:
+def build_retriever(
+    name: str, chunks_dir: Path, *, query_expansion: bool | None = None
+) -> Retriever:
     """Build one named production or configured custom retriever.
 
     Args:
@@ -253,6 +281,8 @@ def build_retriever(name: str, chunks_dir: Path) -> Retriever:
             otherwise a trusted ``module.path:callable`` plugin specification.
         chunks_dir: Corpus directory used to initialize a built-in strategy.
             Custom callables own their own data access and do not receive it.
+        query_expansion: Whether to add French query variants. ``None`` follows
+            ``REPWISE_QUERY_EXPANSION``; custom retrievers are never wrapped.
 
     Returns:
         A ``(query, k) -> ranked chunk dictionaries`` callable.
@@ -264,7 +294,9 @@ def build_retriever(name: str, chunks_dir: Path) -> Retriever:
         ImportError: If a custom callable's module cannot be imported.
     """
     if name in {"bm25", "semantic", "hybrid"}:
-        return build_retrievers([name], chunks_dir)[name]
+        return build_retrievers(
+            [name], chunks_dir, query_expansion=query_expansion
+        )[name]
     return load_callable(name)
 
 
@@ -273,6 +305,7 @@ def build_retrievers(
     chunks_dir: Path,
     *,
     chunks: Sequence[Chunk] | None = None,
+    query_expansion: bool | None = None,
 ) -> dict[str, Retriever]:
     """Build requested production retrievers, sharing common components.
 
@@ -286,6 +319,8 @@ def build_retrievers(
             rereading JSONL files, which lets comparison runs share one corpus.
             Records are still validated as ``RetrievedChunk`` objects before
             being passed to production retrieval implementations.
+        query_expansion: Whether to add French query variants. ``None`` follows
+            ``REPWISE_QUERY_EXPANSION``.
 
     Returns:
         A mapping from each requested strategy to a callable that serializes
@@ -307,6 +342,10 @@ def build_retrievers(
         return {}
 
     from ..retrieval.hybrid import HybridRetriever
+    from ..retrieval.query_expansion import (
+        OllamaQueryExpander,
+        QueryExpansionRetriever,
+    )
     from ..retrieval.semantic import SemanticRetriever
     from ..retrieval.sparse import BM25Retriever
     from ..schemas.models import RetrievedChunk
@@ -322,12 +361,15 @@ def build_retrievers(
         )
         for chunk in (load_chunks(chunks_dir) if chunks is None else chunks)
     ]
+    from config.config import AppConfig
+
+    settings = AppConfig.from_environment()
+    expansion_enabled = (
+        settings.query_expansion if query_expansion is None else query_expansion
+    )
     lexical = BM25Retriever(chunk_records) if {"bm25", "hybrid"} & set(names) else None
     semantic = None
     if {"semantic", "hybrid"} & set(names):
-        from config.config import AppConfig
-
-        settings = AppConfig.from_environment()
         semantic = SemanticRetriever(
             chunk_records, settings.embedding_index, settings.embedding_model
         )
@@ -341,20 +383,20 @@ def build_retrievers(
             else None
         ),
     }
+    if expansion_enabled:
+        expander = OllamaQueryExpander(
+            settings.query_expansion_model, settings.ollama_url
+        )
+        components = {
+            name: QueryExpansionRetriever(retriever, expander)
+            if retriever is not None
+            else None
+            for name, retriever in components.items()
+        }
 
     def adapt(retriever: Any) -> Retriever:
-        """Bridge the production ``search`` object to the runner callable.
-
-        Args:
-            retriever: Production retriever exposing ``search(query, k)``.
-
-        Returns:
-            A callable that serializes model objects while preserving ranking
-            order and all fields used by evaluation.
-        """
-        return lambda query, k: [
-            chunk.model_dump() for chunk in retriever.search(query, k)
-        ]
+        """Bridge production search results to the evaluation callable."""
+        return RetrieverAdapter(retriever)
 
     return {name: adapt(components[name]) for name in names}
 
@@ -483,10 +525,27 @@ def build_real_pipeline_planner(
                     Validated production chunk models ready for evidence
                     selection and plan generation.
                 """
+                chunks, _ = self.search_with_query(query, top_k)
+                return chunks
+
+            def search_with_query(
+                self, query: str, top_k: int
+            ) -> tuple[list[RetrievedChunk], str]:
+                """Preserve expanded query metadata across the evaluation adapter."""
+                if isinstance(selected_retriever, QueryAwareRetriever):
+                    rows, effective_query = selected_retriever.search_with_query(
+                        query, top_k
+                    )
+                elif hasattr(selected_retriever, "search"):
+                    rows = selected_retriever.search(query, top_k)
+                    effective_query = query
+                else:
+                    rows = selected_retriever(query, top_k)
+                    effective_query = query
                 return [
                     RetrievedChunk.model_validate(row)
-                    for row in selected_retriever(query, top_k)
-                ]
+                    for row in rows
+                ], effective_query
 
         pipeline = PlanPipeline(PipelineRetriever(), generator, settings.top_k)
 

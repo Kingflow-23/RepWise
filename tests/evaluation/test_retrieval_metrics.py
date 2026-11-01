@@ -6,8 +6,10 @@ from src.evaluation.metrics.common import Ratio, mean_ratio
 from src.evaluation.metrics.retrieval import (
     Span,
     hit_at_k_ids,
+    judge_chunk_ranking,
     judge_ranking,
     precision_at_k_ids,
+    relevant_chunk_ids,
     recall_at_k_ids,
     reciprocal_rank_ids,
 )
@@ -95,6 +97,24 @@ def test_touching_boundaries_is_not_an_overlap():
     """Treat intervals that only touch at an endpoint as non-overlapping."""
     j = judge_ranking([Span("v1", 100, 130)], [chunk("v1", 130, 200)])
     assert j.hit_at_k(1) == 0
+
+
+def test_chunk_recall_counts_relevant_chunk_ids_not_source_spans():
+    """Treat each overlapping corpus chunk as one relevant retrieval target."""
+    spans = [Span("v1", 10, 20)]
+    chunks = [
+        {"chunk_id": "c1", "video_id": "v1", "start": 0, "end": 15},
+        {"chunk_id": "c2", "video_id": "v1", "start": 15, "end": 30},
+        {"chunk_id": "other", "video_id": "v2", "start": 0, "end": 30},
+    ]
+
+    relevant = relevant_chunk_ids(spans, chunks, min_overlap_s=1)
+    judgement = judge_chunk_ranking(relevant, [chunks[0], chunks[2], chunks[1]])
+
+    assert relevant == {"c1", "c2"}
+    assert judgement.recall_at_k(1) == pytest.approx(0.5)
+    assert judgement.recall_at_k(3) == 1
+    assert judgement.precision_at_k(3) == pytest.approx(2 / 3)
 
 
 def test_ratio_reports_na_for_zero_denominator():

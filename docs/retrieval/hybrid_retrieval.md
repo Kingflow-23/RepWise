@@ -14,6 +14,33 @@ The constant 60 is fixed and documented in `HybridRetriever`. Fusion uses ranks 
 
 The chunker excludes any passage with flags before forming chunks. Retrieval and evidence selection therefore operate on clean chunks and do not repeat flag checks. Rebuild chunks and the semantic index after changing this ingestion behavior.
 
+## French query translation and expansion
+
+The corpus transcripts are French, so the application first turns each request
+into one clean, plain-text French query. The configured local Ollama model
+translates the request when needed, puts its main topic and outcome first, and
+adds only closely related training terms that could match transcript wording.
+Retrieval then runs once using that expanded query. With the default hybrid
+strategy, that one call runs BM25 and semantic search internally and fuses their
+rankings; it does not run separate searches for the original and expanded
+queries. Source chunks, text, and citations are not rewritten.
+
+The rewrite prompt treats request text as untrusted search content, preserves
+the requested topic and constraints, and explicitly forbids answering or
+adding assumptions. The model returns plain text, not JSON. This requires an
+additional local Ollama call per new request, so it increases retrieval latency.
+If Ollama is unavailable or returns invalid output, retrieval reports an error
+instead of silently falling back to the unexpanded request.
+
+Set `REPWISE_QUERY_EXPANSION=false` in `.env` to disable query rewriting. The
+retrieval benchmark uses the same setting, allowing direct comparisons with
+rewriting enabled and disabled. Keep the corpus, index, and evaluation cases
+unchanged between those runs, and compare Recall@k, MRR, and latency; expansion
+should not be assumed to improve results until measured.
+
+The retrieval benchmark reports whether query rewriting was enabled and which
+model was used.
+
 ## Body-part targeting
 
 The chunker tags each chunk with canonical `body_parts` from
@@ -35,6 +62,17 @@ python -m src.retrieval.index --build --chunks data/corpus/chunks --index data/c
 
 Changing chunk tags changes the semantic corpus fingerprint, so the existing
 index must be rebuilt before semantic or hybrid retrieval can start.
+
+The API defaults to `hybrid` through `REPWISE_RETRIEVAL`; it therefore fuses
+lexical and semantic rankings for the normal request path. Query expansion is
+performed once before fusion, not once per component. Benchmark comparisons
+rewrite each answerable query once and share that same French query across
+strategies. Plan-request rewrites are also prepared before both RAG generation
+arms, so cache hits cannot advantage the arm evaluated second. Retrieval and
+generation latency exclude the separate rewrite time, which is reported
+independently. The comparison uses the configured production strategy for
+generation (hybrid by default) while still reporting the ranking of each
+retrieval strategy.
 
 ## Model and local index
 
@@ -66,4 +104,4 @@ python -m src.evaluation.runner --suite retrieval --retriever semantic
 python -m src.evaluation.runner --suite retrieval --retriever hybrid
 ```
 
-Recall@k measures how many labelled evidence spans are covered in the top k; MRR rewards placing the first relevant result near the top. A span can overlap more than one chunk, but is counted once. No claim that hybrid is better should be made until the measured report shows that on the same labelled queries.
+Recall@k measures how many relevant chunks appear in the top k; MRR rewards placing the first relevant chunk near the top. Human labels remain source-video time spans; all chunks overlapping a span by at least one second become relevant. BM25, semantic, and hybrid are therefore ranked against the same source-grounded chunk labels, without requiring passage retrieval. No claim that hybrid is better should be made until the measured report shows that on the same labelled queries.

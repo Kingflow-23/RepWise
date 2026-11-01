@@ -8,8 +8,8 @@ generation uses a local Ollama model and a prepared transcript corpus.
 - Windows PowerShell and Python 3.11 or 3.12
 - The project dependencies from `requirements.txt`
 - An authorized prepared corpus (not distributed with this repository)
-- Ollama 0.30.9 or newer and the configured chat models (`qwen3.5:9b` and
-  `gemma4:12b`)
+- Ollama 0.30.9 or newer and the configured local models (`qwen3.5:9b` for
+  plans, `qwen3.5:4b` for query expansion, and `gemma4:12b` for comparisons)
 
 Semantic and hybrid retrieval also need the configured embedding model and
 local index. If you want to get started without those, choose BM25 as described
@@ -71,6 +71,9 @@ python -m src.retrieval.index --build --chunks data/corpus/chunks --index data/c
 The default strategy is hybrid. If its model or index is unavailable, the
 application reports the setup error; it does not silently switch to BM25. See
 [retrieval documentation](retrieval/hybrid_retrieval.md) for index details.
+Query translation and expansion in French is enabled by default and uses the
+configured local Ollama chat model. Set `REPWISE_QUERY_EXPANSION=false` to
+disable the extra rewrite call; doing so reduces retrieval latency.
 
 ## 4. Start Ollama and the app
 
@@ -79,10 +82,11 @@ chat models:
 
 ```powershell
 ollama pull qwen3.5:9b
+ollama pull qwen3.5:4b
 ollama pull gemma4:12b
 ```
 
-If you change either model in `.env`, pull that model instead. Start the API
+If you change a model in `.env`, pull that model instead. Start the API
 and UI in separate PowerShell terminals from the repository root:
 
 ```powershell

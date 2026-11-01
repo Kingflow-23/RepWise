@@ -7,16 +7,21 @@ import math
 import statistics
 import sys
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 
 from config import evaluation_config as config
 from config.config import AppConfig
 from ..observability import configure_logging
+from ..retrieval.query_expansion import (
+    OllamaQueryExpander,
+    QueryExpansionRetriever,
+    clean_expanded_query,
+)
 from . import adapters, datasets, report
 from .metrics.common import Ratio, mean_ratio
 from .metrics.grounding import abstention_metrics, abstention_outcome, check_claims
-from .metrics.retrieval import judge_ranking
+from .metrics.retrieval import judge_chunk_ranking, relevant_chunk_ids
 
 logger = logging.getLogger(__name__)
 
@@ -97,18 +102,25 @@ def _percentile(values: list[float], q: float) -> float | None:
 
 
 def evaluate_retrieval(
-    cases, retriever, ks: tuple[int, ...] | None = None, main_k: int | None = None
+    cases,
+    retriever,
+    chunks: list[dict],
+    ks: tuple[int, ...] | None = None,
+    main_k: int | None = None,
 ) -> SuiteResult:
-    """Evaluate a retriever against answerable, span-labelled query cases.
+    """Evaluate a chunk retriever against source-span-labelled query cases.
 
     Unanswerable cases are recorded as seen but skipped because they have no
-    relevance spans; generation is responsible for abstention evaluation.
-    Retrieval passes only when every labelled span is covered within ``main_k``.
+    relevance labels; generation is responsible for abstention evaluation.
+    Source spans are mapped to relevant chunk IDs from the full corpus.
+    Retrieval passes only when every relevant chunk is retrieved within
+    ``main_k``.
 
     Args:
         cases: Retrieval cases with IDs, queries, answerability, and spans.
         retriever: Callable accepting ``(query, depth)`` and returning ranked
             chunk mappings.
+        chunks: Complete chunk corpus used to resolve source spans to chunk IDs.
         ks: Cutoffs for recall and precision; defaults to configured values.
         main_k: Cutoff used to determine case pass/fail; defaults to the
             configured main cutoff.
@@ -118,8 +130,8 @@ def evaluate_retrieval(
         skipped-case count, and failure details.
 
     Raises:
-        ValueError: If ``ks`` is empty, contains duplicates or non-positive /
-            non-integer values, or ``main_k`` is a boolean or non-positive.
+        ValueError: If cutoffs are invalid or an answerable case has no
+            matching chunk in the supplied corpus.
         Exception: Exceptions raised by the supplied retriever propagate.
     """
     ks = config.K_VALUES if ks is None else ks
@@ -135,6 +147,7 @@ def evaluate_retrieval(
     res = SuiteResult("retrieval")
     per_query: dict[str, list[float]] = {}
     latencies = []
+    n_missing_relevant_chunks = 0
     retrieval_depth = max(max(ks), main_k, config.RETRIEVAL_DEPTH)
 
     def add(bucket: dict, key: str, value):
@@ -160,7 +173,20 @@ def evaluate_retrieval(
         ranking = retriever(case.query, retrieval_depth)
         latencies.append((time.perf_counter() - t0) * 1000)
         res.n_cases += 1
-        j = judge_ranking(case.spans, ranking)
+        relevant_ids = relevant_chunk_ids(case.spans, chunks)
+        if not relevant_ids:
+            n_missing_relevant_chunks += 1
+            res.failures.append(
+                Failure(
+                    case.id,
+                    "retrieval",
+                    "no_relevant_corpus_chunk",
+                    "No corpus chunk overlaps the labelled source evidence. "
+                    f"Query: {case.query}",
+                )
+            )
+            continue
+        j = judge_chunk_ranking(relevant_ids, ranking)
         for k in ks:
             add(per_query, f"recall@{k}", j.recall_at_k(k))
             add(per_query, f"precision@{k}", j.precision_at_k(k))
@@ -175,7 +201,7 @@ def evaluate_retrieval(
         if rank is None:
             category, detail = (
                 "not_retrieved",
-                f"no labelled span in the top {len(ranking)}",
+                f"no relevant chunk in the top {len(ranking)}",
             )
         elif rank > main_k:
             category, detail = (
@@ -185,9 +211,12 @@ def evaluate_retrieval(
         else:
             category, detail = (
                 "partial_recall",
-                f"recall@{main_k}={recall:.2f}, first relevant at rank {rank}",
+                f"chunk recall@{main_k}={recall:.2f}, first relevant at rank {rank}",
             )
-        top = ", ".join(f"{c.get('video_id')}@{c.get('start')}s" for c in ranking[:3])
+        top = ", ".join(
+            f"{c.get('chunk_id')} ({c.get('video_id')}@{c.get('start')}s)"
+            for c in ranking[:3]
+        )
         res.failures.append(
             Failure(
                 case.id,
@@ -203,6 +232,7 @@ def evaluate_retrieval(
         "retrieval_depth": retrieval_depth,
         "cutoffs": list(ks),
         "n_unanswerable_skipped": sum(not c.answerable for c in cases),
+        "n_missing_relevant_chunks": n_missing_relevant_chunks,
         "latency_ms_median": statistics.median(latencies) if latencies else None,
         "latency_ms_p95": _percentile(latencies, 0.95),
     }
@@ -593,22 +623,23 @@ def run_evaluation(
         print(f"[warn] {message}", file=sys.stderr)
 
     corpus = None
+    chunks = None
     if suite != "generation" or planner_name in {"ollama-rag", "ollama-no-rag"}:
         try:
+            chunks = adapters.load_chunks(config.CHUNKS_DIR)
             corpus = {
-                c["chunk_id"]: c.get("text", "")
-                for c in adapters.load_chunks(config.CHUNKS_DIR)
+                c["chunk_id"]: c.get("text", "") for c in chunks
             }
         except FileNotFoundError as e:
             warn(f"{e} Grounding metrics will be N/A.")
 
     if suite in ("retrieval", "all"):
-        if corpus is None:
+        if chunks is None:
             warn(f"Retrieval suite skipped: {retriever_name} needs the chunk corpus.")
         else:
             cases = datasets.load_retrieval_cases()
             retriever = adapters.build_retriever(retriever_name, config.CHUNKS_DIR)
-            results["retrieval"] = evaluate_retrieval(cases, retriever)
+            results["retrieval"] = evaluate_retrieval(cases, retriever, chunks)
 
     if suite in ("generation", "red-team", "all"):
         cases = (
@@ -672,6 +703,10 @@ def run_evaluation(
         "ollama-no-rag",
     }:
         effective_retriever = "fixed mock evidence"
+    query_expansion_used = (
+        runtime_settings.query_expansion
+        and effective_retriever not in {"none (no RAG)", "fixed mock evidence"}
+    )
     meta = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "suite": suite,
@@ -691,6 +726,12 @@ def run_evaluation(
         "embedding_model": (
             runtime_settings.embedding_model
             if effective_retriever in {"semantic", "hybrid"}
+            else None
+        ),
+        "query_expansion": query_expansion_used,
+        "query_expansion_model": (
+            runtime_settings.query_expansion_model
+            if query_expansion_used
             else None
         ),
         "generation_model": (
@@ -756,13 +797,15 @@ def run_comparison(
 ) -> dict:
     """Rank retrievers, then compare two RAG models against model A without RAG.
 
-    Retrieval strategy selection is based on recall, then MRR, then median
-    latency unless ``requested_retriever`` explicitly overrides it. The same
-    cases and selected retriever are used across generation arms.
+    All strategies are ranked by recall, then MRR, then median latency.
+    Generation uses the configured strategy (hybrid by default), unless
+    ``requested_retriever`` explicitly overrides it. Rewritten benchmark
+    queries are shared across strategies so rewrite cost does not bias ranking.
 
     Args:
         requested_retriever: Optional explicit strategy (``bm25``, ``semantic``,
-            or ``hybrid``) for the generation comparison.
+            or ``hybrid``) for the generation comparison. Defaults to the
+            configured production strategy.
         model_a: First Ollama model; defaults to configured primary model.
         model_b: Second Ollama model; defaults to configured comparison model.
         label: Optional suffix included in the report output folder.
@@ -791,12 +834,42 @@ def run_comparison(
     corpus = {chunk["chunk_id"]: chunk.get("text", "") for chunk in chunks}
     retrieval_cases = datasets.load_retrieval_cases()
     strategies = ["bm25", "semantic", "hybrid"]
-    retrievers = adapters.build_retrievers(strategies, config.CHUNKS_DIR, chunks=chunks)
+    retrievers = adapters.build_retrievers(
+        strategies,
+        config.CHUNKS_DIR,
+        chunks=chunks,
+        query_expansion=False,
+    )
+    expansion_latencies = []
+    expander = None
+    if settings.query_expansion:
+        expander = OllamaQueryExpander(
+            settings.query_expansion_model, settings.ollama_url
+        )
+        expanded_cases = []
+        for case in retrieval_cases:
+            if not case.answerable:
+                expanded_cases.append(case)
+                continue
+            expansion_started = time.perf_counter()
+            expanded_query = clean_expanded_query(expander.expand(case.query))
+            expansion_latencies.append(
+                (time.perf_counter() - expansion_started) * 1000
+            )
+            expanded_cases.append(replace(case, query=expanded_query))
+        retrieval_cases = expanded_cases
+
     retrieval_results = {}
     for strategy in strategies:
         retrieval_results[strategy] = evaluate_retrieval(
-            retrieval_cases, retrievers[strategy]
+            retrieval_cases, retrievers[strategy], chunks
         )
+        retrieval_results[strategy].extra[
+            "query_expansion_latency_ms_median"
+        ] = statistics.median(expansion_latencies) if expansion_latencies else None
+        retrieval_results[strategy].extra[
+            "query_expansion_latency_ms_p95"
+        ] = _percentile(expansion_latencies, 0.95)
 
     def retrieval_rank(strategy: str) -> tuple[float, float, float]:
         """Build the descending-priority key for one retrieval strategy.
@@ -819,11 +892,33 @@ def run_comparison(
         )
 
     ranked_retrievers = sorted(strategies, key=retrieval_rank, reverse=True)
-    best_retriever = requested_retriever or ranked_retrievers[0]
+    best_retriever = requested_retriever or settings.retrieval_strategy
     if best_retriever not in strategies:
         raise ValueError(f"Unknown comparison retriever: {best_retriever}")
 
     generation_cases = datasets.load_generation_cases()
+    generation_expansion_latencies = []
+    if expander is not None:
+        from ..rag.context import make_query
+        from ..schemas.models import PlanRequest, UserProfile
+
+        for case in generation_cases:
+            try:
+                request = PlanRequest(
+                    focus=case.request,
+                    weeks=case.weeks,
+                    workouts_per_week=case.workouts_per_week,
+                    extra_constraints=case.extra_constraints,
+                    profile=UserProfile.model_validate(case.profile),
+                )
+            except (TypeError, ValueError):
+                continue
+            expansion_started = time.perf_counter()
+            expander.expand(make_query(request))
+            generation_expansion_latencies.append(
+                (time.perf_counter() - expansion_started) * 1000
+            )
+
     generation_results = {}
     generation_arms = [
         (f"{model_a} + RAG", "ollama-rag", model_a),
@@ -831,6 +926,8 @@ def run_comparison(
         (f"{model_a} without RAG", "ollama-no-rag", model_a),
     ]
     shared_retriever = retrievers[best_retriever]
+    if expander is not None:
+        shared_retriever = QueryExpansionRetriever(shared_retriever, expander)
     generation_planners = {}
     for arm, planner_name, model_name in generation_arms:
         planner = adapters.build_planner(
@@ -906,6 +1003,11 @@ def run_comparison(
         "retrieval_ranking": ranked_retrievers,
         "selected_retriever": best_retriever,
         "retrieval_selection_override": requested_retriever is not None,
+        "retrieval_selection_source": (
+            "requested"
+            if requested_retriever is not None
+            else "configured_default"
+        ),
         "model_a": model_a,
         "model_b": model_b,
         "generation_ranking": ranked_arms,
@@ -918,6 +1020,22 @@ def run_comparison(
         "chunks_dir": str(config.CHUNKS_DIR),
         "n_corpus_chunks": len(chunks),
         "embedding_model": settings.embedding_model,
+        "query_expansion": settings.query_expansion,
+        "query_expansion_model": (
+            settings.query_expansion_model if settings.query_expansion else None
+        ),
+        "query_expansion_latency_ms_median": (
+            statistics.median(expansion_latencies) if expansion_latencies else None
+        ),
+        "query_expansion_latency_ms_p95": _percentile(expansion_latencies, 0.95),
+        "generation_query_expansion_latency_ms_median": (
+            statistics.median(generation_expansion_latencies)
+            if generation_expansion_latencies
+            else None
+        ),
+        "generation_query_expansion_latency_ms_p95": _percentile(
+            generation_expansion_latencies, 0.95
+        ),
         "ollama_url": settings.ollama_url,
         "generation_case_ids": [case.id for case in generation_cases],
         "red_team_case_ids": [case.id for case in red_team_cases],

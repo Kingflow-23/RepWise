@@ -8,16 +8,17 @@ RepWise evaluation has three distinct datasets and workflows:
 
 ## Prepare models and corpus
 
-The corpus is local and is not committed. Prepare it as described in the README, including the chunk JSONL files and semantic index. Install Ollama and pull two different instruction-tuned chat models. The Ollama
+The corpus is local and is not committed. Prepare it as described in the README, including the chunk JSONL files and semantic index. Install Ollama, then pull the two comparison chat models and the separate query-rewrite model. The Ollama
 tags below select the instruct variants even though `-instruct` is not part of
 the tag:
 
 ```powershell
 ollama pull qwen3.5:9b
+ollama pull qwen3.5:4b
 ollama pull gemma4:12b
 ```
 
-Set `OLLAMA_MODEL` to model A and `OLLAMA_COMPARISON_MODEL` to model B in `.env`, or pass both explicitly to the runner. The defaults are `qwen3.5:9b` and `gemma4:12b`; both must be available from the configured Ollama service. Semantic and hybrid retrieval also need the configured embedding model and current local index.
+Set `OLLAMA_MODEL` to model A, `OLLAMA_COMPARISON_MODEL` to model B, and `OLLAMA_QUERY_EXPANSION_MODEL` to the smaller model used for French query rewrites in `.env`, or pass the generation models explicitly to the runner. The defaults are `qwen3.5:9b`, `gemma4:12b`, and `qwen3.5:4b`, respectively; all configured models must be available from the Ollama service. Semantic and hybrid retrieval also need the configured embedding model and current local index.
 
 ## Run the evaluation
 
@@ -39,7 +40,7 @@ python -m src.evaluation.runner --mode retrieval --retriever bm25
 python -m src.evaluation.runner --mode generation --llm ollama --retriever hybrid
 ```
 
-`compare` first scores the production BM25, semantic, and hybrid retrievers on the same retrieval questions. Evaluation does not carry a second BM25 implementation: the benchmark calls `src.retrieval.sparse.BM25Retriever`, including its title and body-part fields. Comparison mode constructs BM25 and the semantic model once, then shares those components with hybrid and the selected generation retriever. It selects by Recall@5, then MRR, then median retrieval latency; `--retriever` overrides only the selection used for the generation arms. Both RAG arms share the same selected retriever instance and receive identical cases. The no-RAG baseline calls model A directly with the same request and profile but no retriever or evidence. It uses a separate no-RAG evidence policy: source-citation and retrieved-support requirements are removed, while shared schedule, safety, and output-schema rules remain. It must not invent citations or claim that recommendations are evidence-backed. All arms use the same schema and deterministic plan validation.
+`compare` first scores the production BM25, semantic, and hybrid retrievers on the same retrieval questions. Evaluation ranks **chunks**, not transcript passages: each retrieved item is a chunk with a stable `chunk_id`. Human labels remain source-video time spans and excerpts so they can be audited against the transcript and survive re-chunking; spans are mapped to every corpus chunk overlapping at least one second of labelled evidence. Recall@k counts relevant chunk IDs, while precision@k, Hit@1, and MRR also score retrieved chunks. The benchmark calls `src.retrieval.sparse.BM25Retriever`, including its title and body-part fields. Comparison mode constructs BM25 and the semantic model once, then shares those components with hybrid and the selected generation retriever. It selects by chunk Recall@5, then MRR, then median retrieval latency; `--retriever` overrides only the selection used for the generation arms. Both RAG arms share the same selected retriever instance and receive identical cases. The no-RAG baseline calls model A directly with the same request and profile but no retriever or evidence. It uses a separate no-RAG evidence policy: source-citation and retrieved-support requirements are removed, while shared schedule, safety, and output-schema rules remain. It must not invent citations or claim that recommendations are evidence-backed. All arms use the same schema and deterministic plan validation.
 
 Only the two RAG arms compete for the best generation setup; the no-RAG arm is a baseline, not a candidate for a RAG red-team run. Generation ranking is by case pass rate, request-constraint compliance, schema validity, then median latency. The comparison automatically runs the separate 15-case red-team suite using the top-ranked RAG model and selected retriever, and records the winning setup and red-team results together. This is a descriptive ordering, not a significance test. The report preserves per-case failures and metric numerators/denominators so that a rank is not mistaken for a release decision. Compare runs call both Ollama models on nominal cases and the winner on red-team cases; allow several minutes.
 
@@ -54,7 +55,7 @@ Each run writes `report.md` and `results.json` under `outputs/eval_runs/`. Add `
 - `evals/benchmark_cases.jsonl` contains nominal generation requests, profiles, expected statuses, and optional output checks.
 - `evals/red_team/red_team_cases.jsonl` contains separate robustness and safety cases.
 
-The current retrieval set has 150 questions: 128 answerable with 166 labeled spans and 22 unanswerable. The loader checks unique IDs, accent/punctuation-insensitive duplicate questions, text encoding, answerability rationale, source links, evidence excerpts, relevance rationales, known judgment IDs, valid time ranges, and agreement between labels and judgments. Dataset tests verify each excerpt exactly matches the timestamped source passages for its span, and every labeled span overlaps both a source passage and a corpus chunk.
+The current retrieval set has 150 questions: 128 answerable with 166 labeled spans and 22 unanswerable. The loader checks unique IDs, accent/punctuation-insensitive duplicate questions, text encoding, answerability rationale, source links, evidence excerpts, relevance rationales, known judgment IDs, valid time ranges, and agreement between labels and judgments. Dataset tests verify each excerpt exactly matches the timestamped source passages for its span, and every labeled span overlaps both a source passage and a corpus chunk. Passage-level source checks validate the annotations only; the retrieval ranking target is the chunk.
 
 The nominal generation set contains 30 distinct, profile-backed, one-week planning cases. Each records its requested `workouts_per_week` explicitly, bounded by its available days, so evaluation matches the app's schedule controls rather than relying on an implicit frequency. Cases also record one or more `evidence_query_ids` that must reference answerable retrieval cases, making the intended corpus coverage reviewable. These IDs are dataset annotations only: model runs still retrieve their own context and do not receive the gold-labeled spans. The separate red-team set contains 15 one-week cases covering profile conflicts, prompt injection, off-topic/nonsensical requests, and health-safety boundaries; it is not included in nominal model ranking. The loader rejects multi-week cases because they do not represent the current application workflow.
 
@@ -64,7 +65,7 @@ Retrieval cases marked answerable must have at least one judgment; unanswerable 
 
 ## Metrics and limitations
 
-Retrieval reports Recall@k, Precision@k, Hit@1, MRR, and latency. Each relevant span is counted once for recall even if it overlaps multiple chunks.
+Retrieval reports chunk-level Recall@k, Precision@k, Hit@1, MRR, and latency. Each chunk ID overlapping labelled evidence is one relevant target, even when multiple chunks cover the same evidence span.
 
 Generation reports case pass rate, expected-status/abstention results, request-constraint compliance, output-schema validity, citation ID validity, optional claim-level citation precision/faithfulness, and latency. `N/A (0/0)` means a metric was not applicable. The no-RAG baseline is expected to leave `source_ids` empty, so citation-ID validity is N/A for it; it is not penalized for lacking citations. In RAG arms, citation-ID validity only confirms that a cited passage ID was supplied, not that it semantically supports the exercise. The current plan adapter does not expose claim-level annotations, so semantic grounding may be N/A.
 

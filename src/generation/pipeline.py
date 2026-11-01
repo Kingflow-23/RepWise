@@ -15,7 +15,7 @@ from ..rag.prompt import (
     make_user_prompt,
     plan_response_schema,
 )
-from ..retrieval.base import Retriever
+from ..retrieval.base import QueryAwareRetriever, Retriever
 from ..schemas.models import PlanRequest, PlanResult, TrainingPlan
 
 logger = logging.getLogger(__name__)
@@ -73,8 +73,14 @@ class PlanPipeline:
         )
         retrieval_started = perf_counter()
         query = make_query(request)
+        retrieval_query = query
         try:
-            chunks = self.retriever.search(query, self.top_k)
+            if isinstance(self.retriever, QueryAwareRetriever):
+                chunks, retrieval_query = self.retriever.search_with_query(
+                    query, self.top_k
+                )
+            else:
+                chunks = self.retriever.search(query, self.top_k)
         except Exception as error:
             logger.exception(
                 "Plan retrieval failed elapsed_ms=%.1f",
@@ -108,7 +114,10 @@ class PlanPipeline:
                 ),
             )
 
-        evidence, sources = select_evidence(chunks, query=make_highlight_query(request))
+        evidence, sources = select_evidence(
+            chunks,
+            query=make_highlight_query(request, retrieval_query=retrieval_query),
+        )
         if not evidence:
             logger.warning("Plan generation stopped reason=no_usable_evidence")
             return PlanResult(

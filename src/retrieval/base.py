@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from ..schemas.models import RetrievedChunk
 
@@ -24,6 +24,16 @@ class Retriever(Protocol):
         Returns:
             Retrieved source chunks, best match first.
         """
+
+
+@runtime_checkable
+class QueryAwareRetriever(Protocol):
+    """Retriever that exposes the exact query used to rank its results."""
+
+    def search_with_query(
+        self, query: str, top_k: int
+    ) -> tuple[list[RetrievedChunk], str]:
+        """Return ranked chunks and the effective query submitted for ranking."""
 
 
 class MissingRetriever:

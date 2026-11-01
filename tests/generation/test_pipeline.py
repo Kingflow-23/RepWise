@@ -32,6 +32,7 @@ def request() -> PlanRequest:
 def chunk() -> RetrievedChunk:
     """Build one timestamped evidence chunk with a traceable source passage."""
     return RetrievedChunk(
+        chunk_id="video-1_chunk",
         text="For hypertrophy, use a range from 6 to 20 repetitions.",
         video_id="video-1",
         passage_ids=["video-1_p001"],
@@ -150,7 +151,56 @@ def test_query_contains_current_goal_and_profile_information():
     """Build a retrieval query from the current focus and profile."""
     query = make_query(request())
     assert "Build abdominal strength" in query
-    assert "beginner" in query
+    assert "Experience level: beginner" in query
+    assert "Goal: get stronger" in query
+
+
+def test_query_includes_profile_preferences_and_refinement_instructions():
+    """Use saved preferences and requested plan changes to guide retrieval."""
+    training_request = request().model_copy(
+        update={
+            "profile": request().profile.model_copy(
+                update={"preferences": "prefer low-impact movements"}
+            ),
+            "refinement_instructions": "replace crunches with a cable exercise",
+        }
+    )
+
+    query = make_query(training_request)
+
+    assert "Training preferences: prefer low-impact movements" in query
+    assert "Requested plan changes: replace crunches with a cable exercise" in query
+
+
+def test_highlighting_uses_effective_query_and_user_profile_terms():
+    """Highlight rewritten French terms alongside profile and refinement intent."""
+    training_request = request().model_copy(
+        update={
+            "profile": request().profile.model_copy(
+                update={
+                    "preferences": "prefer cable exercises",
+                    "equipment": ["cables"],
+                }
+            ),
+            "refinement_instructions": "replace crunches",
+        }
+    )
+    item = chunk()
+    item.text = (
+        "Des exercices avec câbles remplacent les crunchs pour renforcer la sangle."
+    )
+
+    _, sources = select_evidence(
+        [item],
+        query=make_highlight_query(
+            training_request,
+            retrieval_query="renforcer la sangle abdominale avec câbles, crunchs",
+        ),
+    )
+
+    assert "câbles" in sources[0].matched_terms
+    assert "crunchs" in sources[0].matched_terms
+    assert "renforcer" in sources[0].matched_terms
 
 
 def test_query_expands_french_body_region_to_canonical_retrieval_tag():
@@ -323,6 +373,40 @@ def test_pipeline_returns_valid_plan_with_mocked_dependencies():
     assert result.status == "completed"
     assert result.plan is not None
     assert result.sources[0].evidence_text == chunk().text
+
+
+def test_pipeline_highlights_the_exact_rewritten_query_used_for_retrieval():
+    """Keep translated retrieval terms available to evidence relevance review."""
+
+    class QueryAwareRetriever:
+        def search(self, query, top_k):
+            raise AssertionError("query-aware retrieval must not search twice")
+
+        def search_with_query(self, query, top_k):
+            assert "Requested plan changes:" in query
+            chunks = [
+                chunk().model_copy(
+                    update={
+                        "chunk_id": f"video-{index}_chunk",
+                        "video_id": f"video-{index}",
+                        "passage_ids": [f"video-{index}_p001"],
+                        "text": "Repos entre les séries pour renforcer la sangle.",
+                    }
+                )
+                for index in range(1, 6)
+            ]
+            return chunks, "repos entre les séries, renforcer la sangle abdominale"
+
+    training_request = request().model_copy(
+        update={"refinement_instructions": "replace crunches"}
+    )
+    result = PlanPipeline(QueryAwareRetriever(), FakeGenerator()).create_plan(
+        training_request
+    )
+
+    assert result.status == "completed"
+    matched_terms = {term.casefold() for term in result.sources[0].matched_terms}
+    assert {"repos", "séries", "renforcer", "sangle"}.issubset(matched_terms)
 
 
 def test_pipeline_does_not_generate_when_retrieval_returns_fewer_than_five():

@@ -59,7 +59,9 @@ def test_bm25_finds_the_right_chunk(chunks_dir):
     Args:
         chunks_dir: Supply the small local corpus used to build the retriever.
     """
-    bm25 = adapters.build_retriever("bm25", chunks_dir)
+    bm25 = adapters.build_retriever(
+        "bm25", chunks_dir, query_expansion=False
+    )
     top = bm25("combien de rÃ©cupÃ©ration entre les sÃ©ries", 3)
     assert top[0]["video_id"] == "v1"
 
@@ -84,7 +86,9 @@ def test_evaluation_bm25_uses_production_indexed_metadata(tmp_path):
         json.dumps(tagged) + "\n", encoding="utf-8"
     )
 
-    top = adapters.build_retriever("bm25", chunks_dir)("quadriceps", 1)
+    top = adapters.build_retriever(
+        "bm25", chunks_dir, query_expansion=False
+    )("quadriceps", 1)
 
     assert [chunk["video_id"] for chunk in top] == ["tagged"]
 
@@ -173,10 +177,14 @@ def test_comparison_builds_shared_retrieval_components(chunks_dir, monkeypatch):
     monkeypatch.setattr(hybrid_module, "HybridRetriever", FakeHybrid)
     monkeypatch.setattr(AppConfig, "from_environment", classmethod(lambda cls: cls()))
 
-    retrievers = adapters.build_retrievers(["bm25", "semantic", "hybrid"], chunks_dir)
+    retrievers = adapters.build_retrievers(
+        ["bm25", "semantic", "hybrid"], chunks_dir, query_expansion=False
+    )
 
     assert set(retrievers) == {"bm25", "semantic", "hybrid"}
     assert created["hybrid"] == (created["lexical"], created["semantic"])
+    assert retrievers["hybrid"].search_with_query("test query", 5) == ([], "test query")
+    assert retrievers["hybrid"]("test query", 5) == []
 
 
 def test_retrieval_suite_metrics_and_failures(chunks_dir):
@@ -185,7 +193,7 @@ def test_retrieval_suite_metrics_and_failures(chunks_dir):
     Args:
         chunks_dir: Provide the test corpus from which the BM25 retriever is built.
     """
-    bm25 = adapters.build_retriever("bm25", chunks_dir)
+    bm25 = adapters.build_retriever("bm25", chunks_dir, query_expansion=False)
     cases = [
         RetrievalCase(
             "Q1",
@@ -193,10 +201,12 @@ def test_retrieval_suite_metrics_and_failures(chunks_dir):
             True,
             spans=[Span("v1", 10, 20)],
         ),
-        RetrievalCase("Q2", "deload volume charges", True, spans=[Span("v9", 0, 10)]),
+        RetrievalCase("Q2", "récupération entre séries", True, spans=[Span("v2", 0, 10)]),
         RetrievalCase("Q3", "prix abonnement", False),
     ]
-    res = runner.evaluate_retrieval(cases, bm25, ks=(1, 3), main_k=3)
+    res = runner.evaluate_retrieval(
+        cases, bm25, adapters.load_chunks(chunks_dir), ks=(1, 3), main_k=3
+    )
     assert res.n_cases == 2 and res.n_passed == 1
     assert res.metrics["recall@1"].fmt() == "0.500 (1/2)"
     assert (
@@ -372,12 +382,15 @@ def test_cli_writes_reports(chunks_dir, tmp_path, monkeypatch):
         monkeypatch: Redirect evaluation configuration to the test corpus and output.
     """
     out = tmp_path / "runs"
+    monkeypatch.setenv("REPWISE_QUERY_EXPANSION", "false")
     monkeypatch.setattr(config, "CHUNKS_DIR", chunks_dir)
     monkeypatch.setattr(config, "OUT_DIR", out)
     code = runner.main(["--suite", "all", "--label", "smoke"])
     assert code == 0
     run = next(out.iterdir())
     payload = json.loads((run / "results.json").read_text(encoding="utf-8"))
+    assert payload["meta"]["query_expansion"] is False
+    assert payload["meta"]["query_expansion_model"] is None
     assert set(payload["suites"]) == {"retrieval", "generation"}
     report_text = (run / "report.md").read_text(encoding="utf-8")
     assert "# RepWise evaluation report" in report_text
@@ -423,10 +436,16 @@ def test_real_generation_with_missing_corpus_writes_failure_report(
     """
     monkeypatch.setattr(config, "CHUNKS_DIR", tmp_path / "missing")
     monkeypatch.setattr(config, "OUT_DIR", tmp_path / "runs")
+    monkeypatch.setenv("REPWISE_QUERY_EXPANSION", "false")
     monkeypatch.setattr(
         runner.datasets,
         "load_generation_cases",
         lambda _path=None: [gen_case("G1", ["ok"])],
+    )
+    monkeypatch.setattr(
+        runner.datasets,
+        "load_red_team_cases",
+        lambda: [gen_case("RT001", ["ok"])],
     )
 
     run = runner.run_evaluation(
@@ -467,6 +486,8 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
     """
     from src.evaluation.metrics.common import Ratio
 
+    monkeypatch.setenv("REPWISE_QUERY_EXPANSION", "true")
+    monkeypatch.setenv("REPWISE_RETRIEVAL", "hybrid")
     monkeypatch.setattr(config, "OUT_DIR", tmp_path)
     monkeypatch.setattr(
         runner.adapters,
@@ -481,7 +502,20 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
     monkeypatch.setattr(
         runner.datasets,
         "load_generation_cases",
-        lambda: [gen_case("G1", ["ok"])],
+        lambda: [
+            GenerationCase(
+                id="G1",
+                request="Build strength",
+                expected_status=["ok"],
+                profile={
+                    "experience": "beginner",
+                    "goal": "Build strength",
+                    "available_days": ["Monday"],
+                    "session_minutes": 45,
+                    "equipment": ["dumbbells"],
+                },
+            )
+        ],
     )
     monkeypatch.setattr(
         runner.datasets,
@@ -491,25 +525,36 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
     monkeypatch.setattr(
         runner.adapters,
         "build_retrievers",
-        lambda strategies, _path, *, chunks=None: {
+        lambda strategies, _path, *, chunks=None, query_expansion=None: {
             strategy: strategy for strategy in strategies
         },
     )
+    expansion_inputs = []
+
+    class FixedExpander:
+        def __init__(self, _model, _url):
+            pass
+
+        def expand(self, query):
+            expansion_inputs.append(query)
+            return f"requete francaise {query}"
+
+    monkeypatch.setattr(runner, "OllamaQueryExpander", FixedExpander)
     monkeypatch.setattr(
         runner,
         "evaluate_retrieval",
-        lambda _cases, strategy: runner.SuiteResult(
+        lambda _cases, strategy, _chunks: runner.SuiteResult(
             "retrieval",
             n_cases=1,
             n_passed=1,
             metrics={
-                "recall@5": Ratio(
+                f"recall@{config.MAIN_K}": Ratio(
                     {"bm25": 0.5, "semantic": 0.4, "hybrid": 0.8}[strategy], 1
                 ),
                 "mrr": Ratio(0.5, 1),
                 "hit@1": Ratio(1, 1),
             },
-            extra={"latency_ms_median": 1.0},
+            extra={"latency_ms_median": 1.0, "main_k": config.MAIN_K},
         ),
     )
     planner_calls = []
@@ -558,6 +603,16 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
     assert {call[2] for call in planner_calls} == {"hybrid"}
     assert sum(call[1] == "model-a" for call in planner_calls) == 2
     assert len({id(call[3]) for call in planner_calls}) == 1
+    assert len(expansion_inputs) == 2
+    assert expansion_inputs[0] == "query"
+    assert expansion_inputs[1].startswith(
+        "Training focus: Build strength | Goal: Build strength"
+    )
+    assert run["payload"]["meta"]["query_expansion_latency_ms_median"] is not None
+    assert (
+        run["payload"]["meta"]["generation_query_expansion_latency_ms_median"]
+        is not None
+    )
 
 
 def test_no_rag_planner_does_not_construct_retriever(monkeypatch, tmp_path):

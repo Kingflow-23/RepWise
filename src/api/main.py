@@ -20,6 +20,7 @@ from ..generation.pipeline import PlanPipeline
 from ..llm.ollama import OllamaGenerator, PlanGenerator
 from ..retrieval.base import MissingRetriever, Retriever
 from ..retrieval.hybrid import HybridRetriever
+from ..retrieval.query_expansion import OllamaQueryExpander, QueryExpansionRetriever
 from ..retrieval.semantic import SemanticRetriever, load_chunks
 from ..retrieval.sparse import BM25Retriever
 from ..schemas.models import (
@@ -91,9 +92,19 @@ def create_app(
                 retriever = HybridRetriever(lexical, semantic)
             else:
                 raise ValueError("REPWISE_RETRIEVAL must be bm25, semantic or hybrid.")
+            if config.query_expansion:
+                retriever = QueryExpansionRetriever(
+                    retriever,
+                    OllamaQueryExpander(
+                        config.query_expansion_model, config.ollama_url
+                    ),
+                )
             logger.info(
-                "Retriever initialized strategy=%s chunks=%s elapsed_ms=%.1f",
+                "Retriever initialized strategy=%s query_expansion=%s query_expansion_model=%s "
+                "chunks=%s elapsed_ms=%.1f",
                 config.retrieval_strategy,
+                config.query_expansion,
+                config.query_expansion_model if config.query_expansion else "disabled",
                 len(chunks),
                 (perf_counter() - retrieval_started) * 1000,
             )

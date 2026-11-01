@@ -1,12 +1,13 @@
 """Verify retrieval configuration, ranking, index compatibility, and model errors."""
 
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from config.config import AppConfig
 from src.retrieval.hybrid import HybridRetriever
+from src.retrieval.query_expansion import OllamaQueryExpander, QueryExpansionRetriever
 from src.retrieval.semantic import (
     SemanticRetriever,
     _load_model,
@@ -25,11 +26,23 @@ def test_retrieval_configuration_supports_only_the_three_named_modes(monkeypatch
     """
     assert AppConfig().retrieval_strategy == "hybrid"
     assert AppConfig().ollama_model == "qwen3.5:9b"
+    assert AppConfig().query_expansion_model == "qwen3.5:4b"
     assert AppConfig().ollama_comparison_model == "gemma4:12b"
+    assert AppConfig().query_expansion is True
 
     for strategy in ("bm25", "semantic", "hybrid"):
         monkeypatch.setenv("REPWISE_RETRIEVAL", strategy)
         assert AppConfig.from_environment().retrieval_strategy == strategy
+
+
+def test_query_expansion_configuration_can_be_disabled(monkeypatch):
+    """Parse the opt-out setting and reject invalid configuration values."""
+    monkeypatch.setenv("REPWISE_QUERY_EXPANSION", "false")
+    assert AppConfig.from_environment().query_expansion is False
+
+    monkeypatch.setenv("REPWISE_QUERY_EXPANSION", "sometimes")
+    with pytest.raises(ValueError, match="REPWISE_QUERY_EXPANSION"):
+        AppConfig.from_environment()
 
 
 def test_retrieval_top_k_never_drops_below_five(monkeypatch):
@@ -118,6 +131,93 @@ def test_hybrid_fuses_bm25_and_semantic_rankings_with_rrf():
     assert [result.chunk_id for result in results] == ["first", "second"]
     assert results[0].score == pytest.approx(1 / 61 + 1 / 62)
     assert [result.rank for result in results] == [1, 2]
+
+
+def test_query_expansion_rewrites_once_then_searches_once():
+    """Send only the expanded French query to the retriever exactly once."""
+    expected = chunk("expected", "renforcement abdominal")
+
+    class RankedRetriever:
+        def __init__(self):
+            self.calls = []
+
+        def search(self, query, top_k):
+            self.calls.append((query, top_k))
+            return [expected]
+
+    class FixedExpander:
+        def expand(self, query):
+            assert query == "original request"
+            return "  **Requête :** requête traduite  \n"
+
+    base = RankedRetriever()
+    results = QueryExpansionRetriever(base, FixedExpander()).search(
+        "original request", top_k=3
+    )
+
+    assert base.calls == [("requête traduite", 3)]
+    assert [item.chunk_id for item in results] == ["expected"]
+
+
+def test_clean_expanded_query_collapses_whitespace_and_removes_wrappers():
+    """Normalize labels, markdown, quotes, and line breaks in generated text."""
+    from src.retrieval.query_expansion import clean_expanded_query
+
+    assert (
+        clean_expanded_query(
+            '  **Requête :** Améliorer la récupération entre les séries : '
+            'termes clés "repos", "temps de pause", fatigue musculaire.  '
+        )
+        == "Améliorer la récupération entre les séries, repos, temps de pause, "
+        "fatigue musculaire."
+    )
+
+
+def test_ollama_query_expander_uses_search_specific_plain_text_prompt(monkeypatch):
+    """Request a plain-text French rewrite, not a structured answer."""
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, host, timeout):
+            captured["host"] = host
+            captured["timeout"] = timeout
+
+        def chat(self, **kwargs):
+            captured.update(kwargs)
+            return {
+                "message": {
+                    "content": "Comment renforcer les abdominaux avec des exercices adaptés ?"
+                }
+            }
+
+    fake_ollama = ModuleType("ollama")
+    fake_ollama.Client = FakeClient
+    monkeypatch.setitem(sys.modules, "ollama", fake_ollama)
+
+    expanded = OllamaQueryExpander("local-model", "http://localhost:11434").expand(
+        "How can I strengthen my abs?"
+    )
+
+    assert expanded == "Comment renforcer les abdominaux avec des exercices adaptés ?"
+    assert captured["messages"][1]["content"].endswith(
+        "How can I strengthen my abs?"
+    )
+    assert "Do not answer the" in captured["messages"][0]["content"]
+    assert "Do not add merely related topics" in captured["messages"][0]["content"]
+    assert "no\nJSON" in captured["messages"][0]["content"]
+    assert "format" not in captured
+
+
+def test_ollama_query_expander_rejects_empty_output(monkeypatch):
+    """Reject empty expansion output rather than silently using the input."""
+    fake_ollama = ModuleType("ollama")
+    fake_ollama.Client = lambda **kwargs: SimpleNamespace(
+        chat=lambda **kwargs: {"message": {"content": "  "}}
+    )
+    monkeypatch.setitem(sys.modules, "ollama", fake_ollama)
+
+    with pytest.raises(ValueError, match="empty"):
+        OllamaQueryExpander("local-model").expand("training query")
 
 
 def test_semantic_index_round_trip_and_query(tmp_path, monkeypatch):

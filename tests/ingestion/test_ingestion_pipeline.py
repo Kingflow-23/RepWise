@@ -82,6 +82,44 @@ def test_build_corpus_writes_clean_passages_and_provenance(tmp_path, capsys):
     assert "videos: 1" in capsys.readouterr().out
 
 
+def test_passage_timestamps_ignore_duplicate_and_empty_fragments():
+    """Use retained speech fragments, not discarded captions, for time bounds."""
+    fragments = [
+        {"start": 0, "text": "Une première phrase assez longue pour fermer le passage."},
+        {"start": 5, "text": "Une première phrase assez longue pour fermer le passage."},
+        {"start": 10, "text": "Une deuxième phrase suffisamment longue pour terminer."},
+        {"start": 30, "text": ""},
+    ]
+
+    passages = build_corpus.to_passages(fragments, punctuated=True)
+
+    assert [passage["start"] for passage in passages] == [0, 10]
+    assert passages[0]["end"] == 10
+    assert passages[1]["end"] == 12
+
+
+def test_rolling_caption_cleanup_removes_repeated_prefixes():
+    """Avoid duplicating cumulative words emitted across rolling captions."""
+    fragments = [
+        {"start": 1, "text": "c'est pas mal"},
+        {"start": 2, "text": "c'est pas mal du tout"},
+        {"start": 3, "text": "c'est pas mal du tout"},
+        {"start": 4, "text": "c'est pas mal du tout franchement"},
+    ]
+
+    cleaned = build_corpus.clean_rolling_captions(fragments)
+
+    assert [fragment["text"] for fragment in cleaned] == [
+        "c'est pas mal",
+        "du tout",
+        "",
+        "franchement",
+    ]
+    passages = build_corpus.to_passages(cleaned, punctuated=True)
+    assert len(passages) == 1
+    assert passages[0]["text"] == "c'est pas mal du tout franchement"
+
+
 def test_coverage_report_ignores_sponsors_and_writes_empty_hits(tmp_path):
     """Exclude sponsored passages and report topic coverage with no matching hits.
 

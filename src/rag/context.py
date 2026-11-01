@@ -99,48 +99,64 @@ def _highlight_terms(query: str, text: str) -> list[str]:
 
 
 def make_query(request: PlanRequest) -> str:
-    """Build a retrieval query from the request and relevant profile details.
+    """Build a descriptive retrieval request from current intent and profile.
 
     Args:
         request: Plan request whose focus, goal, experience, equipment, and
             constraints should guide retrieval.
 
     Returns:
-        Non-empty query components joined with ``" | "``; detected body parts
-        are added as an extra component.
+        A labeled query containing focus, goal, experience, preferences,
+        equipment, constraints, and refinement instructions; detected body
+        parts are added as retrieval hints.
     """
     profile = request.profile
     parts = [
-        request.focus,
-        profile.goal,
-        profile.experience,
-        *profile.equipment,
-        *request.extra_constraints,
+        f"Training focus: {request.focus}",
+        f"Goal: {profile.goal}",
+        f"Experience level: {profile.experience}",
     ]
+    if profile.preferences:
+        parts.append(f"Training preferences: {profile.preferences}")
+    if profile.equipment:
+        parts.append(f"Available equipment: {', '.join(profile.equipment)}")
+    if request.extra_constraints:
+        parts.append(f"Additional constraints: {'; '.join(request.extra_constraints)}")
+    if request.refinement_instructions:
+        parts.append(f"Requested plan changes: {request.refinement_instructions}")
     body_parts = detect_body_parts(" ".join(parts))
     if body_parts:
         parts.append("body parts: " + " ".join(body_parts))
     return " | ".join(part for part in parts if part)
 
 
-def make_highlight_query(request: PlanRequest) -> str:
+def make_highlight_query(
+    request: PlanRequest, *, retrieval_query: str | None = None
+) -> str:
     """Build terms for highlighting evidence relevant to the stated request.
 
     Args:
-        request: Plan request supplying the focus, goal, preferences, and constraints.
+        request: Plan request supplying the focus, profile, and constraints.
+        retrieval_query: Exact rewritten query submitted to the retriever, when
+            query expansion is enabled.
 
     Returns:
-        A space-separated string that also includes any detected body parts.
+        A space-separated string containing original request/profile intent and
+        the actual query used for retrieval.
 
     Notes:
-        Experience and equipment are deliberately excluded so profile metadata does
-        not make unrelated evidence appear relevant to the requested focus.
+        Schedule and experience metadata are excluded because they do not
+        establish topical relevance. Equipment and the effective retrieval query
+        are included because they may be relevant constraints or transcript terms.
     """
     parts = [
         request.focus,
         request.profile.goal,
         request.profile.preferences or "",
+        *request.profile.equipment,
         *request.extra_constraints,
+        request.refinement_instructions or "",
+        retrieval_query or "",
     ]
     body_parts = detect_body_parts(" ".join(parts))
     if body_parts:

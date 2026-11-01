@@ -15,7 +15,7 @@ WHAT THIS SCRIPT DOES
       1. Reads the raw captions. Two caption layouts exist in the corpus
          (rolling captions with empty duplicate timestamps, and flat
          captions), plus lines that continue the previous one without a
-         timestamp. All are handled.
+         timestamp. Repeated cumulative text in rolling captions is removed.
       2. Cleans the text: removes sound tags ([Musique], [Rires], ...),
          normalises accents and apostrophes, removes duplicates.
       3. Fixes known speech recognition errors using the correction map.
@@ -196,6 +196,34 @@ def parse_raw(text: str) -> tuple[list[dict], str]:
     return frags, layout
 
 
+def clean_rolling_captions(frags: list[dict]) -> list[dict]:
+    """Remove repeated full-caption prefixes from cumulative rolling captions.
+
+    Args:
+        frags: Ordered caption fragments with start times and text.
+
+    Returns:
+        New fragments with an immediately repeated prior caption prefix
+        removed from its longer successor.
+    """
+    cleaned = []
+    previous_words = []
+    for fragment in frags:
+        words = fragment["text"].split()
+        text = fragment["text"]
+        if previous_words and words == previous_words:
+            text = ""
+        elif (
+            len(words) > len(previous_words)
+            and previous_words
+            and words[: len(previous_words)] == previous_words
+        ):
+            text = " ".join(words[len(previous_words) :])
+        cleaned.append({**fragment, "text": text})
+        previous_words = words
+    return cleaned
+
+
 def clean_fragment(t: str) -> str:
     """Remove bracketed sound tags and collapse whitespace in one fragment.
 
@@ -298,13 +326,18 @@ def to_passages(frags: list[dict], punctuated: bool) -> list[dict]:
         End times use the next fragment's start, or a two-second estimate at
         the end of the transcript, and are kept at least one second after start.
     """
-    passages, buf, start = [], [], None
+    clean_frags = []
     prev = None
-    for i, f in enumerate(frags):
-        txt = f["text"]
-        if not txt or txt == prev:
+    for fragment in frags:
+        text = fragment["text"]
+        if not text or text == prev:
             continue
-        prev = txt
+        clean_frags.append(fragment)
+        prev = text
+
+    passages, buf, start = [], [], None
+    for i, f in enumerate(clean_frags):
+        txt = f["text"]
         if start is None:
             start = f["start"]
         buf.append(txt)
@@ -314,13 +347,17 @@ def to_passages(frags: list[dict], punctuated: bool) -> list[dict]:
         else:
             close = n >= UNPUNCT_WORDS
         if close:
-            end = frags[i + 1]["start"] if i + 1 < len(frags) else f["start"] + 2
+            end = (
+                clean_frags[i + 1]["start"]
+                if i + 1 < len(clean_frags)
+                else f["start"] + 2
+            )
             passages.append(
                 {"start": start, "end": max(end, start + 1), "text": " ".join(buf)}
             )
             buf, start = [], None
     if buf:
-        last = frags[-1]["start"] + 2
+        last = clean_frags[-1]["start"] + 2
         passages.append(
             {"start": start, "end": max(last, start + 1), "text": " ".join(buf)}
         )
@@ -489,6 +526,8 @@ def main(argv: list[str] | None = None) -> None:
     for vid, path in matched.items():
         raw = path.read_bytes()
         frags, layout = parse_raw(raw.decode("utf-8"))
+        if layout == "rolling":
+            frags = clean_rolling_captions(frags)
         punct = is_punctuated(frags)
         counter: Counter = Counter()
         passages = to_passages(correct_fragments(frags, rules, counter), punct)
