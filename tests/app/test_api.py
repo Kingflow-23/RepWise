@@ -71,6 +71,7 @@ class FakeGenerator:
                                         "sets": 3,
                                         "repetitions": "8-12",
                                         "rest_seconds": 60,
+                                        "estimated_minutes": 10,
                                         "coaching_note": "Move slowly.",
                                         "source_ids": ["video-1_p001"],
                                         "supporting_evidence": [
@@ -112,7 +113,7 @@ def test_api_saves_profile_and_completed_plan(tmp_path, monkeypatch):
     health_response = client.get("/api/v1/health")
     health = health_response.json()
     assert health["retriever"] == "hybrid"
-    assert health["model"] == "llama3.2"
+    assert health["model"] == "qwen3.5:9b"
     assert UUID(health_response.headers["X-Request-ID"])
     profile = {
         "experience": "beginner",
@@ -166,6 +167,69 @@ def test_api_saves_profile_and_completed_plan(tmp_path, monkeypatch):
         == 204
     )
     assert client.get(f"/api/v1/students/{user_id}/plans", headers=headers).json() == []
+
+
+def test_next_plan_uses_latest_saved_plan_and_requested_refinements(
+    tmp_path, monkeypatch
+):
+    """Pass the latest saved plan and current user guidance into the next prompt."""
+    monkeypatch.setattr(api_module, "read_access_token", lambda token, secret: token)
+
+    class PromptRecordingGenerator(FakeGenerator):
+        prompts = []
+
+        def generate(self, system_prompt, user_prompt, response_schema=None):
+            self.prompts.append(user_prompt)
+            return super().generate(system_prompt, user_prompt, response_schema)
+
+    generator = PromptRecordingGenerator()
+    repository = StudentRepository(str(tmp_path / "repwise.sqlite3"))
+    repository.initialize()
+    user_id = repository.create_user("Alex Example", "test-hash")
+    app = create_app(
+        AppConfig(
+            database_path=str(tmp_path / "repwise.sqlite3"), auth_secret="test-secret"
+        ),
+        repository=repository,
+        retriever=FakeRetriever(),
+        generator=generator,
+    )
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {user_id}"}
+    profile = {
+        "experience": "beginner",
+        "goal": "general strength",
+        "available_days": ["Monday"],
+        "session_minutes": 45,
+        "equipment": ["bodyweight"],
+    }
+    client.put(f"/api/v1/students/{user_id}/profile", json=profile, headers=headers)
+
+    first = client.post(
+        f"/api/v1/students/{user_id}/plans",
+        json={"focus": "Build a simple routine"},
+        headers=headers,
+    )
+    second = client.post(
+        f"/api/v1/students/{user_id}/plans",
+        json={
+            "focus": "Improve my routine",
+            "refinement_instructions": "Use more variety this time.",
+        },
+        headers=headers,
+    )
+
+    assert first.status_code == second.status_code == 200
+    assert "PREVIOUS PLAN (COMPACT REFERENCE)" not in generator.prompts[0]
+    assert "Starter plan" in generator.prompts[1]
+    assert "Bodyweight squat" in generator.prompts[1]
+    assert "Use more variety this time." in generator.prompts[1]
+    assert (
+        client.get(f"/api/v1/students/{user_id}/plans", headers=headers).json()[0][
+            "request"
+        ]["refinement_instructions"]
+        == "Use more variety this time."
+    )
 
 
 def test_api_requires_a_profile_before_creating_a_plan(tmp_path, monkeypatch):

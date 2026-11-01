@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import logging
+import json
 import re
 from time import perf_counter
 
 from ..llm.ollama import PlanGenerator
 from ..rag.context import make_highlight_query, make_query, select_evidence
-from ..rag.prompt import load_system_prompt, make_user_prompt, plan_response_schema
+from ..rag.prompt import (
+    estimate_prompt_tokens,
+    load_system_prompt,
+    make_user_prompt,
+    plan_response_schema,
+)
 from ..retrieval.base import Retriever
 from ..schemas.models import PlanRequest, PlanResult, TrainingPlan
 
@@ -36,13 +42,19 @@ class PlanPipeline:
         self.generator = generator
         self.top_k = max(MINIMUM_RETRIEVED_CHUNKS, top_k)
 
-    def create_plan(self, request: PlanRequest) -> PlanResult:
+    def create_plan(
+        self,
+        request: PlanRequest,
+        *,
+        previous_plan: dict[str, object] | None = None,
+    ) -> PlanResult:
         """Retrieve evidence, generate a plan, and validate it against the request.
 
         Args:
             self: Pipeline holding the configured retrieval and generation
                 services and the minimum retrieval count.
             request: Validated profile and plan requirements for this generation.
+            previous_plan: Latest saved request and plan for this student, if any.
 
         Returns:
             A result with status ``completed`` and the plan when validation
@@ -105,7 +117,8 @@ class PlanPipeline:
             )
 
         system_prompt = load_system_prompt()
-        user_prompt = make_user_prompt(request, evidence)
+        user_prompt = make_user_prompt(request, evidence, previous_plan=previous_plan)
+        response_schema = plan_response_schema(request)
         plan = None
         last_error: Exception | None = None
         for attempt in range(
@@ -121,10 +134,28 @@ class PlanPipeline:
                     )
                     user_prompt += (
                         "\n\nCorrection request: the previous response failed validation: "
-                        f"{last_error}. Return corrected JSON only."
+                        f"{last_error}. Return corrected JSON only. Keep the plan "
+                        "in clear English, interpret any source language as needed, "
+                        "and do not invent source IDs."
                     )
+                logger.info(
+                    "Model prompt measured attempt=%s system_chars=%s user_chars=%s "
+                    "schema_chars=%s estimated_input_tokens=%s previous_plan=%s",
+                    attempt + 1,
+                    len(system_prompt),
+                    len(user_prompt),
+                    len(
+                        json.dumps(
+                            response_schema,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                    ),
+                    estimate_prompt_tokens(system_prompt, user_prompt, response_schema),
+                    previous_plan is not None,
+                )
                 plan = self.generator.generate(
-                    system_prompt, user_prompt, plan_response_schema(request)
+                    system_prompt, user_prompt, response_schema
                 )
                 logger.info(
                     "Model returned plan attempt=%s elapsed_ms=%.1f",
@@ -184,16 +215,17 @@ def validate_plan(
         plan: Generated plan to check.
         request: Student requirements against which each week and workout is checked.
         source_ids: IDs of sources supplied to the model.
-        source_evidence: Full text for each source, used to verify exact quote
-            membership when citations are required.
-        require_citations: Whether each exercise must cite supplied sources and
-            include a quote matching the cited source text.
+        source_evidence: Full text for each source, retained for compatibility
+            with callers. Exact quote matching is not required.
+        require_citations: Whether each exercise must cite at least one supplied
+            source and use only IDs from the retrieved evidence.
 
     Raises:
         ValueError: If the plan has the wrong number or numbering of weeks,
             incorrect workout counts, unavailable or duplicate workout days,
             overlong sessions, non-specific or repeated exercise names, unavailable
-            equipment, or missing/unknown/unsupported citations.
+            equipment, or missing/unknown source IDs. Supporting quotes are not
+            checked for exact text matches.
     """
     if len(plan.weeks) != request.weeks:
         raise ValueError("the number of weeks does not match the request")
@@ -311,20 +343,3 @@ def validate_plan(
                     raise ValueError(
                         "an exercise cites a source that was not retrieved"
                     )
-                if require_citations:
-                    quotes = exercise.supporting_evidence
-                    quoted_source_ids = {item.source_id for item in quotes}
-                    if not quotes or quoted_source_ids != set(exercise.source_ids):
-                        raise ValueError(
-                            "each cited source must include a supporting evidence quote"
-                        )
-                    if source_evidence is None:
-                        raise ValueError(
-                            "source text is required to validate supporting evidence quotes"
-                        )
-                    for item in quotes:
-                        source_text = source_evidence.get(item.source_id)
-                        if source_text is None or item.quote not in source_text:
-                            raise ValueError(
-                                "a supporting evidence quote does not match its cited source"
-                            )

@@ -69,6 +69,8 @@ evaluation.
 ## Important limits
 
 RepWise checks plan structure, schedule constraints, equipment declarations,
-and whether cited quotes occur in the supplied text. Those checks cannot prove
-that a quote supports an exercise, that the advice is medically appropriate,
-or that the model followed every instruction.
+and that cited source IDs were retrieved. It does not require exact transcript
+quotes, which lets the model use non-English evidence while producing a
+coherent English plan. These checks cannot prove that a source supports an
+exercise, that advice is medically appropriate, or that the model followed
+every instruction.

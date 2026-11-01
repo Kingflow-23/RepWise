@@ -4,7 +4,12 @@ import pytest
 
 from src.generation import PlanPipeline, validate_plan
 from src.rag import make_highlight_query, make_query, select_evidence
-from src.rag.prompt import make_user_prompt, plan_response_schema
+from src.rag.prompt import (
+    PREVIOUS_PLAN_CONTEXT_MAX_CHARS,
+    compact_previous_plan,
+    make_user_prompt,
+    plan_response_schema,
+)
 from src.retrieval import BM25Retriever
 from src.schemas import PlanRequest, RetrievedChunk, TrainingPlan, UserProfile
 
@@ -59,6 +64,7 @@ def valid_plan() -> TrainingPlan:
                                     "sets": 3,
                                     "repetitions": "8-12",
                                     "rest_seconds": 60,
+                                    "estimated_minutes": 10,
                                     "coaching_note": "Move slowly.",
                                     "source_ids": ["video-1_p001"],
                                     "supporting_evidence": [
@@ -256,20 +262,19 @@ def test_validator_rejects_generic_and_repeated_exercise_names():
         )
 
 
-def test_validator_rejects_supporting_quote_not_found_in_cited_source():
-    """Reject supporting evidence whose quote is absent from its cited passage."""
+def test_validator_does_not_require_exact_quotes_across_source_languages():
+    """Accept an unmatched quote while still validating source IDs."""
     plan = valid_plan()
     plan.weeks[0].workouts[0].exercises[0].supporting_evidence[
         0
     ].quote = "This quote is absent from the source."
 
-    with pytest.raises(ValueError, match="does not match"):
-        validate_plan(
-            plan,
-            request(),
-            {"video-1_p001"},
-            source_evidence={"video-1_p001": chunk().text},
-        )
+    validate_plan(
+        plan,
+        request(),
+        {"video-1_p001"},
+        source_evidence={"video-1_p001": chunk().text},
+    )
 
 
 class FakeRetriever:
@@ -444,28 +449,30 @@ def test_pipeline_sends_all_five_retrieved_chunks_to_generator():
 
 
 def test_pipeline_retries_once_after_validation_failure():
-    """Retry generation once when the first plan fails source validation."""
+    """Retry with clearer instructions when a citation ID is invalid."""
 
     class CorrectingGenerator:
-        """Return an invalid citation once, then return a valid plan."""
+        """Return an invalid source ID once, then return a valid plan."""
 
         calls = 0
+        prompts = []
 
         def generate(self, system_prompt, user_prompt, response_schema=None):
-            """Count attempts and correct the source ID on the retry.
+            """Count attempts and retain the retry instructions.
 
             Args:
                 system_prompt: System instructions accepted by the generator
                     protocol.
-                user_prompt: Prompt that includes correction instructions on
-                    retry; not needed by this deterministic fake.
+                user_prompt: Prompt captured to verify clear-English retry
+                    instructions.
                 response_schema: Structured-output schema accepted by the
                     protocol.
             """
             self.calls += 1
+            self.prompts.append(user_prompt)
             if self.calls == 1:
                 plan = valid_plan()
-                plan.weeks[0].workouts[0].exercises[0].source_ids = ["not-supplied"]
+                plan.weeks[0].workouts[0].exercises[0].source_ids = ["unknown"]
                 return plan
             return valid_plan()
 
@@ -473,6 +480,7 @@ def test_pipeline_retries_once_after_validation_failure():
     result = PlanPipeline(FakeRetriever(), generator).create_plan(request())
     assert result.status == "completed"
     assert generator.calls == 2
+    assert "Keep the plan in clear English" in generator.prompts[1]
 
 
 def test_prompt_and_structured_schema_require_exact_requested_week_count():
@@ -482,11 +490,92 @@ def test_prompt_and_structured_schema_require_exact_requested_week_count():
     schema = plan_response_schema(training_request)
 
     assert "exactly 4 weeks" in prompt
-    assert "exactly 4 weeks" in prompt
+    assert "write the plan in clear English" in prompt
+    assert "Exact quotations and semantic verification are not required" in prompt
     assert '"minItems": 4' in prompt
     assert schema["properties"]["weeks"]["minItems"] == 4
     assert schema["properties"]["weeks"]["maxItems"] == 4
     assert schema["$defs"]["Week"]["properties"]["workouts"]["minItems"] == 1
+    exercise_schema = schema["$defs"]["Exercise"]
+    assert "estimated_minutes" in exercise_schema["required"]
+    assert exercise_schema["properties"]["estimated_minutes"]["minimum"] == 1
+    assert "rough estimates, not exact timings" in prompt
+
+
+def test_prompt_includes_previous_plan_and_explicit_refinement_instructions():
+    """Make prior-plan context available without letting it override this request."""
+    training_request = request().model_copy(
+        update={"refinement_instructions": "Avoid crunches and add more variety."}
+    )
+    previous_plan = {
+        "request": {"focus": "Build abdominal strength"},
+        "plan": {
+            "title": "Starter core plan",
+            "summary": "A short introductory plan.",
+            "weeks": [
+                {
+                    "objective": "Learn core control.",
+                    "workouts": [
+                        {
+                            "day": "Monday",
+                            "focus": "Core stability",
+                            "exercises": [
+                                {
+                                    "name": "Crunch",
+                                    "sets": 3,
+                                    "repetitions": "8-12",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        },
+        "sources": [{"evidence_text": "This source should not enter the prompt."}],
+    }
+
+    prompt = make_user_prompt(training_request, "", previous_plan=previous_plan)
+
+    assert "Avoid crunches and add more variety." in prompt
+    assert "Starter core plan" in prompt
+    assert "Crunch 3 8-12" in prompt
+    assert "current request and refinement instructions take priority" in prompt
+    assert "This source should not enter the prompt." not in prompt
+
+
+def test_previous_plan_summary_stays_within_character_budget():
+    """Bound historical prompt context even when a saved plan is unusually large."""
+    previous_plan = {
+        "request": {"focus": "A" * 10_000},
+        "plan": {
+            "title": "B" * 10_000,
+            "summary": "C" * 10_000,
+            "weeks": [
+                {
+                    "objective": "D" * 10_000,
+                    "workouts": [
+                        {
+                            "day": "Monday",
+                            "focus": "E" * 10_000,
+                            "exercises": [
+                                {
+                                    "name": f"Exercise {index} " + "F" * 100,
+                                    "sets": 3,
+                                    "repetitions": "8",
+                                }
+                                for index in range(30)
+                            ],
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+
+    summary = compact_previous_plan(previous_plan)
+
+    assert len(summary) <= PREVIOUS_PLAN_CONTEXT_MAX_CHARS
+    assert "Earlier plan details omitted" in summary
 
 
 def test_system_prompt_selects_rag_or_no_rag_evidence_policy(tmp_path, monkeypatch):
@@ -509,10 +598,11 @@ def test_system_prompt_selects_rag_or_no_rag_evidence_policy(tmp_path, monkeypat
     no_rag_prompt = prompt.load_system_prompt(require_evidence=False)
 
     assert "{{EVIDENCE_POLICY}}" not in rag_prompt
-    assert "Every exercise must cite" in rag_prompt
+    assert "Exact quotations and semantic verification are not required" in rag_prompt
+    assert "Include at least one supplied source ID" in rag_prompt
     assert "{{EVIDENCE_POLICY}}" not in no_rag_prompt
     assert "Use general fitness knowledge" in no_rag_prompt
-    assert "Every exercise must cite" not in no_rag_prompt
+    assert "Cite supplied source IDs" not in no_rag_prompt
 
 
 def test_system_prompt_rejects_missing_or_duplicate_evidence_policy_marker(

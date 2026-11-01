@@ -26,8 +26,8 @@ class AppConfig:
     """
 
     database_path: str = "data/repwise.sqlite3"
-    ollama_model: str = "llama3.2"
-    ollama_comparison_model: str = "qwen2.5:7b"
+    ollama_model: str = "qwen3.5:9b"
+    ollama_comparison_model: str = "gemma4:12b"
     ollama_url: str = "http://localhost:11434"
     top_k: int = 5
     chunk_file: str | None = None

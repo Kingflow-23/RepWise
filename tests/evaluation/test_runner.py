@@ -713,6 +713,7 @@ def test_real_pipeline_adapter_uses_one_week_and_requested_workout_count(
                                             "sets": 3,
                                             "repetitions": "8-12",
                                             "rest_seconds": 60,
+                                            "estimated_minutes": 10,
                                             "coaching_note": "Use controlled form.",
                                         }
                                     ],

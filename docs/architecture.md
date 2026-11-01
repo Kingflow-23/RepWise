@@ -90,15 +90,19 @@ corpora or environments.
    from the configured local model.
 6. Pydantic parses the response. `validate_plan` checks structural and request
    constraints such as week count, workout frequency, available days, duration,
-   equipment, source membership, and exact quote presence. Validation can
+   equipment, and source membership. Validation does not require verbatim
+   quotes, so sources in other languages do not block an English plan. It can
    trigger correction attempts; failed plans are returned as errors and are
    not persisted as completed plans.
 7. FastAPI saves successful plans and their source information. Streamlit
    renders the plan, source links, full evidence extracts, and saved history.
 
-Exact quote presence is a useful integrity check, but it does not prove that a
-quote semantically supports the exercise or that the plan is safe. The system
-is a training suggestion demo, not a medical or coaching authority.
+The source IDs identify retrieved passages but do not prove that a passage
+semantically supports an exercise or that the plan is safe. The system is a
+training suggestion demo, not a medical or coaching authority. Plans are
+requested in clear English regardless of the request or evidence language. The
+UI marks every generated exercise as not independently verified because
+transcript citations do not establish effectiveness or safety.
 
 ## Corpus and retrieval path
 

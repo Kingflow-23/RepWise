@@ -8,7 +8,8 @@ generation uses a local Ollama model and a prepared transcript corpus.
 - Windows PowerShell and Python 3.11 or 3.12
 - The project dependencies from `requirements.txt`
 - An authorized prepared corpus (not distributed with this repository)
-- Ollama and a chat model, such as `llama3.2`
+- Ollama 0.30.9 or newer and the configured chat models (`qwen3.5:9b` and
+  `gemma4:12b`)
 
 Semantic and hybrid retrieval also need the configured embedding model and
 local index. If you want to get started without those, choose BM25 as described
@@ -74,13 +75,14 @@ application reports the setup error; it does not silently switch to BM25. See
 ## 4. Start Ollama and the app
 
 Install and start [Ollama](https://ollama.com/), then download the configured
-chat model:
+chat models:
 
 ```powershell
-ollama pull llama3.2
+ollama pull qwen3.5:9b
+ollama pull gemma4:12b
 ```
 
-If you change `OLLAMA_MODEL` in `.env`, pull that model instead. Start the API
+If you change either model in `.env`, pull that model instead. Start the API
 and UI in separate PowerShell terminals from the repository root:
 
 ```powershell

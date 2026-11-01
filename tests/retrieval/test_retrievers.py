@@ -24,6 +24,8 @@ def test_retrieval_configuration_supports_only_the_three_named_modes(monkeypatch
         monkeypatch: Set each strategy in the environment without changing the host.
     """
     assert AppConfig().retrieval_strategy == "hybrid"
+    assert AppConfig().ollama_model == "qwen3.5:9b"
+    assert AppConfig().ollama_comparison_model == "gemma4:12b"
 
     for strategy in ("bm25", "semantic", "hybrid"):
         monkeypatch.setenv("REPWISE_RETRIEVAL", strategy)

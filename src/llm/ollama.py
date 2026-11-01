@@ -74,7 +74,7 @@ class OllamaGenerator:
         started = perf_counter()
         logger.info("Ollama generation started model=%s", self.model)
         try:
-            client = Client(host=self.base_url, timeout=120)
+            client = Client(host=self.base_url, timeout=300)
             response = client.chat(
                 model=self.model,
                 messages=[
@@ -83,17 +83,29 @@ class OllamaGenerator:
                 ],
                 format=response_schema or TrainingPlan.model_json_schema(),
                 options={"temperature": 0.2, "num_ctx": 32_768},
+                think=False,
             )
             content = (
                 response["message"]["content"]
                 if isinstance(response, dict)
                 else response.message.content
             )
+            prompt_eval_tokens = (
+                response.get("prompt_eval_count")
+                if isinstance(response, dict)
+                else getattr(response, "prompt_eval_count", None)
+            )
+            if isinstance(prompt_eval_tokens, bool) or not isinstance(
+                prompt_eval_tokens, int
+            ):
+                prompt_eval_tokens = None
             plan = TrainingPlan.model_validate_json(content)
             logger.info(
-                "Ollama generation returned valid JSON model=%s weeks=%s elapsed_ms=%.1f",
+                "Ollama generation returned valid JSON model=%s weeks=%s "
+                "prompt_eval_tokens=%s elapsed_ms=%.1f",
                 self.model,
                 len(plan.weeks),
+                prompt_eval_tokens if prompt_eval_tokens is not None else "unavailable",
                 (perf_counter() - started) * 1000,
             )
             return plan

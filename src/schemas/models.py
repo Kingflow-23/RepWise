@@ -61,11 +61,14 @@ class PlanOptions(Model):
     ``workouts_per_week`` may be omitted to use the profile-based default.
     ``extra_constraints`` carries additional natural-language requirements
     without expanding the fixed profile schema for each new request.
+    ``refinement_instructions`` tells the generator how to adapt the latest
+    saved plan, when one exists.
     """
 
     focus: str = Field(min_length=3, max_length=300)
     workouts_per_week: int | None = Field(default=None, ge=1, le=7)
     extra_constraints: list[str] = Field(default_factory=list, max_length=10)
+    refinement_instructions: str | None = Field(default=None, max_length=500)
 
 
 class PlanRequest(PlanOptions):
@@ -148,9 +151,9 @@ class Source(Model):
 
     ``source_id`` is the citation key supplied to the model. ``chunk_id`` is
     the underlying corpus identity and may differ. ``excerpt`` is suitable for
-    concise display; ``evidence_text`` retains the full text used to validate
-    supporting quotes. ``matched_terms`` are review highlights, not an
-    explanation of model reasoning.
+    concise display; ``evidence_text`` retains the full text for user review.
+    ``matched_terms`` are review highlights, not an explanation of model
+    reasoning.
     """
 
     source_id: str
@@ -178,16 +181,16 @@ class EvidenceQuote(Model):
 class Exercise(Model):
     """One prescribed movement with dosage, coaching, equipment, and citations.
 
-    ``source_ids`` identify supplied evidence; ``supporting_evidence`` records
-    exact quotes from those sources. The validator checks quote presence and
-    source membership, not whether the quote semantically justifies the
-    exercise.
+    ``source_ids`` identify supplied evidence; ``supporting_evidence`` can hold
+    optional quotes from those sources. Source IDs are checked against retrieved
+    evidence, but quote text is not checked or required.
     """
 
     name: str = Field(min_length=3, max_length=100)
     sets: int = Field(ge=1, le=10)
     repetitions: str
     rest_seconds: int = Field(ge=0, le=300)
+    estimated_minutes: int = Field(ge=1, le=120)
     coaching_note: str
     source_ids: list[str] = Field(default_factory=list)
     supporting_evidence: list[EvidenceQuote] = Field(default_factory=list)

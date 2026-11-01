@@ -7,6 +7,7 @@ import os
 import logging
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -35,6 +36,17 @@ DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sun
 class ApiError(RuntimeError):
     """A readable API failure for display in the demo."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        detail: Any = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.detail = detail
+
 
 def api_request(method: str, path: str, **kwargs: Any) -> Any:
     """Send an authenticated backend request and translate failures for the UI.
@@ -52,7 +64,9 @@ def api_request(method: str, path: str, **kwargs: Any) -> Any:
         kwargs["headers"] = headers
     started = perf_counter()
     try:
-        response = requests.request(method, f"{API_BASE}{path}", timeout=130, **kwargs)
+        response = requests.request(
+            method, f"{API_BASE}{path}", timeout=(5, 950), **kwargs
+        )
     except requests.RequestException as error:
         logger.error(
             "Backend request failed method=%s error_type=%s elapsed_ms=%.1f",
@@ -75,7 +89,17 @@ def api_request(method: str, path: str, **kwargs: Any) -> Any:
             detail = response.json().get("detail", response.text)
         except ValueError:
             detail = response.text
-        raise ApiError(f"API returned {response.status_code}: {detail}")
+        if isinstance(detail, dict) and isinstance(detail.get("message"), str):
+            raise ApiError(
+                detail["message"],
+                status_code=response.status_code,
+                detail=detail,
+            )
+        raise ApiError(
+            f"API returned {response.status_code}: {detail}",
+            status_code=response.status_code,
+            detail=detail,
+        )
     logger.info(
         "Backend request completed method=%s status=%s request_id=%s elapsed_ms=%.1f",
         method,
@@ -84,6 +108,92 @@ def api_request(method: str, path: str, **kwargs: Any) -> Any:
         (perf_counter() - started) * 1000,
     )
     return response.json() if response.content else None
+
+
+def generation_error_message(error: ApiError) -> str:
+    """Turn a structured plan-generation failure into actionable user guidance."""
+    detail = error.detail if isinstance(error.detail, dict) else {}
+    status = detail.get("status")
+    reason = str(detail.get("message", str(error))).casefold()
+
+    if status == "insufficient_evidence":
+        cause = "there wasn't enough relevant training material for this request."
+    elif status == "retrieval_error":
+        cause = "the training library couldn't be reached."
+    elif "equipment" in reason:
+        cause = "the generated plan used equipment outside your saved profile."
+    elif "not an available day" in reason:
+        cause = "the generated schedule used a day you marked unavailable."
+    elif "more workouts than available days" in reason:
+        cause = "you requested more workouts than your available days allow."
+    elif "duration" in reason or "longer than" in reason:
+        cause = "a workout exceeded your session time limit."
+    elif "workout" in reason and (
+        "exactly" in reason or "count" in reason or "available days" in reason
+    ):
+        cause = "the plan didn't match the number of workouts you requested."
+    elif "week" in reason:
+        cause = "the plan didn't match the requested week structure."
+    elif "source" in reason or "citation" in reason or "quote" in reason:
+        cause = "the generated plan's source references didn't match the retrieved material."
+    elif "timeout" in reason or "timed out" in reason:
+        cause = "the model took too long to respond."
+    elif "cannot reach the repwise api" in reason:
+        cause = "the RepWise API couldn't be reached."
+    elif "connection" in reason or "ollama" in reason:
+        cause = "the language model service couldn't be reached."
+    else:
+        cause = "the model couldn't return a plan that met the request requirements."
+
+    return (
+        f"We couldn't generate this plan because {cause} "
+        "Your saved plans were not changed. Please try generating again; a fresh "
+        "attempt may produce a plan that fits your request."
+    )
+
+
+def save_generated_plan(
+    student_id: str, payload: dict[str, Any], focus: str, workouts_per_week: int
+) -> None:
+    """Generate a plan and update the UI's latest-plan and history state."""
+    logger.info("Plan generation requested through Streamlit")
+    try:
+        result = api_request(
+            "POST",
+            f"/api/v1/students/{student_id}/plans",
+            json=payload,
+        )
+    except ApiError as error:
+        logger.warning(
+            "Plan generation failed through Streamlit status=%s",
+            error.status_code or "unavailable",
+        )
+        st.session_state.plan_generation_error = generation_error_message(error)
+        return
+
+    record = {
+        "id": result.get("plan_id"),
+        "plan": result.get("plan"),
+        "sources": result.get("sources", []),
+        "request": {
+            "focus": focus,
+            "weeks": 1,
+            "workouts_per_week": workouts_per_week,
+        },
+        "created_at": datetime.now().astimezone().isoformat(),
+    }
+    st.session_state.latest_plan = record
+    st.session_state.plan_history = [
+        record,
+        *[
+            saved
+            for saved in st.session_state.get("plan_history", [])
+            if saved.get("id") != record["id"]
+        ],
+    ]
+    st.session_state.pop("plan_generation_error", None)
+    logger.info("Plan generation completed through Streamlit")
+    st.success("Your one-week plan was generated and saved.")
 
 
 def highlighted_evidence(text: str, matched_terms: list[str]) -> str:
@@ -139,8 +249,14 @@ def show_plan(record: dict[str, Any]) -> None:
                     f"**{workout['day']} · {workout['focus']}** — about {workout['estimated_minutes']} min"
                 )
                 for exercise in workout.get("exercises", []):
+                    exercise_minutes = exercise.get("estimated_minutes")
+                    time_estimate = (
+                        f"~{exercise_minutes} min"
+                        if isinstance(exercise_minutes, int)
+                        else "time estimate unavailable"
+                    )
                     st.markdown(
-                        f"- **{exercise['name']}** · {exercise['sets']} × {exercise['repetitions']} · rest {exercise['rest_seconds']}s"
+                        f"- **{exercise['name']}** · {exercise['sets']} × {exercise['repetitions']} · rest {exercise['rest_seconds']}s · {time_estimate}"
                     )
                     st.caption(exercise.get("coaching_note", ""))
                     for evidence in exercise.get("supporting_evidence", []):
@@ -194,7 +310,15 @@ def store_account(account: dict[str, Any]) -> None:
             from one signed-in account appearing under another.
     """
     if st.session_state.get("user_id") != account["user_id"]:
-        for key in ("profile_form", "plan_history", "latest_plan"):
+        for key in (
+            "profile_form",
+            "plan_history",
+            "latest_plan",
+            "pending_delete_plan_id",
+            "plan_notice",
+            "plan_generation_error",
+            "plan_generation_request",
+        ):
             st.session_state.pop(key, None)
     st.session_state.user_id = account["user_id"]
     st.session_state.full_name = account["full_name"]
@@ -376,12 +500,13 @@ with profile_tab:
 with plan_tab:
     st.subheader("Create a personalized plan")
     st.write(
-        "Each run creates one week of workouts using your available days. Generate again when you need a fresh week. Review the evidence quote shown under each exercise."
+        "Each run creates one week of workouts using your available days. Generate again when you need a fresh week. Retrieved sources are shown for context."
     )
     with st.form("plan_form"):
         focus = st.text_input(
             "What do you want to focus on?",
             placeholder="For example: a beginner core routine",
+            key="plan-focus",
         )
         saved_profile = st.session_state.get("profile_form") or {}
         available_days = [
@@ -400,6 +525,12 @@ with plan_tab:
             "Additional constraints (comma separated)",
             placeholder="For example: no jumping, minimal equipment",
         )
+        refinement_instructions = st.text_area(
+            "What should change from your previous plan? (optional)",
+            max_chars=500,
+            placeholder="For example: make it easier, avoid floor exercises, or add more variety",
+            key="plan-refinement",
+        )
         generate = st.form_submit_button(
             "Generate plan", type="primary", use_container_width=True
         )
@@ -410,40 +541,42 @@ with plan_tab:
         elif len(focus.strip()) < 3:
             st.error("Describe the plan focus in at least three characters.")
         else:
-            with st.spinner(
-                "Retrieving evidence and generating your plan with the backend…"
-            ):
-                try:
-                    logger.info("Plan generation requested through Streamlit")
-                    result = api_request(
-                        "POST",
-                        f"/api/v1/students/{sid}/plans",
-                        json={
-                            "focus": focus,
-                            "workouts_per_week": workouts_per_week,
-                            "extra_constraints": [
-                                item.strip()
-                                for item in constraints.split(",")
-                                if item.strip()
-                            ],
-                        },
+            payload = {
+                "focus": focus.strip(),
+                "workouts_per_week": workouts_per_week,
+                "extra_constraints": [
+                    item.strip() for item in constraints.split(",") if item.strip()
+                ],
+                "refinement_instructions": refinement_instructions.strip() or None,
+            }
+            st.session_state.plan_generation_request = {
+                "student_id": sid,
+                "payload": payload,
+                "focus": focus.strip(),
+                "workouts_per_week": workouts_per_week,
+            }
+            with st.spinner("Generating your plan…"):
+                save_generated_plan(sid, payload, focus.strip(), workouts_per_week)
+    if st.session_state.get("plan_generation_error"):
+        st.error(
+            st.session_state.plan_generation_error,
+            title="Plan generation failed",
+        )
+        if st.button("Try generating again", type="primary"):
+            previous_request = st.session_state.get("plan_generation_request")
+            if previous_request:
+                with st.spinner("Trying again to generate your plan…"):
+                    save_generated_plan(
+                        previous_request["student_id"],
+                        previous_request["payload"],
+                        previous_request["focus"],
+                        previous_request["workouts_per_week"],
                     )
-                    st.session_state.latest_plan = {
-                        "id": result.get("plan_id"),
-                        "plan": result.get("plan"),
-                        "sources": result.get("sources", []),
-                        "request": {
-                            "focus": focus,
-                            "weeks": 1,
-                            "workouts_per_week": workouts_per_week,
-                        },
-                    }
-                    logger.info("Plan generation completed through Streamlit")
-                    st.success(
-                        "One-week plan generated and saved. Review the source quotes below to check exercise relevance."
-                    )
-                except ApiError as error:
-                    st.error(str(error))
+            else:
+                st.error(
+                    "Submit your plan request again before retrying.",
+                    title="Request unavailable",
+                )
     if st.session_state.get("latest_plan"):
         show_plan(st.session_state.latest_plan)
 
@@ -452,6 +585,9 @@ with history_tab:
     st.write(
         "Completed plans are stored in SQLite with their request and source links."
     )
+    notice = st.session_state.pop("plan_notice", None)
+    if notice:
+        st.success(notice)
     if st.button("Refresh plan history"):
         user_id = st.session_state.get("user_id")
         if not user_id:
@@ -483,10 +619,76 @@ with history_tab:
             st.info(f"History will be available when the backend is connected. {error}")
     if records:
         for index, record in enumerate(records):
-            with st.expander(
-                f"{record.get('request', {}).get('focus', 'Training plan')} · {record.get('created_at', '')[:10]}",
-                expanded=index == 0,
-            ):
-                show_plan(record)
+            plan_id = record.get("id")
+            plan_title = (record.get("plan") or {}).get(
+                "title", record.get("request", {}).get("focus", "Training plan")
+            )
+            with st.container(border=True):
+                summary_column, action_column = st.columns(
+                    [5, 1], vertical_alignment="center"
+                )
+                summary_column.markdown(f"**{plan_title}**")
+                summary_column.caption(
+                    f"{record.get('request', {}).get('focus', 'Training plan')} · "
+                    f"{record.get('created_at', '')[:10]}"
+                )
+                if plan_id:
+                    if action_column.button(
+                        "Delete plan",
+                        key=f"delete-plan-{plan_id}",
+                        icon=":material/delete:",
+                    ):
+                        st.session_state.pending_delete_plan_id = plan_id
+                        st.rerun()
+                    if st.session_state.get("pending_delete_plan_id") == plan_id:
+                        st.warning(
+                            f"Delete {plan_title}? This action cannot be undone.",
+                            title="Confirm deletion",
+                        )
+                        confirm_column, cancel_column = st.columns(2)
+                        if confirm_column.button(
+                            "Confirm delete",
+                            type="primary",
+                            key=f"confirm-delete-{plan_id}",
+                        ):
+                            current_user_id = st.session_state.get("user_id")
+                            if not current_user_id:
+                                st.error("Sign in again before deleting a saved plan.")
+                            else:
+                                try:
+                                    api_request(
+                                        "DELETE",
+                                        f"/api/v1/students/{current_user_id}/plans/{plan_id}",
+                                    )
+                                except ApiError as error:
+                                    st.error(str(error))
+                                else:
+                                    st.session_state.plan_history = [
+                                        saved
+                                        for saved in st.session_state.get(
+                                            "plan_history", []
+                                        )
+                                        if saved.get("id") != plan_id
+                                    ]
+                                    if (st.session_state.get("latest_plan") or {}).get(
+                                        "id"
+                                    ) == plan_id:
+                                        st.session_state.pop("latest_plan", None)
+                                    st.session_state.pop("pending_delete_plan_id", None)
+                                    st.session_state.plan_notice = "Saved plan deleted."
+                                    st.rerun()
+                        if cancel_column.button(
+                            "Keep plan",
+                            key=f"cancel-delete-{plan_id}",
+                        ):
+                            st.session_state.pop("pending_delete_plan_id", None)
+                            st.rerun()
+                else:
+                    st.error("This saved plan has no ID and cannot be deleted.")
+                with st.expander(
+                    "View plan details",
+                    expanded=index == 0,
+                ):
+                    show_plan(record)
     elif not st.session_state.get("health_error"):
         st.info("No saved plans yet. Generate a plan to see it here.")

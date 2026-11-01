@@ -279,6 +279,32 @@ class StudentRepository:
             for row in rows
         ]
 
+    def get_latest_plan(self, student_id: str) -> dict[str, object] | None:
+        """Load the latest saved request and plan without its source evidence.
+
+        Args:
+            student_id: Internal account ID whose latest plan is requested.
+
+        Returns:
+            The saved request and plan, or ``None`` when the student has no
+            completed plans.
+        """
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT request_json, plan_json
+                FROM training_plans
+                WHERE student_id=?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (student_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        logger.info("Latest saved plan loaded")
+        return {"request": json.loads(row[0]), "plan": json.loads(row[1])}
+
     def update_plan(self, student_id: str, plan_id: str, plan: TrainingPlan) -> bool:
         """Replace a saved plan only when it belongs to the given student.
 

@@ -13,11 +13,11 @@ tags below select the instruct variants even though `-instruct` is not part of
 the tag:
 
 ```powershell
-ollama pull llama3.2
-ollama pull qwen2.5:7b
+ollama pull qwen3.5:9b
+ollama pull gemma4:12b
 ```
 
-Set `OLLAMA_MODEL` to model A and `OLLAMA_COMPARISON_MODEL` to model B in `.env`, or pass both explicitly to the runner. The defaults are `llama3.2` (Llama 3.2 instruct) and `qwen2.5:7b` (Qwen2.5 7B instruct). These are different model families, and both must be available from the configured Ollama service. Semantic and hybrid retrieval also need the configured embedding model and current local index.
+Set `OLLAMA_MODEL` to model A and `OLLAMA_COMPARISON_MODEL` to model B in `.env`, or pass both explicitly to the runner. The defaults are `qwen3.5:9b` and `gemma4:12b`; both must be available from the configured Ollama service. Semantic and hybrid retrieval also need the configured embedding model and current local index.
 
 ## Run the evaluation
 
@@ -28,7 +28,7 @@ python -m pytest tests\evaluation tests\generation tests\retrieval -q
 python -m src.evaluation.runner --mode compare
 
 # Optionally pin the retrieval strategy used by the RAG generation arms.
-python -m src.evaluation.runner --mode compare --retriever hybrid --model-a llama3.2 --model-b qwen2.5:7b
+python -m src.evaluation.runner --mode compare --retriever hybrid --model-a qwen3.5:9b --model-b gemma4:12b
 
 # Run the separate safety/robustness set against the real RAG pipeline.
 python -m src.evaluation.runner --mode red-team --llm ollama --retriever hybrid

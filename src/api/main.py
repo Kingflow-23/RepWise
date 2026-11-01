@@ -396,7 +396,8 @@ def create_app(
             request.weeks,
             request.target_workouts_per_week,
         )
-        result: PlanResult = pipeline.create_plan(request)
+        previous_plan = repository.get_latest_plan(student_id)
+        result: PlanResult = pipeline.create_plan(request, previous_plan=previous_plan)
         if result.status == "completed":
             plan_id = repository.save_plan(student_id, request, result)
             logger.info("Plan generated and saved")

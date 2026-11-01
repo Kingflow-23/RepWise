@@ -48,6 +48,7 @@ def plan() -> TrainingPlan:
                                     "sets": 3,
                                     "repetitions": "8-12",
                                     "rest_seconds": 60,
+                                    "estimated_minutes": 10,
                                     "coaching_note": "Move slowly.",
                                     "source_ids": ["video-1_p0001"],
                                 }
@@ -196,12 +197,14 @@ def test_saved_plan_retains_full_request_plan_and_source_snapshot(tmp_path):
         original_profile.model_copy(update={"goal": "a different later goal"}),
     )
     saved = repository.list_plans(user_id)[0]
+    latest = repository.get_latest_plan(user_id)
 
     assert saved["id"] == plan_id
     assert PlanRequest.model_validate(saved["request"]) == request
     assert TrainingPlan.model_validate(saved["plan"]) == saved_plan
     assert Source.model_validate(saved["sources"][0]) == source
     assert saved["sources"][0]["evidence_text"] == source.evidence_text
+    assert latest == {"request": request.model_dump(), "plan": saved_plan.model_dump()}
 
 
 @pytest.mark.parametrize("limit", [0, -1, 101, True, 1.5])
