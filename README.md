@@ -9,6 +9,12 @@ your schedule and equipment, and shows the sources behind it.
 It is a prototype for general fitness planning, not a medical or coaching
 service. It does not diagnose injuries or guarantee that a plan is safe.
 
+Saved workouts can also be logged with completion and difficulty feedback.
+RepWise stores that feedback with the specific workout and can use it to adjust
+the next unlogged workout in the same plan, without regenerating the rest of the
+plan. Feedback mentioning pain or discomfort is saved without automatically
+changing the plan.
+
 ## How it fits together
 
 ```mermaid

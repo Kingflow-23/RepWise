@@ -9,6 +9,7 @@ The runner reports retrieval, generation, and (in comparison mode) ranked result
 | Recall@k | Fraction of relevant chunk IDs retrieved in the top k. |
 | MRR | How high the first relevant chunk appears in the ranking. |
 | Hit@1 | Whether the first chunk is relevant. |
+| Top-five evidence verdict | Yes when any labeled evidence chunk appears in the top five; the report separately labels full, partial, or no coverage. |
 | Precision@k | Fraction of the top k chunk results marked relevant. |
 | Median and p95 latency | How long each retrieval request takes. |
 
@@ -27,9 +28,15 @@ Judgments are stored as auditable video time ranges rather than fixed chunk IDs.
 
 Generation reports must identify `mocked` versus `real Ollama`, retrieval strategy, embedding model, and generation model. Mock planners are small simulations for runner tests and deliberate failure examples, not performance evidence for the application.
 
+The bounded `--mode smoke --llm ollama` workflow checks all three real retrievers
+on a curated retrieval subset, then runs one nominal generation case and four
+targeted red-team cases through one RAG model. It disables query rewriting and
+validation retries. This is useful for an end-to-end check, not a model ranking,
+no-RAG comparison, or full safety gate.
+
 ## Controlled comparison
 
-Comparison mode ranks BM25, semantic, and hybrid using chunk Recall@5, MRR, and median retrieval latency (in that priority order). BM25 and semantic components are initialized once and shared with hybrid and the generation arm. It then runs the same one-week nominal cases, including explicit workout counts, against model A + RAG, model B + RAG, and model A without RAG. Both RAG arms share the selected retriever and its evidence-selection path; the no-RAG arm gets no retrieved chunks. Generation ranking is by case pass rate, request-constraint compliance, schema validity, and median latency, in that priority order.
+Comparison mode ranks BM25, semantic, and hybrid using chunk Recall@10 (`MAIN_K`, currently 10), MRR, and median retrieval latency (in that priority order); the simpler per-query verdict remains “any evidence in the top five.” BM25 and semantic components are initialized once and shared with hybrid. This retrieval ranking is reported but does not automatically choose the generation retriever: generation uses the configured strategy (hybrid by default), unless `--retriever` overrides it. It then runs the same one-week nominal cases, including explicit workout counts, against model A + RAG, model B + RAG, and model A without RAG. Both RAG arms share the selected generation retriever and its evidence-selection path; the no-RAG arm gets no retrieved chunks. Generation ranking is by case pass rate, request-constraint compliance, schema validity, and median latency, in that priority order.
 
 Citation ID validity is N/A for the no-RAG arm because no sources are available or required. This is intentional and is not interpreted as either a perfect citation score or a failure. The comparison is descriptive and fixed-dataset only; it has no confidence intervals or significance tests.
 

@@ -11,7 +11,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterator
 
-from ..schemas.models import PlanRequest, PlanResult, TrainingPlan, UserProfile
+from ..schemas.models import (
+    PlanRequest,
+    PlanResult,
+    TrainingPlan,
+    UserProfile,
+    WorkoutFeedback,
+    WorkoutFeedbackRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +112,28 @@ class StudentRepository:
                 "CREATE INDEX IF NOT EXISTS plans_by_student "
                 "ON training_plans(student_id, created_at DESC)"
             )
+            connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS plans_by_id_and_student "
+                "ON training_plans(id, student_id)"
+            )
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS workout_feedback (
+                    id TEXT PRIMARY KEY,
+                    student_id TEXT NOT NULL,
+                    plan_id TEXT NOT NULL,
+                    week_number INTEGER NOT NULL CHECK(week_number >= 1),
+                    workout_index INTEGER NOT NULL CHECK(workout_index >= 0),
+                    completion_status TEXT NOT NULL,
+                    difficulty TEXT NOT NULL,
+                    comment TEXT,
+                    created_at TEXT NOT NULL,
+                    adapted_week_number INTEGER,
+                    adapted_workout_index INTEGER,
+                    UNIQUE(plan_id, week_number, workout_index),
+                    FOREIGN KEY(plan_id, student_id)
+                        REFERENCES training_plans(id, student_id) ON DELETE CASCADE
+                )
+            """)
         logger.info("SQLite repository initialized")
 
     def create_user(self, full_name: str, password_hash: str) -> str:
@@ -275,7 +304,128 @@ class StudentRepository:
                 "plan": json.loads(row[2]),
                 "sources": json.loads(row[3]),
                 "created_at": row[4],
+                "workout_feedback": [
+                    feedback.model_dump()
+                    for feedback in self.list_workout_feedback(student_id, row[0])
+                ],
             }
+            for row in rows
+        ]
+
+    def get_plan(self, student_id: str, plan_id: str) -> dict[str, object] | None:
+        """Load a saved plan only when it belongs to the given student."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, request_json, plan_json, sources_json, created_at
+                FROM training_plans WHERE id=? AND student_id=?
+                """,
+                (plan_id, student_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "request": json.loads(row[1]),
+            "plan": json.loads(row[2]),
+            "sources": json.loads(row[3]),
+            "created_at": row[4],
+        }
+
+    def save_workout_feedback(
+        self,
+        student_id: str,
+        plan_id: str,
+        week_number: int,
+        workout_index: int,
+        feedback: WorkoutFeedbackRequest,
+    ) -> WorkoutFeedback:
+        """Create or update one feedback record for an owned scheduled workout."""
+        with self._connect() as connection:
+            owns_plan = connection.execute(
+                "SELECT 1 FROM training_plans WHERE id=? AND student_id=?",
+                (plan_id, student_id),
+            ).fetchone()
+            if owns_plan is None:
+                raise ValueError("the saved plan does not belong to this student")
+            connection.execute(
+                """
+                INSERT INTO workout_feedback(
+                    id, student_id, plan_id, week_number, workout_index,
+                    completion_status, difficulty, comment, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(plan_id, week_number, workout_index) DO UPDATE SET
+                    completion_status=excluded.completion_status,
+                    difficulty=excluded.difficulty,
+                    comment=excluded.comment,
+                    created_at=excluded.created_at
+                """,
+                (
+                    str(uuid.uuid4()),
+                    student_id,
+                    plan_id,
+                    week_number,
+                    workout_index,
+                    feedback.completion_status,
+                    feedback.difficulty,
+                    feedback.comment,
+                    now(),
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT id, plan_id, week_number, workout_index,
+                       completion_status, difficulty, comment, created_at,
+                       adapted_week_number, adapted_workout_index
+                FROM workout_feedback
+                WHERE student_id=? AND plan_id=? AND week_number=? AND workout_index=?
+                """,
+                (student_id, plan_id, week_number, workout_index),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Saved workout feedback could not be retrieved")
+        return WorkoutFeedback(
+            id=row[0],
+            plan_id=row[1],
+            week_number=row[2],
+            workout_index=row[3],
+            completion_status=row[4],
+            difficulty=row[5],
+            comment=row[6],
+            created_at=row[7],
+            adapted_week_number=row[8],
+            adapted_workout_index=row[9],
+        )
+
+    def list_workout_feedback(
+        self, student_id: str, plan_id: str
+    ) -> list[WorkoutFeedback]:
+        """Return saved feedback records for one student's plan."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, plan_id, week_number, workout_index,
+                       completion_status, difficulty, comment, created_at,
+                       adapted_week_number, adapted_workout_index
+                FROM workout_feedback
+                WHERE student_id=? AND plan_id=?
+                ORDER BY week_number, workout_index
+                """,
+                (student_id, plan_id),
+            ).fetchall()
+        return [
+            WorkoutFeedback(
+                id=row[0],
+                plan_id=row[1],
+                week_number=row[2],
+                workout_index=row[3],
+                completion_status=row[4],
+                difficulty=row[5],
+                comment=row[6],
+                created_at=row[7],
+                adapted_week_number=row[8],
+                adapted_workout_index=row[9],
+            )
             for row in rows
         ]
 
@@ -323,6 +473,43 @@ class StudentRepository:
             )
         logger.info("Database plan updated found=%s", cursor.rowcount == 1)
         return cursor.rowcount == 1
+
+    def update_plan_after_feedback(
+        self,
+        student_id: str,
+        plan_id: str,
+        plan: TrainingPlan,
+        feedback_week_number: int,
+        feedback_workout_index: int,
+        adapted_week_number: int,
+        adapted_workout_index: int,
+    ) -> bool:
+        """Atomically save an adapted plan and its feedback-to-workout link."""
+        with self._connect() as connection:
+            plan_update = connection.execute(
+                "UPDATE training_plans SET plan_json=? WHERE id=? AND student_id=?",
+                (plan.model_dump_json(), plan_id, student_id),
+            )
+            if plan_update.rowcount != 1:
+                return False
+            feedback_update = connection.execute(
+                """
+                UPDATE workout_feedback
+                SET adapted_week_number=?, adapted_workout_index=?
+                WHERE student_id=? AND plan_id=? AND week_number=? AND workout_index=?
+                """,
+                (
+                    adapted_week_number,
+                    adapted_workout_index,
+                    student_id,
+                    plan_id,
+                    feedback_week_number,
+                    feedback_workout_index,
+                ),
+            )
+            if feedback_update.rowcount != 1:
+                raise RuntimeError("Workout feedback adaptation could not be recorded")
+        return True
 
     def delete_plan(self, student_id: str, plan_id: str) -> bool:
         """Delete a saved plan only when it belongs to the given student.

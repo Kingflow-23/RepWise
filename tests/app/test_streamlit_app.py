@@ -171,3 +171,115 @@ def test_saved_plan_delete_action_is_available_outside_details_expander(
         "http://127.0.0.1:8000/api/v1/students/student-id/plans/second-plan"
     ]
     assert [plan["id"] for plan in app.session_state["plan_history"]] == ["first-plan"]
+
+
+def test_saved_workout_feedback_form_refreshes_the_displayed_plan(
+    monkeypatch: Any,
+) -> None:
+    submitted_urls: list[str] = []
+    feedback = {
+        "id": "feedback-id",
+        "plan_id": "plan-id",
+        "week_number": 1,
+        "workout_index": 0,
+        "completion_status": "completed",
+        "difficulty": "just_right",
+        "comment": "Felt good.",
+        "created_at": "2026-11-01T10:00:00+00:00",
+        "adapted_week_number": None,
+        "adapted_workout_index": None,
+    }
+
+    def fake_request(method: str, url: str, **kwargs: Any) -> FakeResponse:
+        if url.endswith("/api/v1/health"):
+            return health_response()
+        if method == "POST" and url.endswith("/weeks/1/workouts/0/feedback"):
+            submitted_urls.append(url)
+            return FakeResponse(
+                {
+                    "plan_id": "plan-id",
+                    "plan": {
+                        "title": "Plan",
+                        "summary": "Updated plan",
+                        "weeks": [
+                            {
+                                "number": 1,
+                                "objective": "Build consistency.",
+                                "workouts": [
+                                    {
+                                        "day": "Monday",
+                                        "focus": "Full body",
+                                        "estimated_minutes": 30,
+                                        "exercises": [
+                                            {
+                                                "name": "Bodyweight squat",
+                                                "sets": 3,
+                                                "repetitions": "8-12",
+                                                "rest_seconds": 60,
+                                                "estimated_minutes": 10,
+                                                "coaching_note": "Stay controlled.",
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "workout_feedback": [feedback],
+                    "adapted": False,
+                    "adapted_workout": None,
+                    "message": "Feedback saved. No later workout was available.",
+                }
+            )
+        raise AssertionError(f"Unexpected API request: {method} {url}")
+
+    monkeypatch.setattr("requests.request", fake_request)
+    record = {
+        "id": "plan-id",
+        "plan": {
+            "title": "Plan",
+            "summary": "A weekly plan.",
+            "weeks": [
+                {
+                    "number": 1,
+                    "objective": "Build consistency.",
+                    "workouts": [
+                        {
+                            "day": "Monday",
+                            "focus": "Full body",
+                            "estimated_minutes": 30,
+                            "exercises": [
+                                {
+                                    "name": "Bodyweight squat",
+                                    "sets": 3,
+                                    "repetitions": "8-12",
+                                    "rest_seconds": 60,
+                                    "estimated_minutes": 10,
+                                    "coaching_note": "Stay controlled.",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        },
+        "request": {"focus": "Strength", "weeks": 1},
+        "sources": [],
+        "workout_feedback": [],
+        "created_at": "2026-11-01T09:00:00+00:00",
+    }
+    app = AppTest.from_file(str(APP_PATH))
+    set_signed_in_state(app)
+    app.session_state["latest_plan"] = record
+    app.session_state["plan_history"] = [json.loads(json.dumps(record))]
+    app.run(timeout=20)
+
+    log_buttons = [
+        button for button in app.form_submit_button if button.label == "Log workout"
+    ]
+    assert len(log_buttons) == 2
+    log_buttons[0].click().run(timeout=20)
+
+    assert len(submitted_urls) == 1
+    assert app.session_state["latest_plan"]["workout_feedback"] == [feedback]
+    assert any("Workout logged" in item.value for item in app.success)

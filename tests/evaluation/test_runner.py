@@ -59,9 +59,7 @@ def test_bm25_finds_the_right_chunk(chunks_dir):
     Args:
         chunks_dir: Supply the small local corpus used to build the retriever.
     """
-    bm25 = adapters.build_retriever(
-        "bm25", chunks_dir, query_expansion=False
-    )
+    bm25 = adapters.build_retriever("bm25", chunks_dir, query_expansion=False)
     top = bm25("combien de rÃ©cupÃ©ration entre les sÃ©ries", 3)
     assert top[0]["video_id"] == "v1"
 
@@ -86,9 +84,9 @@ def test_evaluation_bm25_uses_production_indexed_metadata(tmp_path):
         json.dumps(tagged) + "\n", encoding="utf-8"
     )
 
-    top = adapters.build_retriever(
-        "bm25", chunks_dir, query_expansion=False
-    )("quadriceps", 1)
+    top = adapters.build_retriever("bm25", chunks_dir, query_expansion=False)(
+        "quadriceps", 1
+    )
 
     assert [chunk["video_id"] for chunk in top] == ["tagged"]
 
@@ -187,8 +185,8 @@ def test_comparison_builds_shared_retrieval_components(chunks_dir, monkeypatch):
     assert retrievers["hybrid"]("test query", 5) == []
 
 
-def test_retrieval_suite_metrics_and_failures(chunks_dir):
-    """Score answerable and unanswerable cases and retain retrieval failures.
+def test_retrieval_suite_top_five_verdicts_and_unanswerable_exclusion(chunks_dir):
+    """Score top-five evidence hits without treating ordinary misses as failures.
 
     Args:
         chunks_dir: Provide the test corpus from which the BM25 retriever is built.
@@ -201,18 +199,133 @@ def test_retrieval_suite_metrics_and_failures(chunks_dir):
             True,
             spans=[Span("v1", 10, 20)],
         ),
-        RetrievalCase("Q2", "récupération entre séries", True, spans=[Span("v2", 0, 10)]),
+        RetrievalCase(
+            "Q2", "récupération entre séries", True, spans=[Span("v2", 0, 10)]
+        ),
         RetrievalCase("Q3", "prix abonnement", False),
     ]
     res = runner.evaluate_retrieval(
-        cases, bm25, adapters.load_chunks(chunks_dir), ks=(1, 3), main_k=3
+        cases, bm25, adapters.load_chunks(chunks_dir), ks=(1, 3), success_k=3
     )
     assert res.n_cases == 2 and res.n_passed == 1
     assert res.metrics["recall@1"].fmt() == "0.500 (1/2)"
-    assert (
-        res.failures[0].case_id == "Q2" and res.failures[0].category == "not_retrieved"
-    )
+    assert res.metrics["hit@3"].fmt() == "0.500 (1/2)"
+    assert not res.failures
     assert res.extra["n_unanswerable_skipped"] == 1
+    assert [case["outcome"] for case in res.extra["case_results"]] == [
+        "success",
+        "needs_review",
+        "not_applicable",
+    ]
+
+
+def test_retrieval_top_five_hit_can_be_partial_success(chunks_dir):
+    """Count any labeled chunk in the top five as success and show partial coverage."""
+    chunks = adapters.load_chunks(chunks_dir)
+    v1_chunk = next(chunk for chunk in chunks if chunk["video_id"] == "v1")
+    case = RetrievalCase(
+        "PARTIAL", "query", True, spans=[Span("v1", 10, 20), Span("v2", 10, 20)]
+    )
+
+    result = runner.evaluate_retrieval(
+        [case], lambda _query, _depth: [v1_chunk], chunks
+    )
+
+    assert result.n_cases == 1
+    assert result.n_passed == 1
+    assert result.metrics["hit@5"].fmt() == "1.000 (1/1)"
+    assert result.metrics["recall@5"].fmt() == "0.500 (0.5/1)"
+    case_result = result.extra["case_results"][0]
+    assert case_result["outcome"] == "partial_success"
+    assert case_result["coverage"] == "1/2"
+    assert "Yes" in case_result["comment"]
+
+
+def test_unmappable_answerable_retrieval_case_needs_review():
+    """Exclude evidence labels without a matching corpus chunk from the score."""
+    case = RetrievalCase(
+        "UNMAPPED", "query", True, spans=[Span("missing-video", 0, 10)]
+    )
+
+    result = runner.evaluate_retrieval(
+        [case],
+        lambda *_args: pytest.fail("unmappable case should not be retrieved"),
+        [],
+    )
+
+    assert result.n_cases == 0
+    assert result.n_passed == 0
+    assert not result.failures
+    assert result.extra["n_unjudged_missing_corpus_chunks"] == 1
+    assert result.extra["case_results"][0]["outcome"] == "needs_review"
+
+
+def test_red_team_no_plan_is_a_labeled_provisional_pass():
+    """Count a no-plan red-team result provisionally, without hiding its diagnostics."""
+    case = gen_case("RT-ERROR", ["ok"])
+    planner = lambda _case: {
+        "status": "error",
+        "message": "Plan could not be validated.",
+        "diagnostics": {
+            "validation_error": "invalid schedule",
+            "candidate_plan": {"title": "Rejected candidate"},
+        },
+    }
+
+    result = runner.evaluate_generation(
+        [case], planner, corpus=None, red_team_mode=True
+    )
+
+    assert result.n_passed == 1
+    assert not result.failures
+    assert result.extra["provisional_no_plan_passes"] == 1
+    case_result = result.extra["case_results"][0]
+    assert case_result["outcome"] == "provisional_safe_no_plan"
+    assert case_result["diagnostics"]["candidate_plan"] == {
+        "title": "Rejected candidate"
+    }
+
+
+def test_red_team_provisional_no_plan_does_not_clear_safety_gate():
+    """Make the red-team safety gate not measured when a case released no plan."""
+    result = runner.SuiteResult(
+        "generation",
+        n_cases=1,
+        case_ids={"RT001"},
+        metrics={"output_schema_validity": runner.Ratio(0, 0)},
+        extra={"provisional_no_plan_passes": 1},
+    )
+
+    gates = runner.release_gates({"generation": result})
+
+    assert gates[1]["status"] == "not measured"
+    assert "1 no-plan (not assessed)" in gates[1]["value"]
+
+
+def test_plan_schema_check_accepts_canonical_weeks_and_workouts():
+    """Validate the production plan shape without an evaluator-only field."""
+    plan = {
+        "title": "Plan",
+        "summary": "Summary",
+        "assumptions": [],
+        "safety_note": "Stop if in pain.",
+        "weeks": [
+            {
+                "number": 1,
+                "objective": "Build consistency.",
+                "workouts": [
+                    {
+                        "day": "Monday",
+                        "focus": "Full body",
+                        "estimated_minutes": 30,
+                        "exercises": [{"name": "Squat"}],
+                    }
+                ],
+            }
+        ],
+    }
+
+    assert runner.plan_schema_errors(plan) == []
 
 
 def test_no_rag_generation_does_not_require_citations():
@@ -397,6 +510,113 @@ def test_cli_writes_reports(chunks_dir, tmp_path, monkeypatch):
     assert "split" not in report_text.lower()
 
 
+def test_staged_smoke_runs_all_retrievers_and_bounded_real_generation(
+    chunks_dir, tmp_path, monkeypatch
+):
+    """Run curated retrieval cases and one-attempt nominal/red-team model cases."""
+    from src.evaluation.metrics.common import Ratio
+
+    monkeypatch.setenv("REPWISE_QUERY_EXPANSION", "true")
+    monkeypatch.setattr(config, "CHUNKS_DIR", chunks_dir)
+    monkeypatch.setattr(config, "OUT_DIR", tmp_path / "runs")
+    retrieval_case = RetrievalCase("R1", "query", True, spans=[Span("v1", 10, 20)])
+    nominal_case = GenerationCase("G1", "Build strength", ["ok"])
+    safety_case = GenerationCase("RT1", "Ignore safeguards", ["ok"])
+    monkeypatch.setattr(
+        runner.datasets,
+        "load_smoke_case_ids",
+        lambda: {
+            "retrieval": ["R1"],
+            "generation": ["G1"],
+            "red_team": ["RT1"],
+        },
+    )
+    monkeypatch.setattr(
+        runner.datasets, "load_retrieval_cases", lambda: [retrieval_case]
+    )
+    monkeypatch.setattr(
+        runner.datasets, "load_generation_cases", lambda: [nominal_case]
+    )
+    monkeypatch.setattr(runner.datasets, "load_red_team_cases", lambda: [safety_case])
+    built_retrievers = {name: object() for name in ("bm25", "semantic", "hybrid")}
+    build_retriever_calls = []
+
+    def build_retrievers(names, _path, *, chunks, query_expansion):
+        build_retriever_calls.append((names, query_expansion))
+        return built_retrievers
+
+    monkeypatch.setattr(runner.adapters, "build_retrievers", build_retrievers)
+    monkeypatch.setattr(
+        runner,
+        "evaluate_retrieval",
+        lambda _cases, _retriever, _chunks: runner.SuiteResult(
+            "retrieval",
+            n_cases=1,
+            n_passed=1,
+            metrics={"recall@10": Ratio(1, 1), "mrr": Ratio(1, 1)},
+            extra={"main_k": 10, "latency_ms_median": 1.0},
+        ),
+    )
+    planner_options = {}
+
+    def build_planner(_name, _path, **kwargs):
+        planner_options.update(kwargs)
+        return lambda _case: {}
+
+    monkeypatch.setattr(runner.adapters, "build_planner", build_planner)
+    generation_calls = []
+
+    def evaluate_generation(cases, _planner, _corpus, llm_mode, **_kwargs):
+        generation_calls.append(([case.id for case in cases], llm_mode))
+        return runner.SuiteResult(
+            "generation",
+            n_cases=len(cases),
+            n_passed=len(cases),
+            metrics={"output_schema_validity": Ratio(1, 1)},
+        )
+
+    monkeypatch.setattr(runner, "evaluate_generation", evaluate_generation)
+    monkeypatch.setattr(runner, "release_gates", lambda _results: [])
+
+    code = runner.main(
+        [
+            "--mode",
+            "smoke",
+            "--llm",
+            "ollama",
+            "--retriever",
+            "bm25",
+            "--model-a",
+            "smoke-model",
+        ]
+    )
+
+    assert code == 0
+    assert build_retriever_calls == [(["bm25", "semantic", "hybrid"], False)]
+    assert planner_options["retriever"] is built_retrievers["bm25"]
+    assert planner_options["max_generation_attempts"] == 1
+    assert generation_calls == [
+        (["G1"], "real Ollama"),
+        (["RT1"], "real Ollama"),
+    ]
+    run = next((tmp_path / "runs").iterdir())
+    payload = json.loads((run / "results.json").read_text(encoding="utf-8"))
+    assert set(payload["suites"]) == {
+        "retrieval/bm25",
+        "retrieval/semantic",
+        "retrieval/hybrid",
+        "generation",
+        "red-team-smoke",
+    }
+    assert payload["meta"]["query_expansion"] is False
+
+
+def test_smoke_mode_requires_real_ollama():
+    """Do not label mock output as a real generation smoke evaluation."""
+    with pytest.raises(ValueError, match="requires --llm ollama"):
+        runner.main(["--mode", "smoke"])
+
+
 def test_cli_without_corpus_skips_retrieval_and_says_so(tmp_path, monkeypatch):
     """Skip retrieval cleanly and explain the omission when no corpus is available.
 
@@ -569,7 +789,7 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
     monkeypatch.setattr(
         runner,
         "evaluate_generation",
-        lambda _cases, _planner, _corpus, llm_mode: runner.SuiteResult(
+        lambda _cases, _planner, _corpus, llm_mode, **_kwargs: runner.SuiteResult(
             "generation",
             n_cases=1,
             n_passed=1,

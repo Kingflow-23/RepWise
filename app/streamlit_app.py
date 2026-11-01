@@ -31,6 +31,18 @@ st.set_page_config(page_title="RepWise | Training plans", page_icon="🏋️", l
 
 API_BASE = get_api_url()
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+COMPLETION_LABELS = {
+    "completed": "Completed",
+    "partially_completed": "Partially completed",
+    "not_completed": "Not completed",
+}
+DIFFICULTY_LABELS = {
+    "much_too_easy": "Much too easy",
+    "slightly_too_easy": "Slightly too easy",
+    "just_right": "Just right",
+    "slightly_too_hard": "Slightly too hard",
+    "much_too_hard": "Much too hard",
+}
 
 
 class ApiError(RuntimeError):
@@ -226,7 +238,7 @@ def highlighted_evidence(text: str, matched_terms: list[str]) -> str:
     return "".join(rendered)
 
 
-def show_plan(record: dict[str, Any]) -> None:
+def show_plan(record: dict[str, Any], *, form_prefix: str = "plan") -> None:
     """Render a saved plan, its supporting evidence, and its source details.
 
     Args:
@@ -239,14 +251,30 @@ def show_plan(record: dict[str, Any]) -> None:
         f"{options.get('focus', 'Plan')} · {options.get('weeks', len(plan.get('weeks', [])))} weeks · Created {record.get('created_at', 'just now')}"
     )
     st.write(plan.get("summary", ""))
+    feedback_records = record.get("workout_feedback", [])
+    feedback_by_workout = {
+        (item.get("week_number"), item.get("workout_index")): item
+        for item in feedback_records
+    }
+    adapted_workouts = {
+        (item.get("adapted_week_number"), item.get("adapted_workout_index")): item
+        for item in feedback_records
+        if item.get("adapted_week_number") is not None
+    }
     for week in plan.get("weeks", []):
         with st.expander(
             f"Week {week['number']} — {week['objective']}",
             expanded=len(plan.get("weeks", [])) == 1,
         ):
-            for workout in week.get("workouts", []):
+            for workout_index, workout in enumerate(week.get("workouts", [])):
+                workout_key = (week["number"], workout_index)
+                adapted_from = adapted_workouts.get(workout_key)
+                adaptation_note = (
+                    " · Adapted from your workout feedback" if adapted_from else ""
+                )
                 st.markdown(
-                    f"**{workout['day']} · {workout['focus']}** — about {workout['estimated_minutes']} min"
+                    f"**{workout['day']} · {workout['focus']}** — "
+                    f"about {workout['estimated_minutes']} min{adaptation_note}"
                 )
                 for exercise in workout.get("exercises", []):
                     exercise_minutes = exercise.get("estimated_minutes")
@@ -264,6 +292,63 @@ def show_plan(record: dict[str, Any]) -> None:
                             f"Evidence `{evidence['source_id']}`: "
                             f"“{evidence['quote']}”"
                         )
+                saved_feedback = feedback_by_workout.get(workout_key)
+                if saved_feedback:
+                    st.success("Workout logged")
+                    st.caption(
+                        f"{COMPLETION_LABELS.get(saved_feedback.get('completion_status'), saved_feedback.get('completion_status'))} · "
+                        f"{DIFFICULTY_LABELS.get(saved_feedback.get('difficulty'), saved_feedback.get('difficulty'))}"
+                    )
+                    if saved_feedback.get("comment"):
+                        st.write(saved_feedback["comment"])
+                elif record.get("id") and st.session_state.get("user_id"):
+                    with st.form(
+                        f"log-workout-{form_prefix}-{record['id']}-"
+                        f"{week['number']}-{workout_index}"
+                    ):
+                        completion_status = st.selectbox(
+                            "Completion",
+                            list(COMPLETION_LABELS),
+                            format_func=COMPLETION_LABELS.get,
+                        )
+                        difficulty = st.selectbox(
+                            "Overall difficulty",
+                            list(DIFFICULTY_LABELS),
+                            format_func=DIFFICULTY_LABELS.get,
+                        )
+                        comment = st.text_area(
+                            "Comment (optional)",
+                            max_chars=500,
+                            key=(
+                                f"workout-comment-{form_prefix}-{record['id']}-"
+                                f"{week['number']}-{workout_index}"
+                            ),
+                        )
+                        submitted = st.form_submit_button("Log workout")
+                    if submitted:
+                        student_id = st.session_state.get("user_id")
+                        try:
+                            result = api_request(
+                                "POST",
+                                f"/api/v1/students/{student_id}/plans/{record['id']}"
+                                f"/weeks/{week['number']}/workouts/{workout_index}"
+                                "/feedback",
+                                json={
+                                    "completion_status": completion_status,
+                                    "difficulty": difficulty,
+                                    "comment": comment.strip() or None,
+                                },
+                            )
+                        except ApiError as error:
+                            st.error(str(error))
+                        else:
+                            record["plan"] = result["plan"]
+                            record["workout_feedback"] = result["workout_feedback"]
+                            if result["adapted"]:
+                                st.success(result["message"])
+                            else:
+                                st.info(result["message"])
+                            st.rerun()
     if plan.get("assumptions"):
         st.markdown("**Assumptions**")
         for assumption in plan["assumptions"]:
@@ -578,7 +663,7 @@ with plan_tab:
                     title="Request unavailable",
                 )
     if st.session_state.get("latest_plan"):
-        show_plan(st.session_state.latest_plan)
+        show_plan(st.session_state.latest_plan, form_prefix="latest")
 
 with history_tab:
     st.subheader("Your saved plans")
@@ -689,6 +774,6 @@ with history_tab:
                     "View plan details",
                     expanded=index == 0,
                 ):
-                    show_plan(record)
+                    show_plan(record, form_prefix=f"history-{index}")
     elif not st.session_state.get("health_error"):
         st.info("No saved plans yet. Generate a plan to see it here.")

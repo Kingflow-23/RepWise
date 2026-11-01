@@ -85,8 +85,14 @@ def test_build_corpus_writes_clean_passages_and_provenance(tmp_path, capsys):
 def test_passage_timestamps_ignore_duplicate_and_empty_fragments():
     """Use retained speech fragments, not discarded captions, for time bounds."""
     fragments = [
-        {"start": 0, "text": "Une première phrase assez longue pour fermer le passage."},
-        {"start": 5, "text": "Une première phrase assez longue pour fermer le passage."},
+        {
+            "start": 0,
+            "text": "Une première phrase assez longue pour fermer le passage.",
+        },
+        {
+            "start": 5,
+            "text": "Une première phrase assez longue pour fermer le passage.",
+        },
         {"start": 10, "text": "Une deuxième phrase suffisamment longue pour terminer."},
         {"start": 30, "text": ""},
     ]

@@ -567,6 +567,31 @@ def test_pipeline_retries_once_after_validation_failure():
     assert "Keep the plan in clear English" in generator.prompts[1]
 
 
+def test_pipeline_can_disable_retries_for_bounded_smoke_runs():
+    """Make one model call and return its validation failure without retrying."""
+
+    class InvalidGenerator:
+        calls = 0
+
+        def generate(self, system_prompt, user_prompt, response_schema=None):
+            self.calls += 1
+            plan = valid_plan()
+            plan.weeks[0].workouts[0].exercises[0].source_ids = ["unknown"]
+            return plan
+
+    generator = InvalidGenerator()
+    result = PlanPipeline(
+        FakeRetriever(), generator, max_generation_attempts=1
+    ).create_plan(request())
+
+    assert result.status == "generation_error"
+    assert generator.calls == 1
+    assert "0 correction attempts" in result.message
+    assert result._evaluation_diagnostics["validation_error"]
+    assert result._evaluation_diagnostics["candidate_plan"]["title"]
+    assert "candidate_plan" not in result.model_dump()
+
+
 def test_prompt_and_structured_schema_require_exact_requested_week_count():
     """Constrain both generated instructions and schema to requested plan length."""
     training_request = request().model_copy(update={"weeks": 4})

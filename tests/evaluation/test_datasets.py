@@ -122,6 +122,32 @@ def test_generation_and_red_team_cases_are_separate_and_coherent():
     }
 
 
+def test_smoke_manifest_selects_valid_representative_cases():
+    """Keep the bounded evaluation subset linked to validated full datasets."""
+    selected = datasets.load_smoke_case_ids()
+    retrieval = datasets.select_cases(
+        datasets.load_retrieval_cases(), selected["retrieval"], "retrieval"
+    )
+    generation = datasets.select_cases(
+        datasets.load_generation_cases(), selected["generation"], "generation"
+    )
+    red_team = datasets.select_cases(
+        datasets.load_red_team_cases(), selected["red_team"], "red-team"
+    )
+
+    assert len(retrieval) == 23
+    assert {case.topic for case in retrieval} >= {
+        "rest_intervals",
+        "deload",
+        "medical",
+        "out_of_scope",
+    }
+    assert all(case.spans for case in retrieval if case.answerable)
+    assert all(not case.spans for case in retrieval if not case.answerable)
+    assert [case.id for case in generation] == ["G001"]
+    assert {case.id for case in red_team} == {"RT001", "RT004", "RT005", "RT013"}
+
+
 def write(path, rows):
     """Write JSONL rows to a test fixture file and return its path.
 

@@ -9,14 +9,28 @@ from uuid import uuid4
 
 import sqlite3
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Path as APIPath,
+    Query,
+    Request,
+    Response,
+)
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from config.config import AppConfig
 from ..db.repository import StudentRepository
 from ..observability import configure_logging, request_id_context
 from .auth import create_access_token, hash_password, read_access_token, verify_password
-from ..generation.pipeline import PlanPipeline
+from ..generation.adaptation import (
+    WorkoutGenerator,
+    WorkoutAdaptationPipeline,
+    feedback_mentions_pain,
+    next_unlogged_workout,
+)
+from ..generation.pipeline import PlanPipeline, validate_plan
 from ..llm.ollama import OllamaGenerator, PlanGenerator
 from ..retrieval.base import MissingRetriever, Retriever
 from ..retrieval.hybrid import HybridRetriever
@@ -31,6 +45,7 @@ from ..schemas.models import (
     PlanResult,
     TrainingPlan,
     UserProfile,
+    WorkoutFeedbackRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,6 +57,7 @@ def create_app(
     repository: StudentRepository | None = None,
     retriever: Retriever | None = None,
     generator: PlanGenerator | None = None,
+    workout_generator: WorkoutGenerator | None = None,
 ) -> FastAPI:
     """Build the API, persistence layer, retriever, generator, and routes.
 
@@ -53,6 +69,8 @@ def create_app(
             and retrieval strategy are used.
         generator: Optional plan-generation service; if omitted, a local Ollama
             generator is configured from the settings.
+        workout_generator: Optional structured workout generator. The default
+            Ollama generator is reused when it is also the plan generator.
 
     Returns:
         A configured FastAPI application. If default retriever initialization
@@ -121,6 +139,13 @@ def create_app(
     generator = generator or OllamaGenerator(config.ollama_model, config.ollama_url)
     if not isinstance(generator, OllamaGenerator):
         logger.info("Using injected plan generator service")
+    if workout_generator is None and isinstance(generator, OllamaGenerator):
+        workout_generator = generator
+    workout_adapter = (
+        WorkoutAdaptationPipeline(workout_generator)
+        if workout_generator is not None
+        else None
+    )
     pipeline = PlanPipeline(retriever, generator, config.top_k)
     logger.info("Generation pipeline initialized top_k=%s", config.top_k)
 
@@ -440,6 +465,183 @@ def create_app(
         plans = repository.list_plans(student_id, limit)
         logger.info("Plan history loaded count=%s", len(plans))
         return plans
+
+    @app.post(
+        "/api/v1/students/{student_id}/plans/{plan_id}/weeks/{week_number}"
+        "/workouts/{workout_index}/feedback"
+    )
+    def log_workout(
+        student_id: str,
+        plan_id: str,
+        week_number: int = APIPath(ge=1),
+        workout_index: int = APIPath(ge=0),
+        feedback_request: WorkoutFeedbackRequest = ...,
+        user_id: str = Depends(require_account),
+    ) -> dict[str, object]:
+        """Save workout feedback and adapt only the next unlogged workout."""
+        check_owner(student_id, user_id)
+        saved = repository.get_plan(student_id, plan_id)
+        if saved is None:
+            raise HTTPException(status_code=404, detail="Saved plan not found")
+
+        request = PlanRequest.model_validate(saved["request"])
+        plan = TrainingPlan.model_validate(saved["plan"])
+        week = next((item for item in plan.weeks if item.number == week_number), None)
+        if week is None or workout_index >= len(week.workouts):
+            raise HTTPException(
+                status_code=404, detail="Workout not found in saved plan"
+            )
+        logged_workout = week.workouts[workout_index]
+
+        existing_feedback = repository.list_workout_feedback(student_id, plan_id)
+        prior_log = next(
+            (
+                item
+                for item in existing_feedback
+                if item.week_number == week_number
+                and item.workout_index == workout_index
+            ),
+            None,
+        )
+        feedback = repository.save_workout_feedback(
+            student_id,
+            plan_id,
+            week_number,
+            workout_index,
+            feedback_request,
+        )
+        updated_plan = plan
+        adapted_workout: dict[str, int] | None = None
+        adapted = False
+        if prior_log and prior_log.adapted_week_number is not None:
+            message = "Feedback updated. Its previously adapted workout was not changed again."
+        elif feedback_mentions_pain(feedback_request):
+            message = (
+                "Feedback saved. No workout was changed because the comment "
+                "mentions pain or discomfort; review the plan's safety note."
+            )
+        elif workout_adapter is None:
+            message = (
+                "Feedback saved, but workout adaptation is unavailable for the "
+                "configured generator."
+            )
+        else:
+            logged_workouts = {
+                (item.week_number, item.workout_index) for item in existing_feedback
+            }
+            logged_workouts.add((week_number, workout_index))
+            target = next_unlogged_workout(
+                plan,
+                after_week_number=week_number,
+                after_workout_index=workout_index,
+                logged_workouts=logged_workouts,
+            )
+            if target is None:
+                message = "Feedback saved. There is no later unlogged workout in this plan to adapt."
+            else:
+                target_week_number, target_index, target_workout = target
+                try:
+                    replacement = workout_adapter.adapt(
+                        request=request,
+                        plan=plan,
+                        logged_workout=logged_workout,
+                        target_workout=target_workout,
+                        target_week_number=target_week_number,
+                        feedback=feedback_request,
+                    )
+                    if replacement == target_workout:
+                        message = (
+                            "Feedback saved. The next unlogged workout was reviewed "
+                            "and did not need changes."
+                        )
+                    else:
+                        updated_weeks = [
+                            (
+                                item.model_copy(
+                                    update={
+                                        "workouts": [
+                                            (
+                                                replacement
+                                                if index == target_index
+                                                else workout
+                                            )
+                                            for index, workout in enumerate(
+                                                item.workouts
+                                            )
+                                        ]
+                                    }
+                                )
+                                if item.number == target_week_number
+                                else item
+                            )
+                            for item in plan.weeks
+                        ]
+                        updated_plan = plan.model_copy(update={"weeks": updated_weeks})
+                        source_ids = {
+                            source["source_id"] for source in saved["sources"]
+                        }
+                        validate_plan(updated_plan, request, source_ids)
+                        if not repository.update_plan_after_feedback(
+                            student_id,
+                            plan_id,
+                            updated_plan,
+                            week_number,
+                            workout_index,
+                            target_week_number,
+                            target_index,
+                        ):
+                            raise HTTPException(
+                                status_code=404, detail="Saved plan not found"
+                            )
+                        adapted = True
+                        adapted_workout = {
+                            "week_number": target_week_number,
+                            "workout_index": target_index,
+                        }
+                        message = (
+                            "Feedback saved and the next unlogged workout was adjusted."
+                        )
+                        logger.info(
+                            "Workout adapted plan_id=%s from_week=%s from_index=%s "
+                            "to_week=%s to_index=%s",
+                            plan_id,
+                            week_number,
+                            workout_index,
+                            target_week_number,
+                            target_index,
+                        )
+                except (OSError, RuntimeError, ValueError) as error:
+                    logger.exception(
+                        "Workout adaptation failed plan_id=%s week=%s index=%s",
+                        plan_id,
+                        week_number,
+                        workout_index,
+                    )
+                    updated_plan = plan
+                    message = (
+                        "Feedback was saved, but the next workout was left "
+                        f"unchanged because adaptation failed: {error}"
+                    )
+
+        feedback_records = repository.list_workout_feedback(student_id, plan_id)
+        feedback = next(
+            (
+                item
+                for item in feedback_records
+                if item.week_number == week_number
+                and item.workout_index == workout_index
+            ),
+            feedback,
+        )
+        return {
+            "plan_id": plan_id,
+            "feedback": feedback.model_dump(),
+            "workout_feedback": [item.model_dump() for item in feedback_records],
+            "plan": updated_plan.model_dump(),
+            "adapted": adapted,
+            "adapted_workout": adapted_workout,
+            "message": message,
+        }
 
     @app.put("/api/v1/students/{student_id}/plans/{plan_id}")
     def update_plan(

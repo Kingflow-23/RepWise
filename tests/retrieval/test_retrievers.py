@@ -165,7 +165,7 @@ def test_clean_expanded_query_collapses_whitespace_and_removes_wrappers():
 
     assert (
         clean_expanded_query(
-            '  **Requête :** Améliorer la récupération entre les séries : '
+            "  **Requête :** Améliorer la récupération entre les séries : "
             'termes clés "repos", "temps de pause", fatigue musculaire.  '
         )
         == "Améliorer la récupération entre les séries, repos, temps de pause, "
@@ -199,9 +199,7 @@ def test_ollama_query_expander_uses_search_specific_plain_text_prompt(monkeypatc
     )
 
     assert expanded == "Comment renforcer les abdominaux avec des exercices adaptés ?"
-    assert captured["messages"][1]["content"].endswith(
-        "How can I strengthen my abs?"
-    )
+    assert captured["messages"][1]["content"].endswith("How can I strengthen my abs?")
     assert "Do not answer the" in captured["messages"][0]["content"]
     assert "Do not add merely related topics" in captured["messages"][0]["content"]
     assert "no\nJSON" in captured["messages"][0]["content"]

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 
 class Model(BaseModel):
@@ -212,6 +214,41 @@ class Workout(Model):
     exercises: list[Exercise] = Field(min_length=1, max_length=10)
 
 
+class WorkoutFeedbackRequest(Model):
+    """A student's concise report on one scheduled workout."""
+
+    completion_status: Literal["completed", "partially_completed", "not_completed"]
+    difficulty: Literal[
+        "much_too_easy",
+        "slightly_too_easy",
+        "just_right",
+        "slightly_too_hard",
+        "much_too_hard",
+    ]
+    comment: str | None = Field(default=None, max_length=500)
+
+
+class WorkoutFeedback(Model):
+    """Persisted workout feedback and the workout it adapted, if any."""
+
+    id: str
+    plan_id: str
+    week_number: int = Field(ge=1)
+    workout_index: int = Field(ge=0)
+    completion_status: Literal["completed", "partially_completed", "not_completed"]
+    difficulty: Literal[
+        "much_too_easy",
+        "slightly_too_easy",
+        "just_right",
+        "slightly_too_hard",
+        "much_too_hard",
+    ]
+    comment: str | None = None
+    created_at: str
+    adapted_week_number: int | None = Field(default=None, ge=1)
+    adapted_workout_index: int | None = Field(default=None, ge=0)
+
+
 class Week(Model):
     """A numbered plan week with an objective and scheduled workouts."""
 
@@ -249,6 +286,7 @@ class PlanResult(Model):
     message: str
     plan: TrainingPlan | None = None
     sources: list[Source] = Field(default_factory=list)
+    _evaluation_diagnostics: dict[str, object] = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="after")
     def completed_result_has_plan(self) -> "PlanResult":

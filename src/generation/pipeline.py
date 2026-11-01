@@ -30,17 +30,36 @@ class PlanPipeline:
     base.
     """
 
-    def __init__(self, retriever: Retriever, generator: PlanGenerator, top_k: int = 5):
+    def __init__(
+        self,
+        retriever: Retriever,
+        generator: PlanGenerator,
+        top_k: int = 5,
+        max_generation_attempts: int = 3,
+    ):
         """Store the services used to create plans.
 
         Args:
             retriever: Service that searches the prepared training corpus.
             generator: Service that returns structured training plans.
             top_k: Preferred retrieval count; values below five are raised to five.
+            max_generation_attempts: Maximum number of generation attempts,
+                including the initial call, between one and three.
+
+        Raises:
+            ValueError: If ``max_generation_attempts`` is not an integer from
+                one to three.
         """
+        if (
+            isinstance(max_generation_attempts, bool)
+            or not isinstance(max_generation_attempts, int)
+            or not 1 <= max_generation_attempts <= 3
+        ):
+            raise ValueError("max_generation_attempts must be an integer from 1 to 3")
         self.retriever = retriever
         self.generator = generator
         self.top_k = max(MINIMUM_RETRIEVED_CHUNKS, top_k)
+        self.max_generation_attempts = max_generation_attempts
 
     def create_plan(
         self,
@@ -63,8 +82,8 @@ class PlanPipeline:
             message. Retrieved sources are included when generation was attempted.
 
         Notes:
-            Generation is attempted up to three times: once initially and twice
-            more with a correction prompt after validation or provider errors.
+            Generation is attempted up to ``max_generation_attempts`` times,
+            with correction prompts after validation or provider errors.
         """
         logger.info(
             "Plan generation started weeks=%s top_k=%s",
@@ -129,10 +148,9 @@ class PlanPipeline:
         user_prompt = make_user_prompt(request, evidence, previous_plan=previous_plan)
         response_schema = plan_response_schema(request)
         plan = None
+        last_candidate_plan = None
         last_error: Exception | None = None
-        for attempt in range(
-            3
-        ):  # Allow two correction attempts after the initial generation
+        for attempt in range(self.max_generation_attempts):
             generation_started = perf_counter()
             try:
                 if attempt:
@@ -166,6 +184,7 @@ class PlanPipeline:
                 plan = self.generator.generate(
                     system_prompt, user_prompt, response_schema
                 )
+                last_candidate_plan = plan
                 logger.info(
                     "Model returned plan attempt=%s elapsed_ms=%.1f",
                     attempt + 1,
@@ -191,11 +210,24 @@ class PlanPipeline:
         else:
             assert last_error is not None
             logger.error("Plan generation failed after retries")
-            return PlanResult(
+            result = PlanResult(
                 status="generation_error",
-                message=f"The plan could not be validated after two correction attempts: {last_error}",
+                message=(
+                    "The plan could not be validated after "
+                    f"{self.max_generation_attempts - 1} correction attempts: "
+                    f"{last_error}"
+                ),
                 sources=sources,
             )
+            result._evaluation_diagnostics = {
+                "validation_error": str(last_error),
+                "candidate_plan": (
+                    last_candidate_plan.model_dump(mode="json")
+                    if last_candidate_plan is not None
+                    else None
+                ),
+            }
+            return result
 
         logger.info(
             "Plan generation completed weeks=%s sources=%s",

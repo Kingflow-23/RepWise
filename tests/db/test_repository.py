@@ -12,6 +12,7 @@ from src.schemas import (
     TrainingPlan,
     UserProfile,
 )
+from src.schemas.models import WorkoutFeedbackRequest
 
 
 def profile() -> UserProfile:
@@ -272,3 +273,47 @@ def test_only_completed_results_can_be_saved(tmp_path):
             PlanRequest(profile=profile(), focus="Build a routine", weeks=1),
             PlanResult(status="generation_error", message="Not completed."),
         )
+
+
+def test_workout_feedback_is_owned_persisted_and_upserted(tmp_path):
+    """Keep one feedback record per owned workout and update it on resubmission."""
+    repository = StudentRepository(tmp_path / "repwise.sqlite3")
+    repository.initialize()
+    user_id = repository.create_user("alex", "hash")
+    repository.save_profile(user_id, profile())
+    plan_id = repository.save_plan(
+        user_id,
+        PlanRequest(profile=profile(), focus="Build a routine", weeks=1),
+        PlanResult(status="completed", message="Created.", plan=plan()),
+    )
+    initial = WorkoutFeedbackRequest(
+        completion_status="completed",
+        difficulty="slightly_too_hard",
+        comment="The last set was difficult.",
+    )
+
+    saved = repository.save_workout_feedback(user_id, plan_id, 1, 0, initial)
+    updated = repository.save_workout_feedback(
+        user_id,
+        plan_id,
+        1,
+        0,
+        initial.model_copy(
+            update={"difficulty": "just_right", "comment": "Felt manageable."}
+        ),
+    )
+
+    assert updated.id == saved.id
+    records = repository.list_workout_feedback(user_id, plan_id)
+    assert len(records) == 1
+    assert records[0].difficulty == "just_right"
+    assert records[0].comment == "Felt manageable."
+    assert repository.list_plans(user_id)[0]["workout_feedback"] == [
+        records[0].model_dump()
+    ]
+    assert repository.get_plan(user_id, plan_id)["id"] == plan_id
+    assert repository.get_plan("another-user", plan_id) is None
+
+    with pytest.raises(ValueError, match="does not belong"):
+        repository.save_workout_feedback("another-user", plan_id, 1, 0, initial)
+    assert repository.list_workout_feedback(user_id, plan_id) == records

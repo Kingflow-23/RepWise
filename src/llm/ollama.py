@@ -6,7 +6,7 @@ import logging
 from time import perf_counter
 from typing import Any, Protocol
 
-from ..schemas.models import TrainingPlan
+from ..schemas.models import TrainingPlan, Workout
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class PlanGenerator(Protocol):
 
 
 class OllamaGenerator:
-    """Ask a local Ollama model for JSON matching ``TrainingPlan``."""
+    """Ask a local Ollama model for structured training-plan output."""
 
     def __init__(self, model: str, base_url: str = "http://localhost:11434"):
         """Configure the local Ollama model endpoint.
@@ -69,31 +69,13 @@ class OllamaGenerator:
         Raises:
             RuntimeError: If the Ollama call or response validation fails.
         """
-        from ollama import Client
-
         started = perf_counter()
         logger.info("Ollama generation started model=%s", self.model)
         try:
-            client = Client(host=self.base_url, timeout=300)
-            response = client.chat(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                format=response_schema or TrainingPlan.model_json_schema(),
-                options={"temperature": 0.2, "num_ctx": 32_768},
-                think=False,
-            )
-            content = (
-                response["message"]["content"]
-                if isinstance(response, dict)
-                else response.message.content
-            )
-            prompt_eval_tokens = (
-                response.get("prompt_eval_count")
-                if isinstance(response, dict)
-                else getattr(response, "prompt_eval_count", None)
+            content, prompt_eval_tokens = self._generate_content(
+                system_prompt,
+                user_prompt,
+                response_schema or TrainingPlan.model_json_schema(),
             )
             if isinstance(prompt_eval_tokens, bool) or not isinstance(
                 prompt_eval_tokens, int
@@ -121,3 +103,69 @@ class OllamaGenerator:
                 f"running and install the configured model with `ollama pull {self.model}`. "
                 f"Details: {error}"
             ) from error
+
+    def generate_workout(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_schema: dict[str, Any] | None = None,
+    ) -> Workout:
+        """Call Ollama and validate its JSON response as one workout."""
+        started = perf_counter()
+        logger.info("Ollama workout adaptation started model=%s", self.model)
+        try:
+            content, _ = self._generate_content(
+                system_prompt,
+                user_prompt,
+                response_schema or Workout.model_json_schema(),
+            )
+            workout = Workout.model_validate_json(content)
+            logger.info(
+                "Ollama workout adaptation returned valid JSON model=%s elapsed_ms=%.1f",
+                self.model,
+                (perf_counter() - started) * 1000,
+            )
+            return workout
+        except Exception as error:
+            logger.error(
+                "Ollama workout adaptation failed model=%s error_type=%s elapsed_ms=%.1f",
+                self.model,
+                type(error).__name__,
+                (perf_counter() - started) * 1000,
+            )
+            raise RuntimeError(
+                "Ollama could not generate a valid workout adjustment. "
+                f"Details: {error}"
+            ) from error
+
+    def _generate_content(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_schema: dict[str, Any],
+    ) -> tuple[str, int | None]:
+        """Request structured JSON while retaining provider token diagnostics."""
+        from ollama import Client
+
+        client = Client(host=self.base_url, timeout=300)
+        response = client.chat(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            format=response_schema,
+            options={"temperature": 0.2, "num_ctx": 32_768},
+            think=False,
+        )
+        prompt_eval_tokens = (
+            response.get("prompt_eval_count")
+            if isinstance(response, dict)
+            else getattr(response, "prompt_eval_count", None)
+        )
+        content = (
+            response["message"]["content"]
+            if isinstance(response, dict)
+            else response.message.content
+        )
+        return content, prompt_eval_tokens
