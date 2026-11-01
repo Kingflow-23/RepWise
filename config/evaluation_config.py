@@ -5,7 +5,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 
 # Systems under test
-RETRIEVER = "bm25"  # Compare "bm25", "semantic" and "hybrid" on identical labels.
+# Best current retrieval benchmark result (Recall@5 0.771); compare mode reselects.
+RETRIEVER = "bm25"
 PLANNER = "mock-abstain"  # deterministic placeholder; use --llm ollama for application generation
 
 # Data

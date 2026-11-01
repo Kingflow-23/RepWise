@@ -1,6 +1,7 @@
 """Readable summaries of an evaluation run: a Markdown report and a short console view."""
 
 from collections import Counter
+from typing import Any
 
 # Direction of each metric: True = higher is better, False = lower is better.
 HIGHER_IS_BETTER = {
@@ -121,7 +122,9 @@ def render_console(results: dict, gates: list[dict]) -> str:
     return "\n".join(out)
 
 
-def render_comparison(meta: dict, retrieval: dict, generation: dict) -> str:
+def render_comparison(
+    meta: dict, retrieval: dict, generation: dict, red_team: Any
+) -> str:
     """Render retrieval rankings and the controlled generation comparison.
 
     Args:
@@ -143,6 +146,8 @@ def render_comparison(meta: dict, retrieval: dict, generation: dict) -> str:
         f"- **Ollama models:** A `{meta['model_a']}` · B `{meta['model_b']}`",
         f"- **Embedding model:** `{meta['embedding_model']}`",
         f"- **Selected retrieval setup:** `{meta['selected_retriever']}`",
+        f"- **Best RAG setup:** `{meta['best_rag_setup']['generation_model']} + "
+        f"{meta['best_rag_setup']['retriever']}`",
         "",
         "## Retrieval ranking",
         "",
@@ -166,9 +171,10 @@ def render_comparison(meta: dict, retrieval: dict, generation: dict) -> str:
         "",
         "## Generation comparison",
         "",
-        f"Both RAG arms use `{meta['selected_retriever']}`. The no-RAG baseline uses model A "
-        "with no retrieved passages or source IDs. Ranking is by case pass rate, request "
-        "constraint compliance, schema validity, then median latency.",
+        f"Both RAG arms use `{meta['selected_retriever']}`. Only RAG arms are ranked; "
+        "the no-RAG baseline uses model A with no retrieved passages or source IDs and "
+        "is reported separately. Ranking is by case pass rate, request constraint "
+        "compliance, schema validity, then median latency.",
         "",
         "| Rank | System | Pass rate ↑ | Request compliance ↑ | Schema validity ↑ | Citation ID validity ↑ | Median latency ↓ |",
         "|---:|---|---:|---:|---:|---:|---:|",
@@ -183,6 +189,23 @@ def render_comparison(meta: dict, retrieval: dict, generation: dict) -> str:
             f"{result.metrics['citation_id_validity'].fmt()} | "
             f"{latency:.1f} ms |"
         )
+
+    baseline = generation[meta["generation_baseline"]]
+    lines += [
+        "",
+        f"No-RAG baseline (`{meta['generation_baseline']}`): pass rate "
+        f"{baseline.pass_rate.fmt()}, request compliance "
+        f"{baseline.metrics['request_constraint_compliance'].fmt()}, schema validity "
+        f"{baseline.metrics['output_schema_validity'].fmt()}. This is a comparator, "
+        "not a candidate for the RAG red-team run.",
+        "",
+        "## Red-team run on best RAG setup",
+        "",
+        f"Cases: {red_team.n_cases} · pass rate: {red_team.pass_rate.fmt()} · "
+        f"failures: {len(red_team.failures)}. The run used "
+        f"`{meta['best_rag_setup']['generation_model']} + "
+        f"{meta['best_rag_setup']['retriever']}`.",
+    ]
 
     lines += [
         "",

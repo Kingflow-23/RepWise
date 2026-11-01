@@ -24,14 +24,15 @@ Set `OLLAMA_MODEL` to model A and `OLLAMA_COMPARISON_MODEL` to model B in `.env`
 ```powershell
 python -m pytest tests\evaluation tests\generation tests\retrieval -q
 
-# Rank all three retrieval strategies and run the three generation arms.
+# Rank all three retrieval strategies and compare two RAG models plus a no-RAG
+# baseline. Then red-team the highest-ranked RAG setup.
 python -m src.evaluation.runner --mode compare
 
 # Optionally pin the retrieval strategy used by the RAG generation arms.
-python -m src.evaluation.runner --mode compare --retriever hybrid --model-a qwen3.5:9b --model-b gemma4:12b
+python -m src.evaluation.runner --mode compare --retriever bm25 --model-a qwen3.5:9b --model-b gemma4:12b
 
-# Run the separate safety/robustness set against the real RAG pipeline.
-python -m src.evaluation.runner --mode red-team --llm ollama --retriever hybrid
+# Run red-team alone; replace the model ID with best_generation_model from the compare report.
+python -m src.evaluation.runner --mode red-team --llm ollama --retriever bm25 --model-a qwen3.5:9b
 
 # Run individual diagnostic suites.
 python -m src.evaluation.runner --mode retrieval --retriever bm25
@@ -40,7 +41,7 @@ python -m src.evaluation.runner --mode generation --llm ollama --retriever hybri
 
 `compare` first scores the production BM25, semantic, and hybrid retrievers on the same retrieval questions. Evaluation does not carry a second BM25 implementation: the benchmark calls `src.retrieval.sparse.BM25Retriever`, including its title and body-part fields. Comparison mode constructs BM25 and the semantic model once, then shares those components with hybrid and the selected generation retriever. It selects by Recall@5, then MRR, then median retrieval latency; `--retriever` overrides only the selection used for the generation arms. Both RAG arms share the same selected retriever instance and receive identical cases. The no-RAG baseline calls model A directly with the same request and profile but no retriever or evidence. It uses a separate no-RAG evidence policy: source-citation and retrieved-support requirements are removed, while shared schedule, safety, and output-schema rules remain. It must not invent citations or claim that recommendations are evidence-backed. All arms use the same schema and deterministic plan validation.
 
-The comparison ranks generation arms by case pass rate, request-constraint compliance, schema validity, then median latency. This is a descriptive ordering, not a significance test. The report preserves per-case failures and metric numerators/denominators so that a rank is not mistaken for a release decision. Compare runs call both Ollama models and can take several minutes.
+Only the two RAG arms compete for the best generation setup; the no-RAG arm is a baseline, not a candidate for a RAG red-team run. Generation ranking is by case pass rate, request-constraint compliance, schema validity, then median latency. The comparison automatically runs the separate 15-case red-team suite using the top-ranked RAG model and selected retriever, and records the winning setup and red-team results together. This is a descriptive ordering, not a significance test. The report preserves per-case failures and metric numerators/denominators so that a rank is not mistaken for a release decision. Compare runs call both Ollama models on nominal cases and the winner on red-team cases; allow several minutes.
 
 `--mode generation --llm mock` is a deterministic runner check, not model-performance evidence. `--mode all` runs the configured retrieval and generation suites but does not perform the three-arm comparison. Red-team mode requires `--llm ollama`; it never silently substitutes a mock.
 
@@ -55,7 +56,7 @@ Each run writes `report.md` and `results.json` under `outputs/eval_runs/`. Add `
 
 The current retrieval set has 150 questions: 128 answerable with 166 labeled spans and 22 unanswerable. The loader checks unique IDs, accent/punctuation-insensitive duplicate questions, text encoding, answerability rationale, source links, evidence excerpts, relevance rationales, known judgment IDs, valid time ranges, and agreement between labels and judgments. Dataset tests verify each excerpt exactly matches the timestamped source passages for its span, and every labeled span overlaps both a source passage and a corpus chunk.
 
-The nominal generation set contains 30 distinct, profile-backed, one-week planning cases. Each records its requested `workouts_per_week` explicitly, bounded by its available days, so evaluation matches the app's schedule controls rather than relying on an implicit frequency. Cases also record one or more `evidence_query_ids` that must reference answerable retrieval cases, making the intended corpus coverage reviewable. These IDs are dataset annotations only: model runs still retrieve their own context and do not receive the gold-labeled spans. The separate red-team set remains eight one-week cases and is not included in nominal model ranking. The loader rejects multi-week cases because they do not represent the current application workflow.
+The nominal generation set contains 30 distinct, profile-backed, one-week planning cases. Each records its requested `workouts_per_week` explicitly, bounded by its available days, so evaluation matches the app's schedule controls rather than relying on an implicit frequency. Cases also record one or more `evidence_query_ids` that must reference answerable retrieval cases, making the intended corpus coverage reviewable. These IDs are dataset annotations only: model runs still retrieve their own context and do not receive the gold-labeled spans. The separate red-team set contains 15 one-week cases covering profile conflicts, prompt injection, off-topic/nonsensical requests, and health-safety boundaries; it is not included in nominal model ranking. The loader rejects multi-week cases because they do not represent the current application workflow.
 
 These checks establish structural linkage and make the human relevance annotations auditable; they do not mathematically prove semantic relevance. I corrected the retrieval query text encoding and tightened several questions to ask only what their supporting spans actually say. Review changed labels against source transcripts when updating the dataset.
 

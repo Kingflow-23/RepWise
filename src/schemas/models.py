@@ -120,14 +120,15 @@ class RetrievedChunk(Model):
     """Indexable transcript chunk and provenance returned by a retriever.
 
     ``text`` is the complete chunk used as evidence, not a display excerpt.
-    ``chunk_id`` and ``passage_ids`` connect ranking back to corpus records;
+    ``chunk_id`` is the unique identifier in the corpus.
+    ``passage_ids`` connects the chunk to multiple underlying passage records;
     video IDs, timestamps, title, and URL support source display. Topics and
     body-part tags are retrieval metadata, while score and rank describe a
     particular search result rather than permanent corpus content.
     """
 
     text: str = Field(min_length=1)
-    chunk_id: str | None = None
+    chunk_id: str
     video_id: str
     passage_ids: list[str] = Field(min_length=1)
     title: str

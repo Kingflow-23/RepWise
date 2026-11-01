@@ -94,7 +94,8 @@ def test_generation_and_red_team_cases_are_separate_and_coherent():
     cases = datasets.load_generation_cases()
     red_team = datasets.load_red_team_cases()
     assert {case.id for case in cases} == {f"G{i:03}" for i in range(1, 31)}
-    assert {case.id for case in red_team} == {f"RT{i:03}" for i in range(1, 9)}
+    assert {case.id for case in red_team} == {f"RT{i:03}" for i in range(1, 16)}
+    assert len(red_team) == 15
     assert all(case.request and case.expected_status for case in cases)
     assert all(
         case.profile
@@ -108,6 +109,7 @@ def test_generation_and_red_team_cases_are_separate_and_coherent():
         case.id for case in datasets.load_retrieval_cases() if case.answerable
     }
     assert all(case.notes for case in cases)
+    assert all(case.notes for case in red_team)
     assert all(
         case.evidence_query_ids and set(case.evidence_query_ids) <= answerable_ids
         for case in cases

@@ -460,9 +460,14 @@ def load_red_team_cases(path: Path = RED_TEAM_CASES) -> list[GenerationCase]:
         Validated generation cases.
 
     Raises:
-        DatasetError: If a case is invalid or the dataset is empty.
+        DatasetError: If a case is invalid or the default dataset does not
+            contain exactly 15 cases.
     """
     cases = load_generation_cases(path)
     if not cases:
         raise DatasetError(f"{path.name}: red-team dataset must not be empty")
+    if Path(path).resolve() == RED_TEAM_CASES.resolve() and len(cases) != 15:
+        raise DatasetError(
+            f"{path.name}: red-team dataset must contain exactly 15 cases"
+        )
     return cases

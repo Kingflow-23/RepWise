@@ -484,6 +484,11 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
         lambda: [gen_case("G1", ["ok"])],
     )
     monkeypatch.setattr(
+        runner.datasets,
+        "load_red_team_cases",
+        lambda: [gen_case("RT001", ["ok"])],
+    )
+    monkeypatch.setattr(
         runner.adapters,
         "build_retrievers",
         lambda strategies, _path, *, chunks=None: {
@@ -541,8 +546,14 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
     assert run["payload"]["meta"]["generation_ranking"] == [
         "model-a + RAG",
         "model-b + RAG",
-        "model-a without RAG",
     ]
+    assert run["payload"]["meta"]["best_rag_setup"] == {
+        "generation_arm": "model-a + RAG",
+        "generation_model": "model-a",
+        "retriever": "hybrid",
+    }
+    assert run["payload"]["meta"]["generation_baseline"] == "model-a without RAG"
+    assert run["payload"]["suites"]["red-team/best-setup"]["n_cases"] == 1
     assert len(planner_calls) == 3
     assert {call[2] for call in planner_calls} == {"hybrid"}
     assert sum(call[1] == "model-a" for call in planner_calls) == 2

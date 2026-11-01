@@ -831,6 +831,7 @@ def run_comparison(
         (f"{model_a} without RAG", "ollama-no-rag", model_a),
     ]
     shared_retriever = retrievers[best_retriever]
+    generation_planners = {}
     for arm, planner_name, model_name in generation_arms:
         planner = adapters.build_planner(
             planner_name,
@@ -839,6 +840,7 @@ def run_comparison(
             retriever_name=best_retriever,
             retriever=shared_retriever,
         )
+        generation_planners[arm] = planner
         generation_results[arm] = evaluate_generation(
             generation_cases,
             planner,
@@ -878,7 +880,24 @@ def run_comparison(
             -(latency if latency is not None else float("inf")),
         )
 
-    ranked_arms = sorted(generation_results, key=generation_rank, reverse=True)
+    ranked_arms = sorted(
+        (arm for arm in generation_results if arm.endswith(" + RAG")),
+        key=generation_rank,
+        reverse=True,
+    )
+    best_rag_arm = ranked_arms[0]
+    best_rag_model = next(
+        model_name
+        for arm, _, model_name in generation_arms
+        if arm == best_rag_arm
+    )
+    red_team_cases = datasets.load_red_team_cases()
+    red_team_result = evaluate_generation(
+        red_team_cases,
+        generation_planners[best_rag_arm],
+        corpus,
+        llm_mode="real Ollama",
+    )
     timestamp = datetime.now().isoformat(timespec="seconds")
     meta = {
         "timestamp": timestamp,
@@ -890,17 +909,27 @@ def run_comparison(
         "model_a": model_a,
         "model_b": model_b,
         "generation_ranking": ranked_arms,
+        "generation_baseline": f"{model_a} without RAG",
+        "best_rag_setup": {
+            "generation_arm": best_rag_arm,
+            "generation_model": best_rag_model,
+            "retriever": best_retriever,
+        },
         "chunks_dir": str(config.CHUNKS_DIR),
         "n_corpus_chunks": len(chunks),
         "embedding_model": settings.embedding_model,
         "ollama_url": settings.ollama_url,
         "generation_case_ids": [case.id for case in generation_cases],
+        "red_team_case_ids": [case.id for case in red_team_cases],
     }
     results = {
         **{f"retrieval/{name}": result for name, result in retrieval_results.items()},
         **{f"generation/{name}": result for name, result in generation_results.items()},
+        "red-team/best-setup": red_team_result,
     }
-    markdown = report.render_comparison(meta, retrieval_results, generation_results)
+    markdown = report.render_comparison(
+        meta, retrieval_results, generation_results, red_team_result
+    )
     run_dir = (
         config.OUT_DIR / f"{datetime.now():%Y%m%d-%H%M%S}{'_' + label if label else ''}"
     )
