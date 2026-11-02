@@ -41,18 +41,50 @@ def test_ollama_quality_judge_validates_rubric_scores(monkeypatch):
         "A raw answer, not a validated plan.",
         "Use controlled repetitions.",
         rag_enabled=True,
-        expected_plan_schema={"type": "object"},
     )
 
     assert result["scores"] == _judge_payload()["scores"]
     assert "format_checks" not in result
     assert captured["format"]["required"] == ["scores", "rationale"]
     judged_input = json.loads(captured["messages"][1]["content"])
-    assert judged_input["expected_plan_schema"] == {"type": "object"}
     assert "format_checks" not in judged_input
-    assert "json_validity" in judged_input["rubric"]
-    assert "plan_schema_validity" in judged_input["rubric"]
+    assert "json_validity" not in judged_input["rubric"]
+    assert "plan_schema_validity" not in judged_input["rubric"]
     assert "retrieved_evidence" in judged_input
+
+
+def test_ollama_quality_judge_scores_no_rag_without_evidence_metric(monkeypatch):
+    """No-RAG judging should assess content without requiring citations."""
+    captured = {}
+    payload = {
+        "scores": {name: 2 for name in QUALITY_DIMENSIONS},
+        "rationale": "The answer meets the request and profile.",
+    }
+    fake_ollama = ModuleType("ollama")
+    fake_ollama.Client = lambda **kwargs: SimpleNamespace(
+        chat=lambda **kwargs: (
+            captured.update(kwargs) or {"message": {"content": json.dumps(payload)}}
+        )
+    )
+    monkeypatch.setitem(sys.modules, "ollama", fake_ollama)
+
+    result = OllamaQualityJudge("qwen3.5:4b").score(
+        {"request": "Build strength"},
+        "A free-form answer with no JSON.",
+        "",
+        rag_enabled=False,
+    )
+
+    assert result == payload
+    judged_input = json.loads(captured["messages"][1]["content"])
+    assert "evidence_support" not in judged_input["rubric"]
+    assert "json_validity" not in judged_input["rubric"]
+    assert "plan_schema_validity" not in judged_input["rubric"]
+    assert "expected_plan_schema" not in judged_input
+    assert (
+        "evidence_support"
+        not in captured["format"]["properties"]["scores"]["properties"]
+    )
 
 
 def test_ollama_quality_judge_rejects_out_of_range_scores(monkeypatch):
@@ -134,10 +166,10 @@ def test_benchmark_planner_keeps_raw_answer_without_rejecting_plan(
     assert result["status"] == "ok"
     assert result["answer"] == "A free-form response with no plan schema."
     assert result["plan"] is None
-    assert "matching the supplied plan schema" in captured["system_prompt"]
-    assert "OUTPUT REQUIREMENTS" in captured["user_prompt"]
-    assert '"$defs"' in captured["user_prompt"]
-    assert result["expected_plan_schema"]["type"] == "object"
+    assert "JSON" not in captured["system_prompt"]
+    assert "OUTPUT REQUIREMENTS" not in captured["user_prompt"]
+    assert '"$defs"' not in captured["user_prompt"]
+    assert "expected_plan_schema" not in result
 
 
 def test_benchmark_scope_gate_blocks_before_generation(monkeypatch, tmp_path):
@@ -226,8 +258,8 @@ def test_pairwise_judge_scores_both_answers_and_explains_winner(monkeypatch):
     input_data = json.loads(captured["messages"][1]["content"])
     assert input_data["answers"]["A"]["answer"] == "Answer A"
     assert input_data["answers"]["B"]["answer"] == "Answer B"
-    assert "json_validity" in input_data["rubric"]
-    assert "plan_schema_validity" in input_data["rubric"]
+    assert "json_validity" not in input_data["rubric"]
+    assert "plan_schema_validity" not in input_data["rubric"]
 
 
 def test_judged_generation_records_raw_answer_and_judge_rationale():
@@ -262,9 +294,42 @@ def test_judged_generation_records_raw_answer_and_judge_rationale():
         rag_enabled=True,
     )
 
-    assert result.metrics["answer_quality"] == Ratio(14, 14)
+    assert result.metrics["answer_quality"] == Ratio(10, 10)
     assert result.extra["case_results"][0]["answer"] == "Raw text, not a plan object."
     assert result.extra["case_results"][0]["judge"] == evaluation
+
+
+def test_judge_failure_does_not_count_as_zero_quality():
+    """Exclude answers without a judge score from quality denominators."""
+    case = GenerationCase(
+        id="G1",
+        request="Build strength",
+        expected_status=["ok"],
+        profile={},
+        notes="Test case.",
+    )
+
+    class FixedPlanner:
+        def __call__(self, _case):
+            return {"status": "ok", "answer": "A generated answer."}
+
+    class FailingJudge:
+        def score(self, *_args, **_kwargs):
+            raise ValueError("bad judge response")
+
+    result = runner.evaluate_judged_generation(
+        [case],
+        FixedPlanner(),
+        FailingJudge(),
+        llm_mode="mocked",
+        rag_enabled=False,
+    )
+
+    assert result.metrics["answer_generation_rate"] == Ratio(1, 1)
+    assert result.metrics["judge_coverage"] == Ratio(0, 1)
+    assert result.metrics["answer_quality"] == Ratio(0, 0)
+    assert result.metrics["request_fit"] == Ratio(0, 0)
+    assert result.extra["case_results"][0]["outcome"] == "judge_error"
 
 
 def test_red_team_counts_correct_refusal_and_safe_in_scope_answer():

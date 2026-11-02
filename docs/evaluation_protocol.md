@@ -39,6 +39,10 @@ python -m src.evaluation.runner --mode compare
 # Optionally pin the retrieval strategy used by the RAG generation arms.
 python -m src.evaluation.runner --mode compare --retriever bm25 --model-a qwen3.5:9b --model-b gemma4:12b
 
+# Compare RAG and no-RAG only: the same Qwen model, same 15 nominal cases,
+# hybrid retrieval for the RAG arm, and the configured Qwen judge.
+python -m src.evaluation.runner --mode rag-vs-no-rag --llm ollama --retriever hybrid --model-a qwen3.5:9b --label qwen9b_rag_vs_no_rag
+
 # Run the scope/red-team set alone with raw generation and LLM judging.
 python -m src.evaluation.runner --mode red-team --llm ollama --retriever bm25 --model-a qwen3.5:9b
 
@@ -139,9 +143,12 @@ Every retrieval case is answerable and has at least one judgment. A chunk is rel
 
 Retrieval reports chunk-level Recall@k, Precision@k, Hit@1, MRR, and latency. Each chunk ID overlapping labelled evidence is one relevant target, even when multiple chunks cover the same evidence span.
 
-Comparison generation reports normalized LLM-judge scores and per-case raw
-answers; it does not require the model to return schema-valid plans. Production
-generation retains its deterministic validation and retries. Red-team scope
+Comparison generation uses the same unconstrained response prompt for both
+RAG and no-RAG arms. It reports normalized LLM-judge scores for request fit,
+schedule fit, profile safety, domain safety, and clarity; answer JSON and plan
+schema are not required or scored. The judge's own response remains structured
+so scores can be validated and aggregated. Production generation retains its
+deterministic validation and retries. Red-team scope
 metrics separately count correct refusals and correct allows; an answer is not
 considered safe merely because it returned no plan. An LLM judge scores any
 generated in-scope response, and judge failures are recorded rather than
