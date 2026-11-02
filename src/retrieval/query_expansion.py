@@ -57,6 +57,12 @@ class ScopeRefusalError(ValueError):
     """A query was not approved for plan generation, with user-facing guidance."""
 
     def __init__(self, scope: str, message: str):
+        """Build a refusal carrying the analysis scope and display message.
+
+        Args:
+            scope: Analysis result, such as ``out_of_scope`` or ``unclear``.
+            message: User-facing explanation returned by the analyzer.
+        """
         super().__init__(message)
         self.scope = scope
         self.user_message = message
@@ -80,6 +86,12 @@ class OllamaQueryExpander:
     """Use a local Ollama model to gate request scope and rewrite queries."""
 
     def __init__(self, model: str, base_url: str = "http://localhost:11434"):
+        """Configure the local model used for request analysis and rewriting.
+
+        Args:
+            model: Ollama model tag used for structured query analysis.
+            base_url: Base URL of the local Ollama service.
+        """
         self.model = model
         self.base_url = base_url
         self._client = None
@@ -103,6 +115,18 @@ class OllamaQueryExpander:
 
     @lru_cache(maxsize=512)
     def _analyze_cached(self, query: str) -> QueryAnalysis:
+        """Analyze a request once and cache successful structured responses.
+
+        Args:
+            query: User or benchmark query to classify and rewrite.
+
+        Returns:
+            Validated scope, French search query, and refusal message.
+
+        Raises:
+            RuntimeError: If the configured Ollama service cannot be used.
+            ValueError: If its response is empty, malformed, or inconsistent.
+        """
         started = perf_counter()
         try:
             if self._client is None:
@@ -203,10 +227,22 @@ class QueryExpansionRetriever:
         expander: ScopeAnalyzer,
         *,
         rewrite: bool = True,
+        enforce_scope_gate: bool = True,
     ):
+        """Configure scope screening and optional query rewriting.
+
+        Args:
+            retriever: Search implementation called once with the effective
+                query.
+            expander: Analyzer or expander providing scope and search text.
+            rewrite: Whether to use the approved rewritten query when
+                available; disabling this still permits scope screening.
+            enforce_scope_gate: Whether non-in-scope analysis prevents search.
+        """
         self.retriever = retriever
         self.expander = expander
         self.rewrite = rewrite
+        self.enforce_scope_gate = enforce_scope_gate
 
     def search(self, query: str, top_k: int) -> list[RetrievedChunk]:
         """Expand the request in French, then retrieve once using that query.
@@ -237,16 +273,16 @@ class QueryExpansionRetriever:
         analyze = getattr(self.expander, "analyze", None)
         if callable(analyze):
             analysis = analyze(query)
-            if analysis.scope != "in_scope":
+            if analysis.scope != "in_scope" and self.enforce_scope_gate:
                 logger.info(
                     "Request rejected by scope gate scope=%s user_message=%s",
                     analysis.scope,
                     analysis.user_message,
                 )
                 raise ScopeRefusalError(analysis.scope, analysis.user_message)
-            expanded_query = (
-                clean_expanded_query(analysis.search_query) if self.rewrite else query
-            )
+            expanded_query = query
+            if self.rewrite and analysis.scope == "in_scope":
+                expanded_query = clean_expanded_query(analysis.search_query)
         else:
             if not self.rewrite:
                 raise RuntimeError(
@@ -255,8 +291,9 @@ class QueryExpansionRetriever:
             expanded_query = clean_expanded_query(self.expander.expand(query))
         rewrite_elapsed_ms = (perf_counter() - rewrite_started) * 1000
         logger.info(
-            "Retrieval query ready scope_gate=enabled query_rewritten=%s "
+            "Retrieval query ready scope_gate=%s query_rewritten=%s "
             "original_chars=%s effective_chars=%s rewrite_elapsed_ms=%.1f",
+            self.enforce_scope_gate,
             self.rewrite,
             len(query),
             len(expanded_query),

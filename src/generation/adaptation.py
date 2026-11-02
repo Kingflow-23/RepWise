@@ -83,6 +83,11 @@ class WorkoutAdaptationPipeline:
     """Adapt only the target workout while preserving its exercise identities."""
 
     def __init__(self, generator: WorkoutGenerator):
+        """Create the adapter with the model-backed workout generator.
+
+        Args:
+            generator: Component that proposes a focused workout adjustment.
+        """
         self.generator = generator
 
     def adapt(

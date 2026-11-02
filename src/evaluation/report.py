@@ -360,6 +360,16 @@ def render_comparison(
         )
 
     def judged_metric(result, name: str) -> str:
+        """Format a judged ratio, showing an explicit marker when unavailable.
+
+        Args:
+            result: Evaluation result containing named ratio metrics.
+            name: Metric key to retrieve from the result.
+
+        Returns:
+            The metric's formatted numerator/denominator, or ``N/A (0/0)``
+            when that metric was not calculated.
+        """
         ratio = result.metrics.get(name)
         return ratio.fmt() if ratio is not None else "N/A (0/0)"
 

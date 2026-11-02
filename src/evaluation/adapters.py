@@ -52,6 +52,12 @@ class RetrieverAdapter:
     """Keep evaluation callability while preserving production query metadata."""
 
     def __init__(self, retriever: Any):
+        """Wrap a production retriever for the evaluation runner.
+
+        Args:
+            retriever: Search implementation whose ranked chunks can be
+                returned as production models or serialized for metrics.
+        """
         self.retriever = retriever
 
     def search(self, query: str, top_k: int) -> list[RetrievedChunk]:
@@ -273,7 +279,11 @@ def load_callable(spec: str) -> Callable[..., Any]:
 
 
 def build_retriever(
-    name: str, chunks_dir: Path, *, query_expansion: bool | None = None
+    name: str,
+    chunks_dir: Path,
+    *,
+    query_expansion: bool | None = None,
+    enforce_scope_gate: bool = True,
 ) -> Retriever:
     """Build one named production or configured custom retriever.
 
@@ -284,6 +294,8 @@ def build_retriever(
             Custom callables own their own data access and do not receive it.
         query_expansion: Whether to add French query variants. ``None`` follows
             ``REPWISE_QUERY_EXPANSION``; custom retrievers are never wrapped.
+        enforce_scope_gate: Whether an expansion model's scope refusal prevents
+            retrieval. Disable for curated evaluation queries.
 
     Returns:
         A ``(query, k) -> ranked chunk dictionaries`` callable.
@@ -295,9 +307,12 @@ def build_retriever(
         ImportError: If a custom callable's module cannot be imported.
     """
     if name in {"bm25", "semantic", "hybrid"}:
-        return build_retrievers([name], chunks_dir, query_expansion=query_expansion)[
-            name
-        ]
+        return build_retrievers(
+            [name],
+            chunks_dir,
+            query_expansion=query_expansion,
+            enforce_scope_gate=enforce_scope_gate,
+        )[name]
     return load_callable(name)
 
 
@@ -307,6 +322,7 @@ def build_retrievers(
     *,
     chunks: Sequence[Chunk] | None = None,
     query_expansion: bool | None = None,
+    enforce_scope_gate: bool = True,
 ) -> dict[str, Retriever]:
     """Build requested production retrievers, sharing common components.
 
@@ -322,6 +338,8 @@ def build_retrievers(
             being passed to production retrieval implementations.
         query_expansion: Whether to add French query variants. ``None`` follows
             ``REPWISE_QUERY_EXPANSION``.
+        enforce_scope_gate: Whether an expansion model's scope refusal prevents
+            retrieval. Disable for curated evaluation queries.
 
     Returns:
         A mapping from each requested strategy to a callable that serializes
@@ -390,7 +408,11 @@ def build_retrievers(
         )
         components = {
             name: (
-                QueryExpansionRetriever(retriever, expander)
+                QueryExpansionRetriever(
+                    retriever,
+                    expander,
+                    enforce_scope_gate=enforce_scope_gate,
+                )
                 if retriever is not None
                 else None
             )
@@ -667,6 +689,21 @@ def build_benchmark_planner(
         )
 
     def generate(case: PlannerCase) -> PlannerResult:
+        """Generate one raw benchmark answer and capture stage diagnostics.
+
+        Args:
+            case: Generation-case mapping containing a request and profile,
+                with optional week count, workout frequency, and constraints.
+
+        Returns:
+            A planner result containing the raw answer, retrieval evidence,
+            scope decision, and per-stage timings. Out-of-scope requests return
+            a blocked result without retrieval or generation.
+
+        Raises:
+            RuntimeError: If RAG is enabled but no retriever is available.
+            ValueError: If the case profile or generated query is invalid.
+        """
         profile = UserProfile.model_validate(case["profile"])
         request = PlanRequest(
             focus=case["request"],

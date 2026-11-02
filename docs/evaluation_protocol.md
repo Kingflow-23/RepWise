@@ -55,11 +55,15 @@ python -m src.evaluation.runner --mode generation --llm ollama --retriever hybri
 the same retrieval questions. Evaluation ranks **chunks**, not transcript
 passages. Retrieval ranking uses chunk Recall@10 (`MAIN_K`), then MRR and
 median latency. Generation uses the configured strategy (hybrid by default),
-unless `--retriever` overrides it. Model-comparison generation uses raw
-retrieval queries without query rewriting or a scope pre-check, so a separate
-scope-model timeout cannot prevent the candidate models from answering. It
-generates raw answers for both models with RAG; no production plan validation,
-deterministic answer-format checks, or retries are applied. The configured
+unless `--retriever` overrides it. Query expansion is enabled for retriever
+ranking and both RAG generation arms. For curated retrieval ranking, a scope
+model refusal does not block the search; the original benchmark query is used
+when the model declines to rewrite it. The red-team arm uses the scope
+analyzer's French search query with an unwrapped retriever, avoiding duplicate
+rewriting.
+The nominal model-comparison arms generate raw answers for both models with
+RAG; production plan validation, deterministic answer-format checks, and retries
+are not applied. The configured
 judge scores request fit, schedule, profile constraints, safety, clarity, JSON
 quality, plan-schema fit, and RAG evidence support. It also compares both raw
 answers side by side for every case, records scores for each candidate, and

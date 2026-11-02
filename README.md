@@ -70,7 +70,8 @@ commands and what the results do and do not show, see the
 
 Start at the [documentation hub](docs/README.md) for setup, architecture,
 generation, retrieval, corpus preparation, API/database details, and
-evaluation.
+evaluation. Developers can use the [code reference and development guide](docs/development.md)
+to find implementation modules, relevant tests, and change workflows.
 
 ## Important limits
 

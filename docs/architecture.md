@@ -3,6 +3,8 @@
 This guide maps the repository for developers who are new to the project. It
 describes the current implementation and why the main boundaries exist; it is
 not a deployment or medical-safety certification.
+For a complete source-module inventory and the recommended test command for
+each area, see the [developer guide](development.md).
 
 ## At a glance
 

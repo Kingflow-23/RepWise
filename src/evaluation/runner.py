@@ -854,6 +854,16 @@ def run_evaluation(
             warn(f"Red-team planner setup failed: {setup_error}")
 
             def planner(_case, error_message=setup_error):
+                """Raise the captured setup failure for each evaluated case.
+
+                Args:
+                    _case: Red-team case; unused because setup failed before
+                        a planner could be constructed.
+                    error_message: Captured planner initialization failure.
+
+                Raises:
+                    RuntimeError: Always, with the original setup failure.
+                """
                 raise RuntimeError(error_message)
 
         results["red-team"] = evaluate_red_team_no_plan(
@@ -937,6 +947,17 @@ def run_evaluation(
                             warn(f"Red-team pipeline setup failed: {setup_error}")
 
                             def red_team_planner(_case, error_message=setup_error):
+                                """Raise setup failure with the affected case ID.
+
+                                Args:
+                                    _case: Red-team case mapping.
+                                    error_message: Captured pipeline
+                                        initialization failure.
+
+                                Raises:
+                                    RuntimeError: Always, identifying the
+                                        failed case when its ID is available.
+                                """
                                 case_id = _case.get("id", "unknown")
                                 raise RuntimeError(f"{error_message} (case: {case_id})")
 
@@ -1579,7 +1600,8 @@ def run_comparison(
         strategies,
         config.CHUNKS_DIR,
         chunks=chunks,
-        query_expansion=False,
+        query_expansion=True,
+        enforce_scope_gate=False,
     )
     retrieval_results = {}
     for strategy in strategies:
@@ -1627,7 +1649,7 @@ def run_comparison(
             retriever=retrievers[best_retriever],
             scope_analyzer=None,
             use_rag=True,
-            use_query_expansion=False,
+            use_query_expansion=True,
         )
         generation_results[arm] = evaluate_judged_generation(
             generation_cases,
@@ -1647,6 +1669,16 @@ def run_comparison(
     )
 
     def generation_rank(arm: str) -> tuple[float, float]:
+        """Rank generation arms by answer quality, then lower median latency.
+
+        Args:
+            arm: Key identifying a generation result.
+
+        Returns:
+            A sortable pair of quality and negative latency. Missing quality
+            receives the lowest score; missing latency sorts after measured
+            latency when quality is tied.
+        """
         result = generation_results[arm]
         quality = result.metrics["answer_quality"].value
         latency = result.extra.get("generation_latency_ms_median")
@@ -1676,14 +1708,19 @@ def run_comparison(
         rag_enabled=False,
     )
     red_team_cases = datasets.load_red_team_cases()
+    red_team_retriever = adapters.build_retriever(
+        best_retriever,
+        config.CHUNKS_DIR,
+        query_expansion=False,
+    )
     red_team_planner = adapters.build_benchmark_planner(
         config.CHUNKS_DIR,
         model_name=best_rag_model,
         retriever_name=best_retriever,
-        retriever=retrievers[best_retriever],
+        retriever=red_team_retriever,
         scope_analyzer=scope_analyzer,
         use_rag=True,
-        use_query_expansion=False,
+        use_query_expansion=True,
     )
     red_team_result = evaluate_red_team_no_plan(
         red_team_cases,
@@ -1713,8 +1750,8 @@ def run_comparison(
         "chunks_dir": str(config.CHUNKS_DIR),
         "n_corpus_chunks": len(chunks),
         "embedding_model": settings.embedding_model,
-        "query_expansion": False,
-        "query_expansion_model": None,
+        "query_expansion": True,
+        "query_expansion_model": settings.query_expansion_model,
         "scope_gate_model": settings.query_expansion_model,
         "judge_model": settings.ollama_judge_model,
         "ollama_url": settings.ollama_url,

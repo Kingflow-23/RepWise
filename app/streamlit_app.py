@@ -55,6 +55,13 @@ class ApiError(RuntimeError):
         status_code: int | None = None,
         detail: Any = None,
     ) -> None:
+        """Store the message and optional response context for UI handling.
+
+        Args:
+            message: Human-readable error shown by the Streamlit client.
+            status_code: HTTP status returned by the backend, if available.
+            detail: Structured error detail returned by the backend, if any.
+        """
         super().__init__(message)
         self.status_code = status_code
         self.detail = detail

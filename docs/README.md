@@ -7,6 +7,7 @@ Pick the guide for the task you’re working on:
 - [Local setup](setup.md) — Python, corpus, embeddings, Ollama, and launch steps.
 - [Configuration reference](configuration.md) — environment variables and defaults.
 - [Architecture](architecture.md) — system boundaries, request flow, and design choices.
+- [Developer guide and code reference](development.md) — source map, test layout, and change workflows.
 - [Corpus preparation](../data/corpus/README.md) — transcript cleaning, provenance, and corpus files.
 - [Knowledge-base scope](ingestion/knowledge_base_scope.md) — what belongs in the searchable corpus.
 

@@ -298,6 +298,36 @@ def test_query_expansion_retriever_blocks_out_of_scope_before_search():
     assert base.calls == 0
 
 
+def test_query_expansion_retriever_can_bypass_scope_gate_for_benchmarks():
+    """Keep benchmark retrieval running when the scope model falsely refuses."""
+    from src.retrieval.query_expansion import QueryAnalysis
+
+    class FixedRetriever:
+        def __init__(self):
+            self.queries = []
+
+        def search(self, query, top_k):
+            self.queries.append((query, top_k))
+            return []
+
+    class FixedExpander:
+        def analyze(self, _query):
+            return QueryAnalysis(
+                "out_of_scope",
+                "",
+                "This request was incorrectly classified as out of scope.",
+            )
+
+    base = FixedRetriever()
+    QueryExpansionRetriever(
+        base,
+        FixedExpander(),
+        enforce_scope_gate=False,
+    ).search("How long should I rest between sets?", 10)
+
+    assert base.queries == [("How long should I rest between sets?", 10)]
+
+
 def test_scope_gate_still_blocks_when_query_rewriting_is_disabled():
     """Keep scope refusal active while submitting the original query unchanged."""
     from src.retrieval.query_expansion import QueryAnalysis, ScopeRefusalError

@@ -60,6 +60,12 @@ class OllamaQualityJudge:
     """Score raw generated answers without parsing them as production plans."""
 
     def __init__(self, model: str, base_url: str = "http://localhost:11434"):
+        """Configure the local Ollama model used for benchmark judging.
+
+        Args:
+            model: Ollama model tag used to score candidate answers.
+            base_url: Base URL of the local Ollama service.
+        """
         self.model = model
         self.base_url = base_url
         self._client = None

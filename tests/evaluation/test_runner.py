@@ -950,9 +950,26 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
     monkeypatch.setattr(
         runner.adapters,
         "build_retrievers",
-        lambda strategies, _path, *, chunks=None, query_expansion=None: {
-            strategy: strategy for strategy in strategies
-        },
+        lambda strategies, _path, *, chunks=None, query_expansion=None, enforce_scope_gate=True: (
+            build_expanded_retrievers(strategies, query_expansion, enforce_scope_gate)
+        ),
+    )
+    expansion_flags = []
+    scope_gate_flags = []
+
+    def build_expanded_retrievers(strategies, query_expansion, enforce_scope_gate):
+        expansion_flags.append(query_expansion)
+        scope_gate_flags.append(enforce_scope_gate)
+        return {strategy: strategy for strategy in strategies}
+
+    red_team_retriever_calls = []
+    monkeypatch.setattr(
+        runner.adapters,
+        "build_retriever",
+        lambda name, _path, *, query_expansion=None: (
+            red_team_retriever_calls.append((name, query_expansion))
+            or f"{name}-red-team-base"
+        ),
     )
     expansion_inputs = []
 
@@ -1092,15 +1109,21 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
     assert len(planner_calls) == 4
     assert [call[2] for call in planner_calls[:2]] == ["hybrid", "hybrid"]
     assert planner_calls[2][2] is None
-    assert planner_calls[0][4] is False and planner_calls[1][4] is False
+    assert planner_calls[0][4] is True and planner_calls[1][4] is True
     assert planner_calls[0][5] is None and planner_calls[1][5] is None
     assert planner_calls[2][5] is None
     assert sum(call[0] == "model-b" for call in planner_calls[:3]) == 2
     assert len({id(call[2]) for call in planner_calls[:2]}) == 1
     assert planner_calls[2][3] is False
+    assert planner_calls[3][2] == "hybrid-red-team-base"
+    assert planner_calls[3][4] is True
     assert planner_calls[3][5] is not None
+    assert expansion_flags == [True]
+    assert scope_gate_flags == [False]
+    assert red_team_retriever_calls == [("hybrid", False)]
     assert len(expansion_inputs) == 0
-    assert run["payload"]["meta"]["query_expansion"] is False
+    assert run["payload"]["meta"]["query_expansion"] is True
+    assert run["payload"]["meta"]["query_expansion_model"] == "qwen3.5:4b"
     assert run["payload"]["meta"]["pairwise_comparison"]["wins"]["model-b + RAG"] == 1
 
 

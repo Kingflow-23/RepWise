@@ -163,6 +163,15 @@ def compact_previous_plan(previous_plan: dict[str, object] | None) -> str:
     omitted = False
 
     def add_line(text: str) -> bool:
+        """Append a summary line only while the context character cap allows.
+
+        Args:
+            text: Candidate line to add to the previous-plan summary.
+
+        Returns:
+            Whether the line was appended. A rejected line marks the summary
+            as truncated so the caller can disclose the omission.
+        """
         nonlocal omitted
         candidate = "\n".join((*lines, text))
         if len(candidate) > PREVIOUS_PLAN_CONTEXT_MAX_CHARS:
