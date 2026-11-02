@@ -4,7 +4,7 @@ fastapi
 uvicorn
 python-dotenv
 pytest
-streamlit
+streamlit>=1.51
 requests
 pandas
 httpx
@@ -12,3 +12,6 @@ PyJWT
 pwdlib[argon2]
 numpy
 sentence-transformers
+faster-whisper>=1.1,<2
+# Keep the decoder API used by faster-whisper 1.x (PyAV 19 removed it).
+av>=11,<17

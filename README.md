@@ -56,6 +56,12 @@ You’ll need Python 3.11 or 3.12, an authorized prepared transcript corpus, and
 corpus files and model weights are local and are not distributed with this
 repository.
 
+## Microphone input
+
+On the plan-generation tab, sign in and record your request using **Record your request**. Stop recording, click **Use recording**, then review or edit the text in the usual focus field. Click **Generate plan** only when the text is ready; recording and transcription never submit a plan automatically. A failed transcription preserves the current draft.
+
+Microphone access requires browser permission and localhost or an HTTPS connection. Record up to two minutes. The backend transcribes locally with faster-whisper, preserving the spoken language. The first transcription downloads the multilingual `base` model if it is not cached; later requests reuse it. Set `REPWISE_SPEECH_MODEL` to change the model. Install the updated requirements and restart the API/UI before using it. Recordings are handled in memory and are not written to the database or audio files.
+
 ## Run the tests
 
 ```powershell

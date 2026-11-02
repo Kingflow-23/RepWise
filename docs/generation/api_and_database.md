@@ -28,6 +28,8 @@ The secret used to sign tokens comes from `REPWISE_AUTH_SECRET`. Without it, reg
 
 ## Routes
 
+Microphone input uses authenticated `POST /api/v1/speech/transcribe` with the WAV bytes as the request body and `Content-Type: audio/wav`. It returns `{"text": "..."}` without generating or saving a plan. Recordings must be complete PCM16 WAV audio (one or two channels, 8–48 kHz), at most two minutes and 5 MiB. The Streamlit recorder supplies mono 16 kHz WAV. Invalid/empty recordings return 422, oversized uploads 413, unsupported content types 415, and unavailable transcription 503. Speech is decoded locally using the model configured by `REPWISE_SPEECH_MODEL`; the model downloads on first use if missing. Audio is not persisted. The user must review the returned text and separately submit the plan form.
+
 | Method | Route | Login required | Purpose |
 |---|---|---:|---|
 | `GET` | `/api/v1/health` | No | Reports database, retriever readiness, and model configuration; does not contact Ollama. |

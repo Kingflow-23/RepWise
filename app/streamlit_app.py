@@ -429,6 +429,29 @@ def show_plan(record: dict[str, Any], *, form_prefix: str = "plan") -> None:
                 st.caption("Full evidence is unavailable for this saved plan.")
 
 
+def use_plan_recording() -> None:
+    """Replace only the editable focus draft; never submit or generate a plan."""
+    st.session_state.pop("plan_voice_error", None)
+    st.session_state.pop("plan_voice_notice", None)
+    recording = st.session_state.get("plan-recording")
+    if recording is None:
+        st.session_state.plan_voice_error = "Record your request first."
+        return
+    try:
+        with st.spinner("Transcribing your recording…"):
+            result = api_request(
+                "POST", "/api/v1/speech/transcribe",
+                data=recording.getvalue(), headers={"Content-Type": "audio/wav"},
+            )
+        text = result.get("text") if isinstance(result, dict) else None
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("No speech was detected. Please record your request again.")
+        st.session_state["plan-focus"] = text.strip()
+        st.session_state.plan_voice_notice = "Recording transcribed. Review and edit your request before generating a plan."
+    except (ApiError, ValueError) as error:
+        st.session_state.plan_voice_error = str(error)
+
+
 def store_account(account: dict[str, Any]) -> None:
     """Keep the authenticated account identity in Streamlit session state.
 
@@ -446,6 +469,10 @@ def store_account(account: dict[str, Any]) -> None:
             "plan_notice",
             "plan_generation_error",
             "plan_generation_request",
+            "plan-focus",
+            "plan-recording",
+            "plan_voice_notice",
+            "plan_voice_error",
         ):
             st.session_state.pop(key, None)
     st.session_state.user_id = account["user_id"]
@@ -630,12 +657,29 @@ with plan_tab:
     st.write(
         "Each run creates one week of workouts using your available days. Generate again when you need a fresh week. Retrieved sources are shown for context."
     )
+    recording = st.audio_input(
+        "Record your request (optional)", sample_rate=16000, key="plan-recording",
+        disabled=not bool(st.session_state.get("access_token")),
+        help="Record up to two minutes, then use the recording to fill the text field below.",
+    )
+    st.button(
+        "Use recording", key="use-plan-recording", on_click=use_plan_recording,
+        disabled=recording is None or not bool(st.session_state.get("access_token")),
+        help="Replaces the request text below with your transcription. It does not generate a plan.",
+    )
+    if st.session_state.get("plan_voice_error"):
+        st.error(st.session_state.plan_voice_error)
+    if st.session_state.get("plan_voice_notice"):
+        st.info(st.session_state.plan_voice_notice)
+    # Keep the draft outside the form so recorder reruns preserve manual edits.
+    focus = st.text_input(
+        "What do you want to focus on?",
+        placeholder="For example: a beginner core routine",
+        key="plan-focus",
+    )
+    if len(focus.strip()) > 300:
+        st.warning("Shorten your request to 300 characters before generating a plan.")
     with st.form("plan_form"):
-        focus = st.text_input(
-            "What do you want to focus on?",
-            placeholder="For example: a beginner core routine",
-            key="plan-focus",
-        )
         saved_profile = st.session_state.get("profile_form") or {}
         available_days = [
             day for day in saved_profile.get("available_days", []) if day in DAYS
@@ -668,6 +712,8 @@ with plan_tab:
             st.error("Sign in or create an account first.")
         elif len(focus.strip()) < 3:
             st.error("Describe the plan focus in at least three characters.")
+        elif len(focus.strip()) > 300:
+            st.error("Shorten your request to 300 characters before generating a plan.")
         else:
             payload = {
                 "focus": focus.strip(),
