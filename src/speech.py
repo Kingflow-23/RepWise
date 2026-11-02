@@ -26,20 +26,27 @@ def validate_recording(audio: bytes) -> None:
         raise ValueError("The recording is too large. Record up to two minutes.")
     try:
         with wave.open(BytesIO(audio), "rb") as recording:
-            if (recording.getcomptype() != "NONE" or recording.getsampwidth() != 2
-                    or recording.getnchannels() not in (1, 2)
-                    or not 8000 <= recording.getframerate() <= 48000):
+            if (
+                recording.getcomptype() != "NONE"
+                or recording.getsampwidth() != 2
+                or recording.getnchannels() not in (1, 2)
+                or not 8000 <= recording.getframerate() <= 48000
+            ):
                 raise ValueError("Use a 16-bit WAV microphone recording.")
             frames = recording.getnframes()
             if not frames:
-                raise ValueError("The recording is empty. Please record your request again.")
+                raise ValueError(
+                    "The recording is empty. Please record your request again."
+                )
             if frames / recording.getframerate() > MAX_AUDIO_SECONDS:
                 raise ValueError("The recording is too long. Record up to two minutes.")
             expected = frames * recording.getnchannels() * recording.getsampwidth()
             if len(recording.readframes(frames)) != expected:
                 raise ValueError("The recording is incomplete. Please record it again.")
     except (wave.Error, EOFError) as error:
-        raise ValueError("The recording is not a valid WAV file. Please record it again.") from error
+        raise ValueError(
+            "The recording is not a valid WAV file. Please record it again."
+        ) from error
 
 
 class WhisperTranscriber:
@@ -62,10 +69,15 @@ class WhisperTranscriber:
                 if self._model is None:
                     from faster_whisper import WhisperModel
 
-                    self._model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
+                    self._model = WhisperModel(
+                        self.model_name, device="cpu", compute_type="int8"
+                    )
                 segments, _ = self._model.transcribe(
-                    BytesIO(audio), task="transcribe", beam_size=5,
-                    vad_filter=True, condition_on_previous_text=False,
+                    BytesIO(audio),
+                    task="transcribe",
+                    beam_size=5,
+                    vad_filter=True,
+                    condition_on_previous_text=False,
                 )
                 text = " ".join(segment.text.strip() for segment in segments).strip()
             except ImportError as error:
@@ -78,5 +90,7 @@ class WhisperTranscriber:
                     "Speech transcription is unavailable. Please try again or type your request."
                 ) from error
         if not text:
-            raise ValueError("No speech was detected. Please record your request again.")
+            raise ValueError(
+                "No speech was detected. Please record your request again."
+            )
         return text

@@ -52,7 +52,12 @@ from ..schemas.models import (
     UserProfile,
     WorkoutFeedbackRequest,
 )
-from ..speech import MAX_AUDIO_BYTES, SpeechTranscriber, WhisperTranscriber, validate_recording
+from ..speech import (
+    MAX_AUDIO_BYTES,
+    SpeechTranscriber,
+    WhisperTranscriber,
+    validate_recording,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +94,11 @@ def create_app(
         documentation routes remain available.
     """
     config = config or AppConfig.from_environment()
-    transcriber = transcriber if transcriber is not None else WhisperTranscriber(config.speech_model)
+    transcriber = (
+        transcriber
+        if transcriber is not None
+        else WhisperTranscriber(config.speech_model)
+    )
     configure_logging("api")
     logger.info(
         "Initializing API database=%s retriever=%s model=%s",
@@ -272,20 +281,29 @@ def create_app(
         request: Request, user_id: str = Depends(require_account)
     ) -> dict[str, str]:
         """Transcribe a signed-in user's WAV recording without saving or generating a plan."""
-        media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        media_type = (
+            request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        )
         if media_type not in {"audio/wav", "audio/x-wav", "audio/wave"}:
-            raise HTTPException(status_code=415, detail="Send a WAV microphone recording.")
+            raise HTTPException(
+                status_code=415, detail="Send a WAV microphone recording."
+            )
         audio = bytearray()
         async for block in request.stream():
             if len(audio) + len(block) > MAX_AUDIO_BYTES:
-                raise HTTPException(status_code=413, detail="The recording is too large. Record up to two minutes.")
+                raise HTTPException(
+                    status_code=413,
+                    detail="The recording is too large. Record up to two minutes.",
+                )
             audio.extend(block)
         try:
             recording = bytes(audio)
             validate_recording(recording)
             text = await run_in_threadpool(transcriber.transcribe, recording)
             if not isinstance(text, str) or not text.strip():
-                raise ValueError("No speech was detected. Please record your request again.")
+                raise ValueError(
+                    "No speech was detected. Please record your request again."
+                )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         except RuntimeError as error:

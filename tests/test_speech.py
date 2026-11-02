@@ -25,9 +25,18 @@ def test_pcm_microphone_recording_is_valid():
     validate_recording(wav_recording())
 
 
-@pytest.mark.parametrize("audio", [b"", b"not wav", wav_recording(seconds=0),
-                                  wav_recording(sample_width=1), wav_recording(channels=3),
-                                  wav_recording(seconds=121), wav_recording()[:-10]])
+@pytest.mark.parametrize(
+    "audio",
+    [
+        b"",
+        b"not wav",
+        wav_recording(seconds=0),
+        wav_recording(sample_width=1),
+        wav_recording(channels=3),
+        wav_recording(seconds=121),
+        wav_recording()[:-10],
+    ],
+)
 def test_invalid_recordings_are_rejected(audio):
     with pytest.raises(ValueError):
         validate_recording(audio)
@@ -36,17 +45,29 @@ def test_invalid_recordings_are_rejected(audio):
 def test_model_is_loaded_once_and_transcribes_in_original_language(monkeypatch):
     model = Mock()
     model.transcribe.side_effect = lambda *_args, **_kwargs: (
-        iter([SimpleNamespace(text=" Je veux "), SimpleNamespace(text=" travailler les jambes. ")]), None
+        iter(
+            [
+                SimpleNamespace(text=" Je veux "),
+                SimpleNamespace(text=" travailler les jambes. "),
+            ]
+        ),
+        None,
     )
     constructor = Mock(return_value=model)
-    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=constructor))
+    monkeypatch.setitem(
+        sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=constructor)
+    )
     transcriber = WhisperTranscriber("base")
     constructor.assert_not_called()
     for _ in range(2):
-        assert transcriber.transcribe(wav_recording()) == "Je veux travailler les jambes."
+        assert (
+            transcriber.transcribe(wav_recording()) == "Je veux travailler les jambes."
+        )
     constructor.assert_called_once_with("base", device="cpu", compute_type="int8")
     assert model.transcribe.call_args.kwargs == {
-        "task": "transcribe", "beam_size": 5, "vad_filter": True,
+        "task": "transcribe",
+        "beam_size": 5,
+        "vad_filter": True,
         "condition_on_previous_text": False,
     }
     assert isinstance(model.transcribe.call_args.args[0], BytesIO)
@@ -55,21 +76,29 @@ def test_model_is_loaded_once_and_transcribes_in_original_language(monkeypatch):
 def test_silence_does_not_create_a_prompt(monkeypatch):
     model = Mock()
     model.transcribe.return_value = (iter([]), None)
-    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=Mock(return_value=model)))
+    monkeypatch.setitem(
+        sys.modules,
+        "faster_whisper",
+        SimpleNamespace(WhisperModel=Mock(return_value=model)),
+    )
     with pytest.raises(ValueError, match="No speech"):
         WhisperTranscriber().transcribe(wav_recording())
 
 
 def test_model_failure_is_reported_without_transcript(monkeypatch):
     constructor = Mock(side_effect=RuntimeError("model unavailable"))
-    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=constructor))
+    monkeypatch.setitem(
+        sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=constructor)
+    )
     with pytest.raises(RuntimeError, match="unavailable"):
         WhisperTranscriber().transcribe(wav_recording())
 
 
 def test_invalid_audio_does_not_load_the_model(monkeypatch):
     constructor = Mock()
-    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=constructor))
+    monkeypatch.setitem(
+        sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=constructor)
+    )
     with pytest.raises(ValueError):
         WhisperTranscriber().transcribe(b"invalid")
     constructor.assert_not_called()

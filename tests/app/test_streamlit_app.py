@@ -93,7 +93,9 @@ def test_voice_failure_preserves_draft_and_can_retry(monkeypatch):
         if url.endswith("/api/v1/speech/transcribe"):
             calls.append(url)
             if len(calls) == 1:
-                return FakeResponse({"detail": "Speech transcription is unavailable."}, status_code=503)
+                return FakeResponse(
+                    {"detail": "Speech transcription is unavailable."}, status_code=503
+                )
             return FakeResponse({"text": "A new request"})
         raise AssertionError(f"Unexpected API request: {method} {url}")
 
@@ -134,7 +136,9 @@ def test_long_transcription_requires_editing_before_generation(monkeypatch):
     assert not app.exception
 
 
-def test_native_recording_preserves_draft_and_requires_explicit_transcription(monkeypatch):
+def test_native_recording_preserves_draft_and_requires_explicit_transcription(
+    monkeypatch,
+):
     calls = []
     audio = BytesIO()
     with wave.open(audio, "wb") as recording:
@@ -162,7 +166,9 @@ def test_native_recording_preserves_draft_and_requires_explicit_transcription(mo
     assert recorder.sample_rate == 16000
     assert app.button(key="use-plan-recording").disabled
     app.text_input(key="plan-focus").set_value("Keep this typed draft").run(timeout=20)
-    app.get("audio_input")[0].set_value(("request.wav", audio.getvalue(), "audio/wav")).run(timeout=20)
+    app.get("audio_input")[0].set_value(
+        ("request.wav", audio.getvalue(), "audio/wav")
+    ).run(timeout=20)
     assert app.text_input(key="plan-focus").value == "Keep this typed draft"
     assert calls == []
     app.button(key="use-plan-recording").click().run(timeout=20)

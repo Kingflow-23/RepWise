@@ -440,12 +440,16 @@ def use_plan_recording() -> None:
     try:
         with st.spinner("Transcribing your recording…"):
             result = api_request(
-                "POST", "/api/v1/speech/transcribe",
-                data=recording.getvalue(), headers={"Content-Type": "audio/wav"},
+                "POST",
+                "/api/v1/speech/transcribe",
+                data=recording.getvalue(),
+                headers={"Content-Type": "audio/wav"},
             )
         text = result.get("text") if isinstance(result, dict) else None
         if not isinstance(text, str) or not text.strip():
-            raise ValueError("No speech was detected. Please record your request again.")
+            raise ValueError(
+                "No speech was detected. Please record your request again."
+            )
         st.session_state["plan-focus"] = text.strip()
         st.session_state.plan_voice_notice = "Recording transcribed. Review and edit your request before generating a plan."
     except (ApiError, ValueError) as error:
@@ -658,12 +662,16 @@ with plan_tab:
         "Each run creates one week of workouts using your available days. Generate again when you need a fresh week. Retrieved sources are shown for context."
     )
     recording = st.audio_input(
-        "Record your request (optional)", sample_rate=16000, key="plan-recording",
+        "Record your request (optional)",
+        sample_rate=16000,
+        key="plan-recording",
         disabled=not bool(st.session_state.get("access_token")),
         help="Record up to two minutes, then use the recording to fill the text field below.",
     )
     st.button(
-        "Use recording", key="use-plan-recording", on_click=use_plan_recording,
+        "Use recording",
+        key="use-plan-recording",
+        on_click=use_plan_recording,
         disabled=recording is None or not bool(st.session_state.get("access_token")),
         help="Replaces the request text below with your transcription. It does not generate a plan.",
     )
