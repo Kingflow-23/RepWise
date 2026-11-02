@@ -29,6 +29,21 @@ Generation reports must identify `mocked` versus `real Ollama`, retrieval strate
 The report shows only these headline metrics; per-dimension scores, evidence
 support, and judge rationale remain available in `results.json`.
 
+## Findings from the 2026-11-02 comparison
+
+On the 128-query retrieval set, BM25 had the highest Recall@10 (0.755), while
+hybrid had a higher MRR (0.606 versus 0.577) and Hit@1 (0.477 versus 0.422);
+both returned a top-five evidence hit on 99 queries. Semantic-only retrieval
+scored lower on these measures. This supports a recall-first BM25 option and a
+balanced hybrid default, not a universal winner.
+
+Gemma 4 12B + RAG had the higher mean judged answer score (0.886 versus Qwen
+3.5 9B's 0.871), but took about 49 seconds longer at the median. The pairwise
+judge preferred Qwen on 10 valid cases and Gemma on 3, with 2 judge errors.
+See the [full results analysis](results_analysis_2026-11-02.md) for the
+recommended application profile, latency and run-metadata caveats, and the
+RAG/no-RAG and red-team interpretation.
+
 The bounded `--mode smoke --llm ollama` workflow checks all three real retrievers
 on a curated retrieval subset, then runs one nominal generation case and four
 targeted red-team cases through one RAG model. It disables query rewriting and

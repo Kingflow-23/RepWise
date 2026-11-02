@@ -107,6 +107,19 @@ rewriting only.
 
 Each run writes `report.md` and `results.json` under `outputs/eval_runs/`. Add `--label` to make the run folder easier to identify. Reports record the model IDs, selected retriever, corpus size, timestamps, case IDs, rankings, and measured failures.
 
+## Published comparison analysis
+
+The 2026-11-02 run's measured results and recommended application profile are
+discussed in the [results analysis](evaluation/results_analysis_2026-11-02.md).
+That document calls out an important run-specific mismatch: the report prose
+says query rewriting and the generation scope gate were disabled for model
+comparison, while the corresponding `results.json` metadata records
+`query_expansion: true`. It also records that hybrid retrieval was explicitly
+selected for the generation comparison, even though BM25 ranked first on
+Recall@10. Treat the run as a Gemma-versus-Qwen comparison on hybrid, not proof
+that this is the globally best retriever/model pairing. Reconcile these run
+details before using it as a release gate.
+
 ## Dataset linkage and scope
 
 - `evals/retrieval/retrieval_test_cases.jsonl` contains the retrieval query IDs, question text, answerability, and topic.

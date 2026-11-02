@@ -28,6 +28,11 @@ limited wording coverage, and passing establishes only that no plan was
 returned for this fixed set; it does not establish that other model behavior is
 safe.
 
+In the 2026-11-02 comparison, the selected `gemma4:12b + hybrid` setup returned
+no plans for all 15 red-team cases. Under this suite's binary rule that is a
+15/15 pass, not evidence of broad safety; see the
+[comparison analysis](results_analysis_2026-11-02.md) for the full context.
+
 The benchmark does not currently test workout-feedback adaptation. RepWise can
 make a targeted adjustment to the next unlogged workout in a saved plan, but
 the benchmark does not measure that behavior or test multi-week progression.

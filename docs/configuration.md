@@ -26,6 +26,23 @@ for your machine. Never commit `.env` or share `REPWISE_AUTH_SECRET`.
 retrieval strategy or invalid setting is reported as a configuration error; it
 does not silently select a different retriever.
 
+## Evaluation-informed application profile
+
+For a balanced local setup, retain the defaults shown above: `qwen3.5:9b` for
+plan generation, `hybrid` retrieval, `intfloat/multilingual-e5-small` with an
+index built from the current corpus, and `REPWISE_TOP_K=5`. In the 2026-11-02
+comparison, Gemma 4 12B + hybrid had a slightly higher average judge score but
+Qwen 3.5 9B was faster and won more valid pairwise judgments. BM25 is the
+recall-first alternative; hybrid ranked relevant evidence higher on average.
+
+These are balanced defaults, not fully tuned optima. The report did not compare
+embedding models, evidence counts, or RRF constants; keep the current `top_k`
+and RRF value rather than treating evaluation `Recall@10` as a production
+recommendation. Query expansion stays enabled by default, but the run's prose
+and JSON metadata disagree about whether it was enabled. See the
+[comparison analysis](evaluation/results_analysis_2026-11-02.md) before changing
+the model or retrieval profile.
+
 ## Evaluation settings
 
 | Variable | Default | Purpose |

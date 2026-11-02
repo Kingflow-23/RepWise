@@ -21,6 +21,7 @@ Pick the guide for the task you’re working on:
 
 - [Evaluation protocol](evaluation_protocol.md) — datasets, commands, metrics, and comparison limits.
 - [Metric choices](evaluation/metrics_choice.md) — what the reported scores mean.
+- [2026-11-02 results analysis](evaluation/results_analysis_2026-11-02.md) — measured trade-offs and recommended application settings.
 - [Red-team checks](evaluation/red_teaming.md) — safety test coverage and known gaps.
 
 The [project README](../README.md) is the short overview. Corpus files,
