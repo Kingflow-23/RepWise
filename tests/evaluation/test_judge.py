@@ -53,11 +53,11 @@ def test_ollama_quality_judge_validates_rubric_scores(monkeypatch):
     assert "retrieved_evidence" in judged_input
 
 
-def test_ollama_quality_judge_scores_no_rag_without_evidence_metric(monkeypatch):
-    """No-RAG judging should assess content without requiring citations."""
+def test_ollama_quality_judge_scores_no_rag_evidence_support(monkeypatch):
+    """No-RAG answers are scored for support against their empty evidence."""
     captured = {}
     payload = {
-        "scores": {name: 2 for name in QUALITY_DIMENSIONS},
+        "scores": {**{name: 2 for name in QUALITY_DIMENSIONS}, "evidence_support": 0},
         "rationale": "The answer meets the request and profile.",
     }
     fake_ollama = ModuleType("ollama")
@@ -77,13 +77,13 @@ def test_ollama_quality_judge_scores_no_rag_without_evidence_metric(monkeypatch)
 
     assert result == payload
     judged_input = json.loads(captured["messages"][1]["content"])
-    assert "evidence_support" not in judged_input["rubric"]
+    assert judged_input["rubric"]["evidence_support"]
+    assert judged_input["retrieved_evidence"] == ""
     assert "json_validity" not in judged_input["rubric"]
     assert "plan_schema_validity" not in judged_input["rubric"]
     assert "expected_plan_schema" not in judged_input
     assert (
-        "evidence_support"
-        not in captured["format"]["properties"]["scores"]["properties"]
+        "evidence_support" in captured["format"]["properties"]["scores"]["properties"]
     )
 
 
@@ -294,9 +294,40 @@ def test_judged_generation_records_raw_answer_and_judge_rationale():
         rag_enabled=True,
     )
 
-    assert result.metrics["answer_quality"] == Ratio(10, 10)
+    assert result.metrics["answer_quality"] == Ratio(12, 12)
+    assert result.metrics["evidence_support"] == Ratio(2, 2)
     assert result.extra["case_results"][0]["answer"] == "Raw text, not a plan object."
     assert result.extra["case_results"][0]["judge"] == evaluation
+
+
+def test_no_rag_evidence_support_reduces_answer_quality():
+    """Include the empty-context evidence score in no-RAG answer quality."""
+    case = GenerationCase(
+        id="G1",
+        request="Build strength",
+        expected_status=["ok"],
+        profile={},
+        notes="Test case.",
+    )
+
+    class FixedPlanner:
+        def __call__(self, _case):
+            return {"status": "ok", "answer": "A generated answer.", "evidence": ""}
+
+    class FixedJudge:
+        def score(self, *_args, **_kwargs):
+            return _judge_payload(evidence_support=0)
+
+    result = runner.evaluate_judged_generation(
+        [case],
+        FixedPlanner(),
+        FixedJudge(),
+        llm_mode="mocked",
+        rag_enabled=False,
+    )
+
+    assert result.metrics["answer_quality"] == Ratio(10, 12)
+    assert result.metrics["evidence_support"] == Ratio(0, 2)
 
 
 def test_judge_failure_does_not_count_as_zero_quality():

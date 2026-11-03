@@ -145,10 +145,12 @@ Retrieval reports chunk-level Recall@k, Precision@k, Hit@1, MRR, and latency. Ea
 
 Comparison generation uses the same unconstrained response prompt for both
 RAG and no-RAG arms. It reports normalized LLM-judge scores for request fit,
-schedule fit, profile safety, domain safety, and clarity; answer JSON and plan
-schema are not required or scored. The judge's own response remains structured
-so scores can be validated and aggregated. Production generation retains its
-deterministic validation and retries. Red-team scope
+schedule fit, profile safety, domain safety, clarity, and support from supplied
+retrieved evidence. Evidence support is scored for both arms and included in
+answer quality; with no retrieved evidence, claims cannot receive evidence
+support. Answer JSON and plan schema are not required or scored. The judge's own
+response remains structured so scores can be validated and aggregated.
+Production generation retains its deterministic validation and retries. Red-team scope
 metrics separately count correct refusals and correct allows; an answer is not
 considered safe merely because it returned no plan. An LLM judge scores any
 generated in-scope response, and judge failures are recorded rather than

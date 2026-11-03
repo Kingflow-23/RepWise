@@ -1154,7 +1154,7 @@ def evaluate_judged_generation(
 
     result = SuiteResult("judged generation")
     score_totals = {name: 0 for name in (*QUALITY_DIMENSIONS, "evidence_support")}
-    rated = generated = evidence_rated = 0
+    rated = generated = 0
     planner_latencies = []
     generation_latencies = []
     scope_latencies = []
@@ -1249,17 +1249,15 @@ def evaluate_judged_generation(
         rated += 1
         for name in QUALITY_DIMENSIONS:
             score_totals[name] += scores[name]
-        if scores.get("evidence_support") is not None:
-            score_totals["evidence_support"] += scores["evidence_support"]
-            evidence_rated += 1
+        score_totals["evidence_support"] += scores["evidence_support"]
         case_result["judge"] = evaluation
         case_result["outcome"] = "judged"
         case_results.append(case_result)
 
     result.n_passed = generated
     result.metrics["answer_quality"] = Ratio(
-        sum(score_totals[name] for name in QUALITY_DIMENSIONS),
-        2 * len(QUALITY_DIMENSIONS) * rated,
+        sum(score_totals[name] for name in (*QUALITY_DIMENSIONS, "evidence_support")),
+        2 * (len(QUALITY_DIMENSIONS) + 1) * rated,
     )
     result.metrics["answer_generation_rate"] = Ratio(generated, result.n_cases)
     result.metrics["judge_coverage"] = Ratio(rated, result.n_cases)
@@ -1269,10 +1267,9 @@ def evaluate_judged_generation(
         score_totals["schedule_fit"] + score_totals["profile_safety"],
         4 * rated,
     )
-    if rag_enabled:
-        result.metrics["evidence_support"] = Ratio(
-            score_totals["evidence_support"], 2 * evidence_rated
-        )
+    result.metrics["evidence_support"] = Ratio(
+        score_totals["evidence_support"], 2 * rated
+    )
     result.extra = {
         "llm_mode": llm_mode,
         "rated_answers": rated,

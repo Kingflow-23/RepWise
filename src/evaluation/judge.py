@@ -39,8 +39,10 @@ QUALITY_RUBRIC = {
         "2 = clear and actionable"
     ),
     "evidence_support": (
-        "0 = unsupported or fabricated claims/citations, 1 = mixed support, "
-        "2 = recommendations reasonably supported by supplied evidence"
+        "Score only support from the supplied retrieved evidence: 0 = claims are "
+        "unsupported or fabricated, 1 = claims are partly supported, "
+        "2 = recommendations are reasonably supported by the evidence. "
+        "When no evidence is supplied, claims cannot receive evidence support."
     ),
 }
 
@@ -72,9 +74,7 @@ class OllamaQualityJudge:
 
         if self._client is None:
             self._client = Client(host=self.base_url, timeout=300)
-        dimensions = list(QUALITY_DIMENSIONS)
-        if rag_enabled:
-            dimensions.append("evidence_support")
+        dimensions = [*QUALITY_DIMENSIONS, "evidence_support"]
         properties: dict[str, dict[str, Any]] = {
             key: {"type": "integer", "minimum": 0, "maximum": 2} for key in dimensions
         }
@@ -93,13 +93,11 @@ class OllamaQualityJudge:
             "additionalProperties": False,
         }
         rubric = dict(QUALITY_RUBRIC)
-        if not rag_enabled:
-            rubric.pop("evidence_support")
         user_content = json.dumps(
             {
                 "request": case,
                 "answer": answer,
-                "retrieved_evidence": evidence if rag_enabled else None,
+                "retrieved_evidence": evidence,
                 "rubric": rubric,
             },
             ensure_ascii=False,

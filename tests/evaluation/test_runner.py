@@ -1042,7 +1042,7 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
                 "answer_quality": Ratio(quality, 1),
                 "answer_generation_rate": Ratio(1, 1),
                 "judge_coverage": Ratio(1, 1),
-                **({"evidence_support": Ratio(0.7, 1)} if rag_enabled else {}),
+                "evidence_support": Ratio(0.7 if rag_enabled else 0, 1),
             },
             extra={
                 "generation_latency_ms_median": 1.0,
