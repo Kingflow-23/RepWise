@@ -1,8 +1,13 @@
 import json
+from io import BytesIO
 from pathlib import Path
 from typing import Any
+import wave
+
+import pytest
 
 from streamlit.testing.v1 import AppTest
+import streamlit as st
 
 APP_PATH = Path(__file__).resolve().parents[2] / "app" / "streamlit_app.py"
 
@@ -34,6 +39,142 @@ def set_signed_in_state(app: AppTest) -> None:
         "available_days": ["Monday", "Wednesday", "Friday"],
         "equipment": ["bodyweight"],
     }
+
+
+def fake_microphone(_label, *, key, **_kwargs):
+    """Supply a recording as if the browser microphone had returned WAV data."""
+    st.session_state[key] = BytesIO(b"microphone recording")
+    return st.session_state[key]
+
+
+def test_voice_fills_editable_draft_without_submitting(monkeypatch):
+    plan_requests = []
+    transcription_calls = []
+
+    def fake_request(method, url, **kwargs):
+        if url.endswith("/api/v1/health"):
+            return health_response()
+        if url.endswith("/api/v1/speech/transcribe"):
+            transcription_calls.append(kwargs)
+            assert kwargs["headers"]["Authorization"] == "Bearer test-token"
+            assert kwargs["headers"]["Content-Type"] == "audio/wav"
+            assert kwargs["data"] == b"microphone recording"
+            return FakeResponse({"text": "Je veux travailler les jambes."})
+        if method == "POST" and url.endswith("/plans"):
+            plan_requests.append(kwargs["json"])
+            return FakeResponse({"status": "out_of_scope", "message": "Test response"})
+        raise AssertionError(f"Unexpected API request: {method} {url}")
+
+    monkeypatch.setattr("streamlit.audio_input", fake_microphone)
+    monkeypatch.setattr("requests.request", fake_request)
+    app = AppTest.from_file(str(APP_PATH))
+    set_signed_in_state(app)
+    app.session_state["plan_history"] = []
+    app.run(timeout=20)
+    app.button(key="use-plan-recording").click().run(timeout=20)
+    assert not app.exception
+    assert app.text_input(key="plan-focus").value == "Je veux travailler les jambes."
+    assert plan_requests == []
+    app.text_input(key="plan-focus").set_value("An easier leg workout").run(timeout=20)
+    assert app.text_input(key="plan-focus").value == "An easier leg workout"
+    assert len(transcription_calls) == 1
+    assert plan_requests == []
+    app.form_submit_button[1].click().run(timeout=20)
+    assert plan_requests[0]["focus"] == "An easier leg workout"
+    assert len(transcription_calls) == 1
+
+
+def test_voice_failure_preserves_draft_and_can_retry(monkeypatch):
+    calls = []
+
+    def fake_request(method, url, **kwargs):
+        if url.endswith("/api/v1/health"):
+            return health_response()
+        if url.endswith("/api/v1/speech/transcribe"):
+            calls.append(url)
+            if len(calls) == 1:
+                return FakeResponse(
+                    {"detail": "Speech transcription is unavailable."}, status_code=503
+                )
+            return FakeResponse({"text": "A new request"})
+        raise AssertionError(f"Unexpected API request: {method} {url}")
+
+    monkeypatch.setattr("streamlit.audio_input", fake_microphone)
+    monkeypatch.setattr("requests.request", fake_request)
+    app = AppTest.from_file(str(APP_PATH))
+    set_signed_in_state(app)
+    app.session_state["plan_history"] = []
+    app.session_state["plan-focus"] = "My typed request"
+    app.run(timeout=20)
+    app.button(key="use-plan-recording").click().run(timeout=20)
+    assert app.text_input(key="plan-focus").value == "My typed request"
+    assert any("unavailable" in error.value for error in app.error)
+    app.button(key="use-plan-recording").click().run(timeout=20)
+    assert not app.exception
+    assert app.text_input(key="plan-focus").value == "A new request"
+    assert not app.error
+
+
+def test_long_transcription_requires_editing_before_generation(monkeypatch):
+    def fake_request(method, url, **kwargs):
+        if url.endswith("/api/v1/health"):
+            return health_response()
+        if url.endswith("/api/v1/speech/transcribe"):
+            return FakeResponse({"text": "a" * 301})
+        raise AssertionError(f"Unexpected API request: {method} {url}")
+
+    monkeypatch.setattr("streamlit.audio_input", fake_microphone)
+    monkeypatch.setattr("requests.request", fake_request)
+    app = AppTest.from_file(str(APP_PATH))
+    set_signed_in_state(app)
+    app.session_state["plan_history"] = []
+    app.run(timeout=20)
+    app.button(key="use-plan-recording").click().run(timeout=20)
+    assert len(app.text_input(key="plan-focus").value) == 301
+    app.form_submit_button[1].click().run(timeout=20)
+    assert any("300 characters" in error.value for error in app.error)
+    assert not app.exception
+
+
+def test_native_recording_preserves_draft_and_requires_explicit_transcription(
+    monkeypatch,
+):
+    calls = []
+    audio = BytesIO()
+    with wave.open(audio, "wb") as recording:
+        recording.setnchannels(1)
+        recording.setsampwidth(2)
+        recording.setframerate(16000)
+        recording.writeframes(b"\0" * 32000)
+
+    def fake_request(method, url, **kwargs):
+        if url.endswith("/api/v1/health"):
+            return health_response()
+        if url.endswith("/api/v1/speech/transcribe"):
+            calls.append(kwargs["data"])
+            return FakeResponse({"text": "A recorded request"})
+        raise AssertionError(f"Unexpected API request: {method} {url}")
+
+    monkeypatch.setattr("requests.request", fake_request)
+    app = AppTest.from_file(str(APP_PATH))
+    set_signed_in_state(app)
+    app.session_state["plan_history"] = []
+    app.run(timeout=20)
+    recorder = app.get("audio_input")[0]
+    if not hasattr(recorder, "set_value"):
+        pytest.skip("This Streamlit version does not support audio widgets in AppTest.")
+    assert recorder.sample_rate == 16000
+    assert app.button(key="use-plan-recording").disabled
+    app.text_input(key="plan-focus").set_value("Keep this typed draft").run(timeout=20)
+    app.get("audio_input")[0].set_value(
+        ("request.wav", audio.getvalue(), "audio/wav")
+    ).run(timeout=20)
+    assert app.text_input(key="plan-focus").value == "Keep this typed draft"
+    assert calls == []
+    app.button(key="use-plan-recording").click().run(timeout=20)
+    assert not app.exception
+    assert calls == [audio.getvalue()]
+    assert app.text_input(key="plan-focus").value == "A recorded request"
 
 
 def test_scope_refusal_shows_analysis_message_without_plan(monkeypatch: Any) -> None:

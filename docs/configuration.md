@@ -20,6 +20,7 @@ for your machine. Never commit `.env` or share `REPWISE_AUTH_SECRET`.
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Base URL for the local Ollama service. |
 | `OLLAMA_MODEL` | `qwen3.5:9b` | Ollama model used to generate workout plans. |
 | `OLLAMA_QUERY_EXPANSION_MODEL` | `qwen3.5:4b` | Ollama model used for request-scope screening and, when enabled, query rewriting. |
+| `REPWISE_SPEECH_MODEL` | `base` | Local multilingual faster-whisper model for microphone transcription. Loaded on first use, using CPU/int8. |
 
 `REPWISE_TOP_K` must be an integer. `REPWISE_QUERY_EXPANSION` accepts
 `true`, `false`, `1`, `0`, `yes`, or `no` (case-insensitive). An unsupported

@@ -26,6 +26,7 @@ class AppConfig:
         embedding_index: Path to the saved semantic index.
         query_expansion: Whether to translate and expand queries in French.
         auth_secret: Secret used to configure authentication.
+        speech_model: Local multilingual faster-whisper model for microphone input.
     """
 
     database_path: str = "data/repwise.sqlite3"
@@ -41,6 +42,7 @@ class AppConfig:
     embedding_index: str = "data/corpus/index/semantic.npz"
     query_expansion: bool = True
     auth_secret: str = ""
+    speech_model: str = "base"
 
     @classmethod
     def from_environment(cls) -> "AppConfig":
@@ -85,4 +87,5 @@ class AppConfig:
             ),
             query_expansion=query_expansion in {"true", "1", "yes"},
             auth_secret=os.getenv("REPWISE_AUTH_SECRET", ""),
+            speech_model=os.getenv("REPWISE_SPEECH_MODEL", cls.speech_model),
         )

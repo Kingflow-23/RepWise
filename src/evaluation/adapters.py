@@ -676,7 +676,7 @@ def build_benchmark_planner(
     from config.config import AppConfig
     from ..llm.ollama import OllamaGenerator
     from ..rag.context import make_highlight_query, make_query, select_evidence
-    from ..rag.prompt import make_benchmark_prompts, plan_response_schema
+    from ..rag.prompt import make_benchmark_prompts
     from ..retrieval.query_expansion import ScopeRefusalError
     from ..schemas.models import PlanRequest, RetrievedChunk, UserProfile
 
@@ -772,7 +772,6 @@ def build_benchmark_planner(
             "available_source_evidence": {
                 source.source_id: source.evidence_text or "" for source in sources
             },
-            "expected_plan_schema": plan_response_schema(request),
             "rag_enabled": use_rag,
             "scope": analysis.scope if analysis is not None else "unchecked",
             "evidence": evidence,

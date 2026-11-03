@@ -341,10 +341,11 @@ def render_comparison(
         "## Stage 1: choose the model (both with RAG)",
         "",
         "Every raw answer is scored by the configured local judge. No production "
-        "plan-schema or deterministic plan validator is applied. Model choice uses "
-        "the shared answer-quality score; missing answers score zero, and judge "
-        "coverage is shown so model or judge errors stay visible. Scores are "
-        "normalized to 0-1; the displayed numerator/denominator are earned/max points.",
+        "plan-schema or deterministic plan validator is applied. Answer quality "
+        "uses judge-scored answers only; answer-generation rate and judge coverage "
+        "are reported separately so generation and judge failures are not mistaken "
+        "for low-quality answers. Scores are normalized to 0-1; the displayed "
+        "numerator/denominator are earned/max points.",
         "",
         "| Rank | Model + RAG | Answer quality ↑ | Answer generated ↑ | Judge coverage ↑ | Model median ↓ |",
         "|---:|---|---:|---:|---:|---:|",
@@ -428,16 +429,18 @@ def render_comparison(
         f"Median generation latency: RAG "
         f"{rag_latency_text}; no-RAG {no_rag_latency_text}.",
         "",
-        "| System | Answer quality | Answer generated | Request fit | Schedule/profile safety |",
-        "|---|---:|---:|---:|---:|",
+        "| System | Answer quality | Answer generated | Judge coverage | Request fit | Schedule/profile safety |",
+        "|---|---:|---:|---:|---:|---:|",
         f"| {meta['best_rag_setup']['generation_model']} + RAG | "
         f"{judged_metric(best_rag_result, 'answer_quality')} | "
         f"{judged_metric(best_rag_result, 'answer_generation_rate')} | "
+        f"{judged_metric(best_rag_result, 'judge_coverage')} | "
         f"{judged_metric(best_rag_result, 'request_fit')} | "
         f"{judged_metric(best_rag_result, 'schedule_profile_safety')} |",
         f"| {meta['best_rag_setup']['generation_model']} without RAG | "
         f"{judged_metric(baseline, 'answer_quality')} | "
         f"{judged_metric(baseline, 'answer_generation_rate')} | "
+        f"{judged_metric(baseline, 'judge_coverage')} | "
         f"{judged_metric(baseline, 'request_fit')} | "
         f"{judged_metric(baseline, 'schedule_profile_safety')} |",
         "",
@@ -464,3 +467,45 @@ def render_comparison(
         "",
     ]
     return "\n".join(lines)
+
+
+def render_rag_vs_no_rag(meta: dict, generation: dict) -> str:
+    """Render the focused, fixed-model RAG ablation report."""
+    rag = generation[meta["rag_arm"]]
+    no_rag = generation[meta["no_rag_arm"]]
+
+    def metric(result: Any, name: str) -> str:
+        ratio = result.metrics.get(name)
+        return ratio.fmt() if ratio is not None else "N/A (0/0)"
+
+    def latency(result: Any) -> str:
+        value = result.extra.get("generation_latency_ms_median")
+        return f"{value:.1f} ms" if value is not None else "N/A"
+
+    return "\n".join(
+        [
+            "# RepWise RAG vs no-RAG benchmark",
+            "",
+            f"- **Run:** {meta['timestamp']}{' · ' + meta['label'] if meta.get('label') else ''}",
+            f"- **Generation model:** `{meta['generation_model']}`",
+            f"- **Answer judge:** `{meta['judge_model']}`",
+            f"- **RAG retriever:** `{meta['selected_retriever']}`",
+            f"- **Corpus:** {meta['n_corpus_chunks']} chunks from `{meta['chunks_dir']}`",
+            f"- **Generation cases:** {len(meta['generation_case_ids'])} identical cases per arm",
+            f"- **Query expansion in RAG arm:** `{meta['query_expansion']}`",
+            "",
+            "Both arms use the same model, unconstrained response prompt, and nominal cases. The no-RAG arm receives no retrieved evidence. Answer JSON and plan-schema formatting are not required or scored.",
+            "",
+            "| System | Answer quality | Answer generated | Judge coverage | Request fit | Schedule/profile safety | Median generation latency |",
+            "|---|---:|---:|---:|---:|---:|---:|",
+            f"| `{meta['rag_arm']}` | {metric(rag, 'answer_quality')} | {metric(rag, 'answer_generation_rate')} | {metric(rag, 'judge_coverage')} | {metric(rag, 'request_fit')} | {metric(rag, 'schedule_profile_safety')} | {latency(rag)} |",
+            f"| `{meta['no_rag_arm']}` | {metric(no_rag, 'answer_quality')} | {metric(no_rag, 'answer_generation_rate')} | {metric(no_rag, 'judge_coverage')} | {metric(no_rag, 'request_fit')} | {metric(no_rag, 'schedule_profile_safety')} | {latency(no_rag)} |",
+            "",
+            "## Interpretation",
+            "",
+            "- Scores are from the configured local LLM judge; raw answers and per-dimension scores are retained in `results.json`.",
+            "- This is a fixed-dataset ablation, not a significance test or a complete safety evaluation.",
+            "- No production plan validation or retry is applied to either arm.",
+            "",
+        ]
+    )

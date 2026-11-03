@@ -713,9 +713,17 @@ def parse_args(argv=None):
         "--mode",
         "--suite",
         dest="suite",
-        choices=["retrieval", "generation", "red-team", "smoke", "all", "compare"],
+        choices=[
+            "retrieval",
+            "generation",
+            "red-team",
+            "smoke",
+            "all",
+            "compare",
+            "rag-vs-no-rag",
+        ],
         default="all",
-        help="evaluate retrieval, generation, smoke, or both (default: all)",
+        help="evaluate retrieval/generation suites, full comparison, or a single-model RAG ablation (default: all)",
     )
     p.add_argument(
         "--label", default="", help="optional name added to the report folder"
@@ -730,12 +738,12 @@ def parse_args(argv=None):
         "--llm",
         choices=["mock", "ollama", "compare"],
         default="mock",
-        help="mock, one real Ollama RAG run, or the two-model RAG/no-RAG comparison",
+        help="mock, real Ollama generation, or a comparison workflow",
     )
     p.add_argument(
         "--model-a",
         default=None,
-        help="generation model for smoke mode; model A for compare mode",
+        help="generation model for smoke/RAG ablation; model A for compare mode",
     )
     p.add_argument("--model-b", default=None, help="Ollama model B for compare mode")
     return p.parse_args(argv)
@@ -1146,7 +1154,7 @@ def evaluate_judged_generation(
 
     result = SuiteResult("judged generation")
     score_totals = {name: 0 for name in (*QUALITY_DIMENSIONS, "evidence_support")}
-    rated = generated = 0
+    rated = generated = evidence_rated = 0
     planner_latencies = []
     generation_latencies = []
     scope_latencies = []
@@ -1187,14 +1195,13 @@ def evaluate_judged_generation(
         generated += int(output.get("status") == "ok" and bool(answer.strip()))
         case_result = {
             "case_id": case.id,
-            "outcome": "judged" if output.get("status") == "ok" else "no_answer",
+            "outcome": "generated" if output.get("status") == "ok" else "no_answer",
             "status": output.get("status"),
             "message": output.get("message", ""),
             "answer": answer,
             "scope": output.get("scope"),
             "retrieved_ids": output.get("retrieved_ids", []),
             "evidence": str(output.get("evidence") or ""),
-            "expected_plan_schema": output.get("expected_plan_schema"),
             "judge": None,
             "scope_analysis_latency_ms": output.get("scope_analysis_latency_ms"),
             "retrieval_latency_ms": output.get("retrieval_latency_ms"),
@@ -1222,7 +1229,6 @@ def evaluate_judged_generation(
                 answer,
                 str(output.get("evidence") or ""),
                 rag_enabled=rag_enabled,
-                expected_plan_schema=output.get("expected_plan_schema"),
             )
         except Exception as error:
             result.failures.append(
@@ -1234,6 +1240,7 @@ def evaluate_judged_generation(
                 )
             )
             case_result["judge_error"] = f"{type(error).__name__}: {error}"
+            case_result["outcome"] = "judge_error"
             case_results.append(case_result)
             judge_latencies.append((time.perf_counter() - judge_started) * 1000)
             continue
@@ -1244,6 +1251,7 @@ def evaluate_judged_generation(
             score_totals[name] += scores[name]
         if scores.get("evidence_support") is not None:
             score_totals["evidence_support"] += scores["evidence_support"]
+            evidence_rated += 1
         case_result["judge"] = evaluation
         case_result["outcome"] = "judged"
         case_results.append(case_result)
@@ -1251,19 +1259,19 @@ def evaluate_judged_generation(
     result.n_passed = generated
     result.metrics["answer_quality"] = Ratio(
         sum(score_totals[name] for name in QUALITY_DIMENSIONS),
-        2 * len(QUALITY_DIMENSIONS) * result.n_cases,
+        2 * len(QUALITY_DIMENSIONS) * rated,
     )
     result.metrics["answer_generation_rate"] = Ratio(generated, result.n_cases)
     result.metrics["judge_coverage"] = Ratio(rated, result.n_cases)
     for name in QUALITY_DIMENSIONS:
-        result.metrics[name] = Ratio(score_totals[name], 2 * result.n_cases)
+        result.metrics[name] = Ratio(score_totals[name], 2 * rated)
     result.metrics["schedule_profile_safety"] = Ratio(
         score_totals["schedule_fit"] + score_totals["profile_safety"],
-        4 * result.n_cases,
+        4 * rated,
     )
     if rag_enabled:
         result.metrics["evidence_support"] = Ratio(
-            score_totals["evidence_support"], 2 * result.n_cases
+            score_totals["evidence_support"], 2 * evidence_rated
         )
     result.extra = {
         "llm_mode": llm_mode,
@@ -1319,10 +1327,6 @@ def compare_generation_answers(cases, result_a, result_b, judge, arm_a, arm_b):
                 str(case_a.get("evidence") or ""),
                 str(case_b.get("answer") or ""),
                 str(case_b.get("evidence") or ""),
-                expected_plan_schema=(
-                    case_a.get("expected_plan_schema")
-                    or case_b.get("expected_plan_schema")
-                ),
             )
             winner = evaluation["winner"]
             comparison["wins"][
@@ -1462,7 +1466,6 @@ def evaluate_red_team_scope(cases, planner, judge, *, llm_mode: str) -> SuiteRes
                     str(output["answer"]),
                     str(output.get("evidence") or ""),
                     rag_enabled=bool(output.get("rag_enabled")),
-                    expected_plan_schema=output.get("expected_plan_schema"),
                 )
                 scores = evaluation["scores"]
                 if expected_scope == "in_scope":
@@ -1794,6 +1797,111 @@ def run_comparison(
     }
 
 
+def run_rag_vs_no_rag(
+    requested_retriever: str | None = None,
+    model: str | None = None,
+    label: str = "",
+) -> dict:
+    """Compare one Ollama model with identical RAG and no-RAG arms.
+
+    Unlike :func:`run_comparison`, this focused benchmark neither ranks
+    retrievers nor selects between generation models.  It isolates the effect
+    of retrieved context by evaluating the same nominal cases with one fixed
+    model and retrieval strategy.
+    """
+    settings = AppConfig.from_environment()
+    model = model or settings.ollama_model
+    retriever_name = requested_retriever or settings.retrieval_strategy
+    if retriever_name not in {"bm25", "semantic", "hybrid"}:
+        raise ValueError(f"Unknown RAG retriever: {retriever_name}")
+
+    chunks = adapters.load_chunks(config.CHUNKS_DIR)
+    generation_cases = datasets.load_generation_cases()
+    retriever = adapters.build_retriever(
+        retriever_name,
+        config.CHUNKS_DIR,
+        query_expansion=False,
+        enforce_scope_gate=False,
+    )
+    judge = OllamaQualityJudge(settings.ollama_judge_model, settings.ollama_url)
+    rag_arm = f"{model} + RAG"
+    no_rag_arm = f"{model} without RAG"
+    rag_planner = adapters.build_benchmark_planner(
+        config.CHUNKS_DIR,
+        model_name=model,
+        retriever_name=retriever_name,
+        retriever=retriever,
+        scope_analyzer=None,
+        use_rag=True,
+        use_query_expansion=False,
+    )
+    no_rag_planner = adapters.build_benchmark_planner(
+        config.CHUNKS_DIR,
+        model_name=model,
+        retriever_name=retriever_name,
+        retriever=None,
+        scope_analyzer=None,
+        use_rag=False,
+        use_query_expansion=False,
+    )
+    generation_results = {
+        rag_arm: evaluate_judged_generation(
+            generation_cases,
+            rag_planner,
+            judge,
+            llm_mode="real Ollama; raw answers judged by Ollama",
+            rag_enabled=True,
+        ),
+        no_rag_arm: evaluate_judged_generation(
+            generation_cases,
+            no_rag_planner,
+            judge,
+            llm_mode="real Ollama; raw answers judged by Ollama",
+            rag_enabled=False,
+        ),
+    }
+    meta = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "suite": "single-model RAG versus no-RAG comparison",
+        "label": label,
+        "generation_model": model,
+        "selected_retriever": retriever_name,
+        "judge_model": settings.ollama_judge_model,
+        "query_expansion": False,
+        "query_expansion_model": None,
+        "chunks_dir": str(config.CHUNKS_DIR),
+        "n_corpus_chunks": len(chunks),
+        "embedding_model": settings.embedding_model,
+        "generation_case_ids": [case.id for case in generation_cases],
+        "generation_judging": True,
+        "generation_validation": "raw model text; no production plan validation",
+        "rag_arm": rag_arm,
+        "no_rag_arm": no_rag_arm,
+    }
+    results = {
+        f"generation/{name}": result for name, result in generation_results.items()
+    }
+    markdown = report.render_rag_vs_no_rag(meta, generation_results)
+    run_dir = (
+        config.OUT_DIR / f"{datetime.now():%Y%m%d-%H%M%S}{'_' + label if label else ''}"
+    )
+    run_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "meta": meta,
+        "suites": {name: _serialize_result(result) for name, result in results.items()},
+    }
+    (run_dir / "results.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (run_dir / "report.md").write_text(markdown, encoding="utf-8")
+    return {
+        "run_dir": run_dir,
+        "payload": payload,
+        "results": results,
+        "report": markdown,
+    }
+
+
 def main(argv=None) -> int:
     """Run the selected benchmark mode and print its concise report.
 
@@ -1824,6 +1932,14 @@ def main(argv=None) -> int:
     )
     if args.suite == "smoke" and args.llm != "ollama":
         raise ValueError("Smoke mode requires --llm ollama for real model checks.")
+    if args.suite == "rag-vs-no-rag" and args.llm != "ollama":
+        raise ValueError("RAG-vs-no-RAG mode requires --llm ollama.")
+    if args.suite == "rag-vs-no-rag":
+        run = run_rag_vs_no_rag(args.retriever, args.model_a, args.label)
+        print(run["report"])
+        print(f"\nFull report: {run['run_dir'] / 'report.md'}")
+        logger.info("RAG-vs-no-RAG comparison completed output_dir=%s", run["run_dir"])
+        return 0
     if args.suite == "compare" or args.llm == "compare":
         run = run_comparison(
             args.retriever,

@@ -1051,7 +1051,6 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
                         "case_id": "G1",
                         "answer": planner.model_name,
                         "evidence": "shared evidence",
-                        "expected_plan_schema": {"type": "object"},
                     }
                 ],
             },
