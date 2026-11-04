@@ -1,6 +1,7 @@
 {
   "tools": [
     {
+<<<<<<< HEAD
       "name": "generate_workout_plan",
       "type": "write",
       "description": "Generate and save a validated one-week workout plan from the current user's saved profile and retrieved fitness evidence. Account identity is supplied by the authenticated backend.",
@@ -58,6 +59,8 @@
       }
     },
     {
+=======
+>>>>>>> 806323d448c9925b1ce6894d61e0227dc9a51470
       "name": "search_documents",
       "type": "read",
       "description": "Search the curated fitness knowledge base for evidence about exercises, muscle groups, workout programming, training volume, progression, and recovery.",
@@ -112,10 +115,14 @@
             "minimum": 1
           }
         },
+<<<<<<< HEAD
         "required": [
           "location",
           "place_type"
         ]
+=======
+        "required": ["location", "place_type"]
+>>>>>>> 806323d448c9925b1ce6894d61e0227dc9a51470
       }
     },
     {
@@ -152,9 +159,13 @@
             "description": "Days when the user is available to train. If omitted, use the user's timetable."
           }
         },
+<<<<<<< HEAD
         "required": [
           "session_duration_minutes"
         ]
+=======
+        "required": ["session_duration_minutes"]
+>>>>>>> 806323d448c9925b1ce6894d61e0227dc9a51470
       }
     }
   ]
