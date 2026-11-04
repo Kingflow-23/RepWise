@@ -1,0 +1,97 @@
+{
+  "tools": [
+    {
+      "name": "search_documents",
+      "type": "read",
+      "description": "Search the curated fitness knowledge base for evidence about exercises, muscle groups, workout programming, training volume, progression, and recovery.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "The fitness topic or question to search for."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Maximum number of relevant documents to retrieve.",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "find_nearby_places",
+      "type": "read",
+      "description": "Find nearby gyms, sports equipment stores, or supplement stores based on the user's location. Return available place details and distances.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string",
+            "description": "The user's location, address, or postcode."
+          },
+          "place_type": {
+            "type": "string",
+            "enum": [
+              "gym",
+              "sports_equipment_store",
+              "supplement_store"
+            ],
+            "description": "The type of place to search for."
+          },
+          "search_term": {
+            "type": "string",
+            "description": "Optional name or specific item to search for."
+          },
+          "max_distance_km": {
+            "type": "number",
+            "description": "Maximum search radius in kilometres.",
+            "default": 10,
+            "minimum": 1
+          }
+        },
+        "required": ["location", "place_type"]
+      }
+    },
+    {
+      "name": "schedule_workout_plan",
+      "type": "write",
+      "description": "Analyse the user's timetable and fitness plan, propose suitable training days and times, and save the approved sessions to the user's workout schedule. Workout plan generation is handled by a separate tool.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "plan_metadata": {
+            "type": "string",
+            "description": "Information about the user's existing fitness goal and workout plan."
+          },
+          "session_duration_minutes": {
+            "type": "integer",
+            "description": "Maximum preferred duration of each workout session.",
+            "minimum": 1,
+            "maximum": 300
+          },
+          "availability": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday"
+              ]
+            },
+            "description": "Days when the user is available to train. If omitted, use the user's timetable."
+          }
+        },
+        "required": ["session_duration_minutes"]
+      }
+    }
+  ]
+}
