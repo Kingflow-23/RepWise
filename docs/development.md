@@ -41,6 +41,8 @@ contract.
 | [`src/api/main.py`](../src/api/main.py) | FastAPI app construction, authentication dependencies, health check, and account-scoped routes. |
 | [`src/api/auth.py`](../src/api/auth.py) | Password hashing and signed access-token helpers. |
 | [`src/db/repository.py`](../src/db/repository.py) | SQLite schema, ownership-scoped account/profile/plan operations, feedback persistence, and plan adaptation updates. |
+| [`agentic/tools.py`](../agentic/tools.py) | Session 2 profile/timetable reads and isolated synthetic feedback saved through `StudentRepository`. |
+| [`agentic/mcp_server.py`](../agentic/mcp_server.py) | FastMCP stdio server exposing the Session 2 tools. |
 | [`src/schemas/models.py`](../src/schemas/models.py) | Pydantic contracts shared by the API, generation pipeline, retrieval, and persistence. |
 | [`src/observability.py`](../src/observability.py) | Shared logging setup, rotating per-process logs, and request identifiers. |
 

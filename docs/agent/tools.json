@@ -1,10 +1,9 @@
 {
   "tools": [
     {
-<<<<<<< HEAD
       "name": "generate_workout_plan",
       "type": "write",
-      "description": "Generate and save a validated one-week workout plan from the current user's saved profile and retrieved fitness evidence. Account identity is supplied by the authenticated backend.",
+      "description": "Generate and save a validated one-week workout plan from the authenticated user's saved profile and retrieved fitness evidence.",
       "parameters": {
         "additionalProperties": false,
         "description": "Request-specific focus and schedule, separate from a saved profile.\n\n``workouts_per_week`` may be omitted to use the profile-based default.\n``extra_constraints`` carries additional natural-language requirements\nwithout expanding the fixed profile schema for each new request.\n``refinement_instructions`` tells the generator how to adapt the latest\nsaved plan, when one exists.",
@@ -59,113 +58,82 @@
       }
     },
     {
-=======
->>>>>>> 806323d448c9925b1ce6894d61e0227dc9a51470
-      "name": "search_documents",
+      "name": "get_user_profile",
       "type": "read",
-      "description": "Search the curated fitness knowledge base for evidence about exercises, muscle groups, workout programming, training volume, progression, and recovery.",
+      "description": "Read a user's experience, goal, available_days, session_minutes, equipment, and preferences.",
       "parameters": {
         "type": "object",
+        "additionalProperties": false,
         "properties": {
-          "query": {
-            "type": "string",
-            "description": "The fitness topic or question to search for."
-          },
-          "max_results": {
-            "type": "integer",
-            "description": "Maximum number of relevant documents to retrieve.",
-            "default": 5,
-            "minimum": 1,
-            "maximum": 10
+          "user_id": {
+            "description": "Account ID: the API's user_id / student_id, e.g. demo_user.",
+            "minLength": 1,
+            "type": "string"
           }
         },
         "required": [
-          "query"
+          "user_id"
         ]
       }
     },
     {
-      "name": "find_nearby_places",
+      "name": "get_timetable",
       "type": "read",
-      "description": "Find nearby gyms, sports equipment stores, or supplement stores based on the user's location. Return available place details and distances.",
+      "description": "Read a user's weekly availability and planned workouts, each with its workout_id and saved feedback.",
       "parameters": {
         "type": "object",
+        "additionalProperties": false,
         "properties": {
-          "location": {
-            "type": "string",
-            "description": "The user's location, address, or postcode."
-          },
-          "place_type": {
-            "type": "string",
-            "enum": [
-              "gym",
-              "sports_equipment_store",
-              "supplement_store"
-            ],
-            "description": "The type of place to search for."
-          },
-          "search_term": {
-            "type": "string",
-            "description": "Optional name or specific item to search for."
-          },
-          "max_distance_km": {
-            "type": "number",
-            "description": "Maximum search radius in kilometres.",
-            "default": 10,
-            "minimum": 1
+          "user_id": {
+            "description": "Account ID: the API's user_id / student_id, e.g. demo_user.",
+            "minLength": 1,
+            "type": "string"
           }
         },
-<<<<<<< HEAD
         "required": [
-          "location",
-          "place_type"
+          "user_id"
         ]
-=======
-        "required": ["location", "place_type"]
->>>>>>> 806323d448c9925b1ce6894d61e0227dc9a51470
       }
     },
     {
-      "name": "schedule_workout_plan",
+      "name": "save_workout_feedback",
       "type": "write",
-      "description": "Analyse the user's timetable and fitness plan, propose suitable training days and times, and save the approved sessions to the user's workout schedule. Workout plan generation is handled by a separate tool.",
+      "description": "Save feedback for a completed workout. Call only when the user explicitly asks to log it.",
       "parameters": {
         "type": "object",
+        "additionalProperties": false,
         "properties": {
-          "plan_metadata": {
-            "type": "string",
-            "description": "Information about the user's existing fitness goal and workout plan."
+          "user_id": {
+            "description": "Account ID: the API's user_id / student_id, e.g. demo_user.",
+            "minLength": 1,
+            "type": "string"
           },
-          "session_duration_minutes": {
-            "type": "integer",
-            "description": "Maximum preferred duration of each workout session.",
-            "minimum": 1,
-            "maximum": 300
+          "workout_id": {
+            "description": "A workout_id returned by get_timetable.",
+            "minLength": 1,
+            "type": "string"
           },
-          "availability": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "monday",
-                "tuesday",
-                "wednesday",
-                "thursday",
-                "friday",
-                "saturday",
-                "sunday"
-              ]
-            },
-            "description": "Days when the user is available to train. If omitted, use the user's timetable."
+          "difficulty": {
+            "description": "How the workout felt. Stored as the API values slightly_too_easy, just_right, and slightly_too_hard respectively.",
+            "enum": [
+              "easy",
+              "moderate",
+              "hard"
+            ],
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "description": "Optional user comment, stored as the API's comment field.",
+            "maxLength": 500,
+            "type": "string"
           }
         },
-<<<<<<< HEAD
         "required": [
-          "session_duration_minutes"
+          "user_id",
+          "workout_id",
+          "difficulty"
         ]
-=======
-        "required": ["session_duration_minutes"]
->>>>>>> 806323d448c9925b1ce6894d61e0227dc9a51470
       }
     }
   ]

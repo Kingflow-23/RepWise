@@ -1,0 +1,115 @@
+{
+  "notice": "SYNTHETIC DEMO DATA for the Session 2 course tools. Not a real person or account. Each user follows src/schemas/models.py: profile is a UserProfile, plan_options is PlanOptions, plan is a TrainingPlan.",
+  "users": [
+    {
+      "user_id": "demo_user",
+      "full_name": "Demo User (synthetic)",
+      "profile": {
+        "experience": "beginner",
+        "goal": "Build general strength",
+        "available_days": ["Monday", "Wednesday", "Friday"],
+        "session_minutes": 45,
+        "equipment": ["dumbbells", "bodyweight"],
+        "preferences": "Prefers short rests and simple movements."
+      },
+      "plan_id": "demo_plan",
+      "plan_options": {
+        "focus": "General strength for a beginner",
+        "workouts_per_week": 3
+      },
+      "plan": {
+        "title": "Beginner strength week (synthetic)",
+        "summary": "A synthetic one-week plan used to demonstrate the agent tools.",
+        "weeks": [
+          {
+            "number": 1,
+            "objective": "Practise the main movement patterns with light loads.",
+            "workouts": [
+              {
+                "day": "Monday",
+                "focus": "Lower body strength",
+                "estimated_minutes": 40,
+                "exercises": [
+                  {
+                    "name": "Goblet squat",
+                    "sets": 3,
+                    "repetitions": "8-10",
+                    "rest_seconds": 90,
+                    "estimated_minutes": 15,
+                    "coaching_note": "Keep the dumbbell close to your chest.",
+                    "equipment": ["dumbbells"]
+                  },
+                  {
+                    "name": "Reverse lunge",
+                    "sets": 3,
+                    "repetitions": "8 per leg",
+                    "rest_seconds": 60,
+                    "estimated_minutes": 15,
+                    "coaching_note": "Step back far enough to keep your balance.",
+                    "equipment": ["bodyweight"]
+                  }
+                ]
+              },
+              {
+                "day": "Wednesday",
+                "focus": "Upper body strength",
+                "estimated_minutes": 40,
+                "exercises": [
+                  {
+                    "name": "Push-up",
+                    "sets": 3,
+                    "repetitions": "6-10",
+                    "rest_seconds": 60,
+                    "estimated_minutes": 12,
+                    "coaching_note": "Raise your hands on a bench if needed.",
+                    "equipment": ["bodyweight"]
+                  },
+                  {
+                    "name": "Dumbbell row",
+                    "sets": 3,
+                    "repetitions": "10 per arm",
+                    "rest_seconds": 60,
+                    "estimated_minutes": 15,
+                    "coaching_note": "Pull your elbow toward your hip.",
+                    "equipment": ["dumbbells"]
+                  }
+                ]
+              },
+              {
+                "day": "Friday",
+                "focus": "Full body basics",
+                "estimated_minutes": 35,
+                "exercises": [
+                  {
+                    "name": "Dumbbell deadlift",
+                    "sets": 3,
+                    "repetitions": "8-10",
+                    "rest_seconds": 90,
+                    "estimated_minutes": 15,
+                    "coaching_note": "Hinge at the hips and keep your back flat.",
+                    "equipment": ["dumbbells"]
+                  },
+                  {
+                    "name": "Plank",
+                    "sets": 3,
+                    "repetitions": "20-30 seconds",
+                    "rest_seconds": 45,
+                    "estimated_minutes": 8,
+                    "coaching_note": "Keep a straight line from head to heels.",
+                    "equipment": ["bodyweight"]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "safety_note": "Stop if you feel pain and speak to a qualified professional."
+      },
+      "workouts": [
+        {"workout_id": "leg_day", "week_number": 1, "workout_index": 0},
+        {"workout_id": "upper_day", "week_number": 1, "workout_index": 1},
+        {"workout_id": "full_body_day", "week_number": 1, "workout_index": 2}
+      ]
+    }
+  ]
+}

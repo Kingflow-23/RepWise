@@ -1,0 +1,80 @@
+{
+  "tools": [
+    {
+      "name": "get_user_profile",
+      "description": "Read a user's experience, goal, available_days, session_minutes, equipment, and preferences.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "description": "Account ID: the API's user_id / student_id, e.g. demo_user.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ]
+      }
+    },
+    {
+      "name": "get_timetable",
+      "description": "Read a user's weekly availability and planned workouts, each with its workout_id and saved feedback.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "description": "Account ID: the API's user_id / student_id, e.g. demo_user.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ]
+      }
+    },
+    {
+      "name": "save_workout_feedback",
+      "description": "Save feedback for a completed workout. Call only when the user explicitly asks to log it.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "description": "Account ID: the API's user_id / student_id, e.g. demo_user.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "workout_id": {
+            "description": "A workout_id returned by get_timetable.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "difficulty": {
+            "description": "How the workout felt. Stored as the API values slightly_too_easy, just_right, and slightly_too_hard respectively.",
+            "enum": [
+              "easy",
+              "moderate",
+              "hard"
+            ],
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "description": "Optional user comment, stored as the API's comment field.",
+            "maxLength": 500,
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "workout_id",
+          "difficulty"
+        ]
+      }
+    }
+  ]
+}

@@ -16,6 +16,7 @@ Pick the guide for the task you’re working on:
 - [Generation and validation](generation/generation.md) — prompts, evidence, plan checks, and limits.
 - [API, accounts, and database](generation/api_and_database.md) — routes, authentication, SQLite ownership, and workout feedback.
 - [Retrieval](retrieval/hybrid_retrieval.md) — BM25, semantic search, hybrid fusion, and index maintenance.
+- [Session 2 agent tools](agentic/README.md) — the three local tools, MCP server, and JSON schemas.
 
 ## Evaluate changes
 

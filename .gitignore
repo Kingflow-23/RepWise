@@ -3,6 +3,7 @@ GenAI_project_starter
 
 # Environment files
 .env
+.venv
 
 # Corpus
 /corpus/
@@ -30,6 +31,12 @@ __pycache__/
 
 # Local demo database
 data/*.sqlite3
+data/agentic/
+data/agentic_data.json
+.agentic-demo/
+.agentic-notebook-data/
+.agentic-test-data/
+.agentic-deps/
 
 # Runtime application logs
 logs/
