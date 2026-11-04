@@ -47,7 +47,6 @@ from ..schemas.models import (
     AccountCredentials,
     PlanOptions,
     PlanRequest,
-    PlanResult,
     TrainingPlan,
     UserProfile,
     WorkoutFeedbackRequest,
@@ -58,6 +57,7 @@ from ..speech import (
     WhisperTranscriber,
     validate_recording,
 )
+from ..tools.generate_workout_plan import generate_workout_plan
 
 logger = logging.getLogger(__name__)
 
@@ -471,37 +471,23 @@ def create_app(
                 or 503 when retrieval fails.
         """
         check_owner(student_id, user_id)
-        profile = repository.get_profile(student_id)
-        if profile is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Save the student profile before creating a plan",
-            )
-        if options.workouts_per_week is not None and options.workouts_per_week > len(
-            profile.available_days
-        ):
-            raise HTTPException(
-                status_code=422,
-                detail="workouts_per_week cannot exceed the days in the saved profile",
-            )
-        request = PlanRequest(profile=profile, **options.model_dump())
-        logger.info(
-            "Plan request accepted weeks=%s workouts_per_week=%s",
-            request.weeks,
-            request.target_workouts_per_week,
+        result = generate_workout_plan(
+            options, student_id=student_id, repository=repository, pipeline=pipeline,
         )
-        previous_plan = repository.get_latest_plan(student_id)
-        result: PlanResult = pipeline.create_plan(request, previous_plan=previous_plan)
+        if result.status == "missing_profile":
+            raise HTTPException(status_code=404, detail=result.message)
+        if result.status == "invalid_request":
+            raise HTTPException(status_code=422, detail=result.message)
+        payload = result.model_dump(exclude={"plan_id"})
         if result.status == "completed":
-            plan_id = repository.save_plan(student_id, request, result)
             logger.info("Plan generated and saved")
-            return {"plan_id": plan_id, **result.model_dump()}
+            return {"plan_id": result.plan_id, **payload}
         if result.status == "out_of_scope":
             logger.info("Plan request declined by scope gate")
-            return result.model_dump()
+            return payload
         logger.warning("Plan request ended status=%s", result.status)
         status_code = 503 if result.status == "retrieval_error" else 422
-        raise HTTPException(status_code=status_code, detail=result.model_dump())
+        raise HTTPException(status_code=status_code, detail=payload)
 
     @app.get("/api/v1/students/{student_id}/plans")
     def list_plans(
