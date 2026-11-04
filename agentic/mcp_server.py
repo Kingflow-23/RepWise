@@ -3,70 +3,70 @@
 Run from the repository root with ``python -m agentic.mcp_server``.
 """
 
-import sys
-from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastmcp import FastMCP
 from pydantic import Field
 
-# Also allow MCP hosts to launch this file by path from another directory.
-_REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPOSITORY_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPOSITORY_ROOT))
-
 from agentic import tools
 from src.observability import configure_logging
 
-UserId = Annotated[
+StudentId = Annotated[
     str,
-    Field(
-        min_length=1,
-        description="Account ID: the API's user_id / student_id, e.g. demo_user.",
-    ),
+    Field(min_length=1, description="Account ID, as in the API's student routes."),
 ]
 
 mcp = FastMCP("RepWise Agentic Tools")
 
 
 @mcp.tool
-def get_user_profile(user_id: UserId) -> dict[str, object]:
-    """Read a user's experience, goal, available_days, session_minutes, equipment, and preferences."""
-    return tools.get_user_profile(user_id)
+def get_user_profile(student_id: StudentId) -> tools.ProfileResult | tools.ToolFailure:
+    """Read a student's experience, goal, available_days, session_minutes, equipment, and preferences."""
+    return tools.get_user_profile(student_id)
 
 
 @mcp.tool
-def get_timetable(user_id: UserId) -> dict[str, object]:
-    """Read a user's weekly availability and planned workouts, each with its workout_id and saved feedback."""
-    return tools.get_timetable(user_id)
+def get_timetable(student_id: StudentId) -> tools.TimetableResult | tools.ToolFailure:
+    """Read a student's weekly availability and planned workouts, each with its plan_id, week_number, workout_index, and saved feedback."""
+    return tools.get_timetable(student_id)
 
 
 @mcp.tool
 def save_workout_feedback(
-    user_id: UserId,
-    workout_id: Annotated[
-        str,
-        Field(min_length=1, description="A workout_id returned by get_timetable."),
+    student_id: StudentId,
+    plan_id: Annotated[
+        str, Field(min_length=1, description="A plan_id returned by get_timetable.")
+    ],
+    week_number: Annotated[
+        int, Field(ge=1, description="A week_number returned by get_timetable.")
+    ],
+    workout_index: Annotated[
+        int,
+        Field(ge=0, description="A zero-based workout_index returned by get_timetable."),
+    ],
+    completion_status: Annotated[
+        tools.CompletionStatus,
+        Field(description="Whether the student finished the workout."),
     ],
     difficulty: Annotated[
-        Literal["easy", "moderate", "hard"],
-        Field(
-            description=(
-                "How the workout felt. Stored as the API values slightly_too_easy, "
-                "just_right, and slightly_too_hard respectively."
-            )
-        ),
+        tools.WorkoutDifficulty,
+        Field(description="How the workout felt to the student."),
     ],
-    notes: Annotated[
-        str,
-        Field(
-            max_length=tools.MAX_NOTES_LENGTH,
-            description="Optional user comment, stored as the API's comment field.",
-        ),
-    ] = "",
-) -> dict[str, object]:
-    """Save feedback for a completed workout. Call only when the user explicitly asks to log it."""
-    return tools.save_workout_feedback(user_id, workout_id, difficulty, notes)
+    comment: Annotated[
+        str | None,
+        Field(max_length=500, description="Optional comment from the student."),
+    ] = None,
+) -> tools.FeedbackResult | tools.ToolFailure:
+    """Save feedback for one workout. Call only when the student explicitly asks to log it."""
+    return tools.save_workout_feedback(
+        student_id,
+        plan_id,
+        week_number,
+        workout_index,
+        completion_status,
+        difficulty,
+        comment,
+    )
 
 
 if __name__ == "__main__":

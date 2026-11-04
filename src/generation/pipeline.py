@@ -158,7 +158,9 @@ class PlanPipeline:
 
         system_prompt = load_system_prompt()
         user_prompt = make_user_prompt(request, evidence, previous_plan=previous_plan)
-        response_schema = plan_response_schema(request)
+        response_schema = plan_response_schema(
+            request, [source.source_id for source in sources]
+        )
         plan = None
         last_candidate_plan = None
         last_candidate_attempt = None

@@ -801,3 +801,24 @@ def test_bm25_retriever_finds_matching_chunk():
 
     assert results[0].passage_ids == ["video-1_p001"]
     assert results[0].rank == 1
+
+
+def test_response_schema_only_allows_retrieved_citations():
+    """Stop the model from omitting citations or inventing source IDs."""
+    schema = plan_response_schema(request(), ["source-b", "source-a", "source-b"])
+    citations = schema["$defs"]["Exercise"]["properties"]["source_ids"]
+
+    assert citations["items"]["enum"] == ["source-a", "source-b"]
+    assert citations["minItems"] == 1
+    assert "source_ids" in schema["$defs"]["Exercise"]["required"]
+    quote_source = schema["$defs"]["EvidenceQuote"]["properties"]["source_id"]
+    assert quote_source["enum"] == ["source-a", "source-b"]
+
+
+def test_response_schema_without_sources_keeps_citations_optional():
+    """Leave callers that supply no evidence, such as no-RAG runs, unchanged."""
+    schema = plan_response_schema(request())
+    citations = schema["$defs"]["Exercise"]["properties"]["source_ids"]
+
+    assert "enum" not in citations["items"]
+    assert "minItems" not in citations

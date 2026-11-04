@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from collections.abc import Iterable
 from typing import Any
 
 from ..schemas.models import PlanRequest, TrainingPlan
@@ -255,15 +256,19 @@ def estimate_prompt_tokens(
     return math.ceil((len(system_prompt) + len(user_prompt) + len(schema_text)) / 4)
 
 
-def plan_response_schema(request: PlanRequest) -> dict[str, Any]:
-    """Constrain the plan schema to the request's week and workout counts.
+def plan_response_schema(
+    request: PlanRequest, source_ids: Iterable[str] | None = None
+) -> dict[str, Any]:
+    """Constrain the plan schema to the request and, optionally, its sources.
 
     Args:
         request: Request whose exact week and per-week workout counts are required.
+        source_ids: Retrieved source IDs. When supplied, every exercise must cite
+            at least one, and citations can only use these IDs.
 
     Returns:
         A JSON schema for :class:`TrainingPlan` with exact ``weeks`` and
-        ``workouts`` array lengths.
+        ``workouts`` array lengths, and allowed citations when sources are given.
     """
     schema = TrainingPlan.model_json_schema()
     schema["properties"]["weeks"]["minItems"] = request.weeks
@@ -271,4 +276,11 @@ def plan_response_schema(request: PlanRequest) -> dict[str, Any]:
     workouts_schema = schema["$defs"]["Week"]["properties"]["workouts"]
     workouts_schema["minItems"] = request.target_workouts_per_week
     workouts_schema["maxItems"] = request.target_workouts_per_week
+    allowed_ids = sorted(set(source_ids or ()))
+    if allowed_ids:
+        citations = schema["$defs"]["Exercise"]["properties"]["source_ids"]
+        citations["items"] = {"type": "string", "enum": allowed_ids}
+        citations["minItems"] = 1
+        schema["$defs"]["Exercise"]["required"].append("source_ids")
+        schema["$defs"]["EvidenceQuote"]["properties"]["source_id"]["enum"] = allowed_ids
     return schema
