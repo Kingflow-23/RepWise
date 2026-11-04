@@ -8,6 +8,8 @@ Run from the repository root with ``python server.py``.
 """
 
 from agentic.mcp_server import mcp
+from src.observability import configure_logging
 
 if __name__ == "__main__":
+    configure_logging("agentic")
     mcp.run(show_banner=False)
