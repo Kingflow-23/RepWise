@@ -65,6 +65,7 @@ flowchart LR
 | [`src/tools/`](../src/tools) | `generate_workout_plan`, the RAG pipeline as a callable tool. |
 | [`src/evaluation/`](../src/evaluation) | Datasets, adapters, metrics, judge, runner, reports. |
 | [`agentic/`](../agentic) | Agent tools, MCP server, and demo scripts. [`server.py`](../server.py) starts the server. |
+| [`notebooks/`](../notebooks) | Course labs adapted to RepWise. |
 | [`config/`](../config) | Settings and vocabularies (body parts, topics, transcript corrections). |
 | [`prompts/`](../prompts) | Versioned system prompt. |
 | [`evals/`](../evals) | Benchmark, retrieval, evidence, red-team, and smoke inputs. |
