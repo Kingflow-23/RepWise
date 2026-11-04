@@ -117,7 +117,7 @@ def _load_model(model_name: str):
             f"Could not load embedding model {model_name!r} from the local Hugging Face "
             "cache (network access and retriever fallback are disabled). Install it with "
             "`python -m pip install -r requirements.txt`, then download it "
-            "once using the command in docs/retrieval/hybrid_retrieval.md. "
+            "once using the command in docs/setup.md. "
             f"Underlying error: {type(error).__name__}: {error}"
         ) from error
 

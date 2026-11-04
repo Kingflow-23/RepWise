@@ -472,7 +472,10 @@ def create_app(
         """
         check_owner(student_id, user_id)
         result = generate_workout_plan(
-            options, student_id=student_id, repository=repository, pipeline=pipeline,
+            options,
+            student_id=student_id,
+            repository=repository,
+            pipeline=pipeline,
         )
         if result.status == "missing_profile":
             raise HTTPException(status_code=404, detail=result.message)

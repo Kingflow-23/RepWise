@@ -42,7 +42,9 @@ def save_workout_feedback(
     ],
     workout_index: Annotated[
         int,
-        Field(ge=0, description="A zero-based workout_index returned by get_timetable."),
+        Field(
+            ge=0, description="A zero-based workout_index returned by get_timetable."
+        ),
     ],
     completion_status: Annotated[
         tools.CompletionStatus,

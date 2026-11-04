@@ -282,5 +282,7 @@ def plan_response_schema(
         citations["items"] = {"type": "string", "enum": allowed_ids}
         citations["minItems"] = 1
         schema["$defs"]["Exercise"]["required"].append("source_ids")
-        schema["$defs"]["EvidenceQuote"]["properties"]["source_id"]["enum"] = allowed_ids
+        schema["$defs"]["EvidenceQuote"]["properties"]["source_id"][
+            "enum"
+        ] = allowed_ids
     return schema

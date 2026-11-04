@@ -9,6 +9,5 @@ Run from the repository root with ``python server.py``.
 
 from agentic.mcp_server import mcp
 
-
 if __name__ == "__main__":
     mcp.run(show_banner=False)

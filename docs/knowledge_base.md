@@ -3,6 +3,8 @@
 **Corpus version:** v1-2026-10-10 (60 Nassim Sahili videos, 5,952 passages)
 **Written:** 2026-10-25, from a direct search of the cleaned passages (not only the coverage counts)
 
+This is a dated analysis of that corpus version, so recheck it if the corpus changes.
+
 ---
 
 ## 1. Why this document exists
@@ -94,7 +96,7 @@ The rest of this document details each element.
 | **Days: 2 or 6** | Partial | Mentioned, never programmed (see section 3) |
 | **Duration: 60 to 90 min** | Grounded | |
 | **Duration: 45 min** | Partial | No program at this length; only by trimming a longer one (assumption) |
-| **Duration: under 45 min** | Not grounded | Red team case RT3 (45 → 20 min) cannot be grounded: only the validator and a labelled trade-off can handle it |
+| **Duration: under 45 min** | Not grounded | A request for a shorter session cannot be grounded: only the validator and a labelled trade-off can handle it |
 | **Equipment: commercial gym** (barbells, dumbbells, machines, cables) | Grounded | Covered by the ranking videos |
 | **Equipment: limited gym** (a machine is missing) | Partial | 7 explicit "si vous n'avez pas X, faites Y" passages; rankings give alternatives for the same muscle |
 | **Equipment: home with dumbbells** | Partial | Dumbbell exercises exist, but no home program |
@@ -160,7 +162,7 @@ Consequence: retrieval can return a passage that **describes or criticizes** a p
 
 ### 6.3 No upload dates
 
-`upload_date` is empty. Nassim's positions evolve (the volume video is literally titled "On s'est tous trompés...", and the rest video updates "1 to 1.5 min" to "2 to 2.5 min"). Without dates we can't tell which position is the more recent, so conflicting evidence (red team case RT5) can be shown, but not resolved by recency.
+`upload_date` is empty. Nassim's positions evolve (the volume video is literally titled "On s'est tous trompés...", and the rest video updates "1 to 1.5 min" to "2 to 2.5 min"). Without dates we can't tell which position is the more recent, so conflicting evidence can be shown, but not resolved by recency.
 
 ### 6.4 Scientific references are linked, not reviewed
 
@@ -178,25 +180,21 @@ A large part of the corpus is about fat loss, cardio and nutrition (24 videos me
 
 ## 7. What we can and cannot test for the moment
 
-### Red team scenarios
+### Scenarios
 
-| Case | Testable now? | Why |
+Tests of engine behavior (prompt injection, pain, impossible schedules, missing
+information) need no grounding, so they can run today. Tests that expect a sourced
+answer depend on the gaps above:
+
+| Scenario | Testable now? | Why |
 |---|---|---|
-| RT001 Beginner mismatch | Yes | Beginner level and program are grounded |
-| RT002 Unsupported detail | Yes, and the gaps make good test cases | Ask for RIR targets, kg increments, warm-up protocol, a 20-minute program: the correct behavior is "assumption" or abstention |
-| RT003 Time conflict 45 → 20 min | Validator: yes. Grounding: no | No short-session program in the corpus |
-| RT004 Pain or injury | Yes | Pure safety policy, no grounding needed |
-| RT005 Conflicting evidence | Partly | Real conflicts exist (rest times: 2 to 2.5 min in the dedicated video vs 45 to 90 s in his programs), but can't be resolved by date |
-| RT006 Missing information | Yes | Engine behavior |
-| RT007 Prompt injection | Yes | Engine behavior |
-| RT008 Impossible program | Yes | Validator behavior |
-| RT009 Duplicate / corrected log | Yes | Engine behavior, no corpus needed |
-| RT010 Missing or noisy sessions | Engine: yes. Grounding: no | Missed-session rules are assumptions |
-| RT011 Repeated fatigue | Partly | Deload grounded by one video, thresholds are assumptions |
-| RT012 Exercise substitution | Yes for gym equipment, no for home/bodyweight | |
-| RT013 Units and policy drift | Yes | Engine behavior |
-| RT014 Stale or foreign state | Yes | Engine behavior |
-| RT015 Evidence outage | Yes | Engine behavior |
+| Beginner mismatch | Yes | Beginner level and program are grounded |
+| Unsupported detail | Yes, and the gaps make good test cases | Ask for RIR targets, kg increments, a warm-up protocol, or a 20-minute program: the correct behavior is an assumption or abstention |
+| Shorter session | Validator: yes. Grounding: no | No short-session program in the corpus |
+| Conflicting evidence | Partly | Real conflicts exist (rest times: 2 to 2.5 min in the dedicated video vs 45 to 90 s in his programs), but can't be resolved by date |
+| Missed sessions | Engine: yes. Grounding: no | Missed-session rules are assumptions |
+| Repeated fatigue | Partly | Deload grounded by one video, thresholds are assumptions |
+| Exercise substitution | Yes for gym equipment, no for home or bodyweight | |
 
 ### Metrics
 
@@ -224,6 +222,6 @@ A large part of the corpus is about fat loss, cardio and nutrition (24 videos me
 2. **Write the assumption register:** one line per ungrounded value (RIR targets, kg increments, exposures before progression, deload trigger and %, missed-session rule, policy switch, warm-up, transitions), each labelled `implementation_assumption`, frozen before evaluation.
 3. **Tag topics at chunk level** (6.1) before building retrieval labels.
 4. **Mark non-advice content** (6.2): at least a `content_type` per video (advice, program, ranking, session vlog, analysis of someone else, nutrition), so retrieval and grading can treat them differently.
-5. **Fill `upload_date`** for the 60 videos (one manual pass on YouTube is enough) to make RT5 resolvable.
+5. **Fill `upload_date`** for the 60 videos (one manual pass on YouTube is enough) so conflicting positions can be resolved by date.
 6. **Build the substitution map** from the 6 ranking videos, each entry linked to its passage.
-7. **Use the gaps as test cases:** every "Not grounded" row above is a ready-made RT2 or abstention test.
+7. **Use the gaps as test cases:** every "Not grounded" row above is a ready-made abstention test.

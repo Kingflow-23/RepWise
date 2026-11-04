@@ -22,7 +22,9 @@ from agentic import tools
 from agentic.mcp_demo_client import seed_demo_account
 from config.config import AppConfig
 
-SCHEMAS = Path(__file__).resolve().parents[1] / "docs" / "agent" / "s2_tool_schemas.json"
+SCHEMAS = (
+    Path(__file__).resolve().parents[1] / "docs" / "agent" / "s2_tool_schemas.json"
+)
 TOOLS = {
     "get_user_profile": tools.get_user_profile,
     "get_timetable": tools.get_timetable,

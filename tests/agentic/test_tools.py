@@ -21,7 +21,12 @@ from agentic.mcp_server import mcp
 from config.config import AppConfig
 from src.api import main as api_module
 from src.db.repository import StudentRepository
-from src.schemas.models import UserProfile, Workout, WorkoutFeedback, WorkoutFeedbackRequest
+from src.schemas.models import (
+    UserProfile,
+    Workout,
+    WorkoutFeedback,
+    WorkoutFeedbackRequest,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 BODY = ("completed", "slightly_too_hard", "Last set was difficult")
@@ -90,7 +95,9 @@ def test_saved_record_is_the_api_record_and_can_be_reloaded(account):
     assert workouts[1].feedback is None
 
 
-def test_saved_feedback_appears_in_the_real_api(account, database, tmp_path, monkeypatch):
+def test_saved_feedback_appears_in_the_real_api(
+    account, database, tmp_path, monkeypatch
+):
     student_id, plan_id = account
     monkeypatch.setattr(api_module, "read_access_token", lambda token, secret: token)
     saved = tools.save_workout_feedback(student_id, plan_id, 1, 1, *BODY)
@@ -105,7 +112,9 @@ def test_saved_feedback_appears_in_the_real_api(account, database, tmp_path, mon
 def test_saving_again_updates_the_same_record(account, database):
     student_id, plan_id = account
     tools.save_workout_feedback(student_id, plan_id, 1, 0, *BODY)
-    tools.save_workout_feedback(student_id, plan_id, 1, 0, "not_completed", "much_too_easy")
+    tools.save_workout_feedback(
+        student_id, plan_id, 1, 0, "not_completed", "much_too_easy"
+    )
     records = StudentRepository(database).list_workout_feedback(student_id, plan_id)
     assert [item.difficulty for item in records] == ["much_too_easy"]
 
@@ -153,7 +162,10 @@ def test_a_student_cannot_save_to_another_students_plan(account, database):
     repository = StudentRepository(database)
     other = repository.create_user("Other Example", "test-hash")
     repository.save_profile(other, repository.get_profile(owner))
-    assert tools.save_workout_feedback(other, plan_id, 1, 0, *BODY).code == "plan_not_found"
+    assert (
+        tools.save_workout_feedback(other, plan_id, 1, 0, *BODY).code
+        == "plan_not_found"
+    )
 
 
 def test_a_student_with_no_plan_has_an_empty_timetable(account, database):
@@ -172,7 +184,10 @@ def test_reads_reject_unknown_students(account, read):
 def test_a_missing_database_is_reported_and_never_created(database):
     assert tools.get_user_profile("anyone").code == "storage_error"
     assert tools.get_timetable("anyone").code == "storage_error"
-    assert tools.save_workout_feedback("anyone", "plan", 1, 0, *BODY).code == "storage_error"
+    assert (
+        tools.save_workout_feedback("anyone", "plan", 1, 0, *BODY).code
+        == "storage_error"
+    )
     assert not database.exists()
 
 
@@ -204,8 +219,14 @@ def test_schema_file_matches_the_live_server_and_api_values():
             return await client.list_tools()
 
     live = {tool.name: tool for tool in asyncio.run(discover())}
-    published = json.loads((ROOT / "docs/agent/s2_tool_schemas.json").read_text(encoding="utf-8"))
-    types = {"get_user_profile": "read", "get_timetable": "read", "save_workout_feedback": "write"}
+    published = json.loads(
+        (ROOT / "docs/agent/s2_tool_schemas.json").read_text(encoding="utf-8")
+    )
+    types = {
+        "get_user_profile": "read",
+        "get_timetable": "read",
+        "save_workout_feedback": "write",
+    }
 
     assert set(live) == set(types)
     for item in published["tools"]:
@@ -220,7 +241,9 @@ def test_schema_file_matches_the_live_server_and_api_values():
     feedback = live["save_workout_feedback"].input_schema
     api_body = WorkoutFeedbackRequest.model_json_schema()["properties"]
     for field in WorkoutFeedbackRequest.model_fields:
-        assert constraints(feedback["properties"][field]) == constraints(api_body[field])
+        assert constraints(feedback["properties"][field]) == constraints(
+            api_body[field]
+        )
     assert feedback["properties"]["week_number"]["minimum"] == 1
     assert feedback["properties"]["workout_index"]["minimum"] == 0
 
@@ -258,15 +281,16 @@ def test_llm_check_runs_the_tools_the_model_chooses(account, database):
             SimpleNamespace(content="Logged.", tool_calls=None),
         ]
     )
-    client = SimpleNamespace(
-        chat=lambda **_: SimpleNamespace(message=next(replies))
-    )
+    client = SimpleNamespace(chat=lambda **_: SimpleNamespace(message=next(replies)))
 
     calls, answer = llm_check.run_agent(client, "model", "Log it.", student_id)
 
     assert calls == [("save_workout_feedback", arguments)]
     assert answer == "Logged."
-    case = {"tool": "save_workout_feedback", "saved": (0, "completed", {"slightly_too_hard"})}
+    case = {
+        "tool": "save_workout_feedback",
+        "saved": (0, "completed", {"slightly_too_hard"}),
+    }
     assert llm_check.check_case(case, calls, student_id, plan_id) == []
 
 

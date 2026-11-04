@@ -20,64 +20,31 @@ changing the plan.
 ```mermaid
 flowchart LR
     Student --> UI[Streamlit app]
-    UI -->|HTTP + bearer token| API[FastAPI]
-    API --> Auth[Authentication]
-    API --> DB[(SQLite profiles and plans)]
-    API --> Plan[Plan pipeline]
-    Plan --> Query[Build search query]
-    Query --> Search{Configured retriever}
-    Search --> BM25[BM25]
-    Search --> Semantic[Semantic search]
-    Search --> Hybrid[Hybrid: BM25 + semantic RRF]
-    Corpus[(Prepared transcript chunks)] --> Search
-    BM25 --> Evidence[Select sources]
-    Semantic --> Evidence
-    Hybrid --> Evidence
-    Evidence --> Prompt[Prompt + JSON schema]
-    Prompt --> Ollama[Local Ollama model]
-    Ollama --> Validate[Validate plan and citations]
-    Validate --> DB
+    UI --> API[FastAPI]
+    API --> Search[Search transcripts]
+    Search --> Model[Local Ollama model]
+    Model --> Validate[Validate the plan]
+    Validate --> DB[(Saved plans)]
     Validate --> UI
-
-    Raw[Authorized source transcripts] --> Ingest[Ingestion and filtering]
-    Ingest --> Corpus
-    Corpus --> Index[(Local semantic index)]
-    Index --> Semantic
-
-    Cases[Evaluation cases] --> Eval[Evaluation runner]
-    Eval --> Search
-    Eval --> Reports[Evaluation reports]
+    Agent --> Tools[Agent tools over MCP]
+    Tools --> DB
 ```
 
-## Try it locally
+## Try it
 
-You’ll need Python 3.11 or 3.12, an authorized prepared transcript corpus, and
-[Ollama](https://ollama.com/). Start with the [setup guide](docs/setup.md);
-corpus files and model weights are local and are not distributed with this
-repository.
+You'll need Python 3.11 or 3.12, an authorized prepared transcript corpus, and
+[Ollama](https://ollama.com/). Corpus files and model weights are local and aren't
+included in this repository. The [setup guide](docs/setup.md) walks through it.
 
-## Microphone input
-
-On the plan-generation tab, sign in and record your request using **Record your request**. Stop recording, click **Use recording**, then review or edit the text in the usual focus field. Click **Generate plan** only when the text is ready; recording and transcription never submit a plan automatically. A failed transcription preserves the current draft.
-
-Microphone access requires browser permission and localhost or an HTTPS connection. Record up to two minutes. The backend transcribes locally with faster-whisper, preserving the spoken language. The first transcription downloads the multilingual `base` model if it is not cached; later requests reuse it. Set `REPWISE_SPEECH_MODEL` to change the model. Install the updated requirements and restart the API/UI before using it. Recordings are handled in memory and are not written to the database or audio files.
-
-## Run the tests
-
-```powershell
-python -m pytest -q
-```
-
-Some corpus-linkage tests require the prepared local corpus. For evaluation
-commands and what the results do and do not show, see the
-[evaluation guide](docs/evaluation_protocol.md).
+You can also **speak your request**: on the plan tab, use **Record your request**,
+then **Use recording**, and edit the text before generating. Recording never submits
+a plan by itself. Audio is transcribed locally and never saved.
 
 ## Explore the docs
 
-Start at the [documentation hub](docs/README.md) for setup, architecture,
-generation, retrieval, corpus preparation, API/database details, and
-evaluation. Developers can use the [code reference and development guide](docs/development.md)
-to find implementation modules, relevant tests, and change workflows.
+The [documentation hub](docs/README.md) has one guide per topic. Two good starting
+points are [how a request becomes a plan](docs/rag_pipeline.md) and
+[what we measured](docs/evaluation.md).
 
 ## Important limits
 
