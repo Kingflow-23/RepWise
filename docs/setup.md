@@ -81,6 +81,8 @@ Open the Streamlit URL, register an account, save a profile, and request a plan.
 The database is created automatically, and the API's interactive docs are at
 `http://127.0.0.1:8000/docs`.
 
+To run the agent instead, see [The RepWise agent](agent/README.md).
+
 ## Configuration
 
 Settings are environment variables, loaded from `.env`.
@@ -104,6 +106,7 @@ Settings are environment variables, loaded from `.env`.
 | `REPWISE_API_URL` | `http://127.0.0.1:8000` | API address used by Streamlit. |
 | `REPWISE_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. |
 | `REPWISE_LOG_DIR` | `logs` | Folder for rotating log files. |
+| `REPWISE_GOOGLE_DIR` | `data/google` | The agent's Google client file and tokens. |
 
 An invalid value is reported as an error rather than replaced. The defaults follow
 [our measurements](evaluation.md#what-we-found) where those exist.

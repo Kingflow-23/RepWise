@@ -64,6 +64,11 @@ erDiagram
     users ||--o| student_profiles : has
     student_profiles ||--o{ training_plans : owns
     training_plans ||--o{ workout_feedback : receives
+    training_plans ||--o{ workout_performance : records
+    training_plans ||--o{ recommendations : has
+    training_plans ||--o{ calendar_events : booked_as
+    users ||--o{ memory_facts : remembers
+    users ||--o{ memory_episodes : remembers
 ```
 
 | Table | Stores |
@@ -72,8 +77,14 @@ erDiagram
 | `student_profiles` | Profile JSON and update time. |
 | `training_plans` | The full request (including a profile snapshot), the validated plan, its sources, and creation time. |
 | `workout_feedback` | One row per plan, week, and workout: completion, difficulty, comment, time, and which workout it adapted. |
+| `workout_performance` | One row per plan, week, workout, and exercise: sets, reps, and weight. Written by the [agent](agent/README.md). |
+| `recommendations` | Ideas kept for later review, with their reason and sources. Written by the agent. |
+| `calendar_events` | One row per plan, week, and workout: the calendar event's ID and times. Written by the agent. |
+| `memory_facts` | Preferences and facts the student asked the agent to remember. Written by the agent. |
+| `memory_episodes` | A short record of each request that used a tool: what was asked, and what completed, was declined, or didn't finish. Written by the agent. |
 
-- Deleting an account cascades through profiles, plans, and feedback.
+- Deleting an account cascades through profiles, plans, and everything linked to a
+  plan. Deleting a plan doesn't remove its events from the calendar itself.
 - A successful adaptation updates the plan and its feedback link in one transaction.
 - Connections commit on success, roll back on failure, and always close.
 - Failed generations are returned as errors and never stored. No medical details or
