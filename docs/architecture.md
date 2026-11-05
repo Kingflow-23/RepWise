@@ -28,7 +28,8 @@ flowchart LR
     Eval --> Retriever
     Eval --> Reports[Reports]
 
-    Agent[Agent] -->|MCP| Tools[Agent tools]
+    Agent[LangGraph agent] --> Tools[Agent tools]
+    Host[MCP host] -->|MCP| Tools
     Tools --> DB
 ```
 
@@ -64,12 +65,12 @@ flowchart LR
 | [`src/ingestion/`](../src/ingestion) | Turns transcripts into passages, chunks, and coverage reports. |
 | [`src/tools/`](../src/tools) | `generate_workout_plan`, the RAG pipeline as a callable tool. |
 | [`src/evaluation/`](../src/evaluation) | Datasets, adapters, metrics, judge, runner, reports. |
-| [`agentic/`](../agentic) | Agent tools, MCP server, and demo scripts. [`server.py`](../server.py) starts the server. |
+| [`agentic/`](../agentic) | The [LangGraph agent](agent/README.md), its tools, the MCP server, and demo scripts. [`server.py`](../server.py) starts the MCP server. |
 | [`notebooks/`](../notebooks) | Course labs adapted to RepWise. |
 | [`config/`](../config) | Settings and vocabularies (body parts, topics, transcript corrections). |
 | [`prompts/`](../prompts) | Versioned system prompt. |
 | [`evals/`](../evals) | Benchmark, retrieval, evidence, red-team, and smoke inputs. |
-| [`outputs/`](../outputs) | Saved evaluation reports. |
+| [`outputs/`](../outputs) | Saved evaluation reports and agent transcripts. |
 | [`data/`](../data) | Corpus metadata, plus local-only transcripts, chunks, index, and database. |
 
 Each function's docstring is the detailed reference for its behavior.
@@ -84,7 +85,7 @@ Each function's docstring is the detailed reference for its behavior.
 | Ingestion | `python -m pytest tests\ingestion -q` | Rebuild chunks and the index, then recheck dataset links. |
 | Retrieval | `python -m pytest tests\retrieval -q` | Keep the shared retriever contract, and compare on the same labels. |
 | Evaluation | `python -m pytest tests\evaluation -q` | Keep datasets, metrics, and report wording in line. Try a smoke run first. |
-| Agent tools | `python -m pytest tests\agentic tests\tools -q` | Regenerate `docs/agent/s2_tool_schemas.json` if a tool's schema changes. |
+| Agent tools | `python -m pytest tests\agentic tests\tools -q` | Run `python -m agentic.call_tool --write-schemas`, and rerun `python -m agentic.run_agent --approve`, because scripted tests can't check the model's choices. Regenerate `docs/agent/s2_tool_schemas.json` if an MCP tool changes. |
 | Logging | `python -m pytest tests\test_observability.py -q` | Never log passwords, tokens, or the signing secret. |
 
 Run `python -m pytest -q` when a change crosses layers, and update the matching

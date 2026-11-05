@@ -31,6 +31,8 @@ __pycache__/
 
 # Local demo database
 data/*.sqlite3
+# Google client file and each student's calendar tokens
+data/google/
 
 # Runtime application logs
 logs/

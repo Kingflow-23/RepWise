@@ -134,6 +134,69 @@ class StudentRepository:
                         REFERENCES training_plans(id, student_id) ON DELETE CASCADE
                 )
             """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS workout_performance (
+                    id TEXT PRIMARY KEY,
+                    student_id TEXT NOT NULL,
+                    plan_id TEXT NOT NULL,
+                    week_number INTEGER NOT NULL CHECK(week_number >= 1),
+                    workout_index INTEGER NOT NULL CHECK(workout_index >= 0),
+                    exercise_name TEXT NOT NULL,
+                    sets_completed INTEGER NOT NULL CHECK(sets_completed >= 0),
+                    reps_per_set TEXT NOT NULL,
+                    weight_kg REAL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(plan_id, week_number, workout_index, exercise_name),
+                    FOREIGN KEY(plan_id, student_id)
+                        REFERENCES training_plans(id, student_id) ON DELETE CASCADE
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS recommendations (
+                    id TEXT PRIMARY KEY,
+                    student_id TEXT NOT NULL,
+                    plan_id TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    source_ids_json TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(plan_id, student_id)
+                        REFERENCES training_plans(id, student_id) ON DELETE CASCADE
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS memory_facts (
+                    student_id TEXT NOT NULL,
+                    fact TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(student_id, fact),
+                    FOREIGN KEY(student_id) REFERENCES users(user_id) ON DELETE CASCADE
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS memory_episodes (
+                    student_id TEXT NOT NULL,
+                    episode TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(student_id) REFERENCES users(user_id) ON DELETE CASCADE
+                )
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS calendar_events (
+                    event_id TEXT NOT NULL,
+                    student_id TEXT NOT NULL,
+                    plan_id TEXT NOT NULL,
+                    week_number INTEGER NOT NULL CHECK(week_number >= 1),
+                    workout_index INTEGER NOT NULL CHECK(workout_index >= 0),
+                    start_at TEXT NOT NULL,
+                    end_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(plan_id, week_number, workout_index),
+                    FOREIGN KEY(plan_id, student_id)
+                        REFERENCES training_plans(id, student_id) ON DELETE CASCADE
+                )
+            """)
         logger.info("SQLite repository initialized")
 
     def create_user(self, full_name: str, password_hash: str) -> str:
@@ -510,6 +573,220 @@ class StudentRepository:
             if feedback_update.rowcount != 1:
                 raise RuntimeError("Workout feedback adaptation could not be recorded")
         return True
+
+    def save_workout_performance(
+        self,
+        student_id: str,
+        plan_id: str,
+        week_number: int,
+        workout_index: int,
+        exercise_name: str,
+        sets_completed: int,
+        reps_per_set: str,
+        weight_kg: float | None,
+    ) -> None:
+        """Save what was done for one exercise; saving again replaces the record."""
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO workout_performance (
+                    id, student_id, plan_id, week_number, workout_index,
+                    exercise_name, sets_completed, reps_per_set, weight_kg, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(plan_id, week_number, workout_index, exercise_name)
+                DO UPDATE SET
+                    sets_completed=excluded.sets_completed,
+                    reps_per_set=excluded.reps_per_set,
+                    weight_kg=excluded.weight_kg,
+                    created_at=excluded.created_at
+                """,
+                (
+                    str(uuid.uuid4()),
+                    student_id,
+                    plan_id,
+                    week_number,
+                    workout_index,
+                    exercise_name,
+                    sets_completed,
+                    reps_per_set,
+                    weight_kg,
+                    now(),
+                ),
+            )
+
+    def list_workout_performance(
+        self, student_id: str, plan_id: str
+    ) -> list[dict[str, object]]:
+        """Return the exercise records saved for one student's plan."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT week_number, workout_index, exercise_name, sets_completed,
+                       reps_per_set, weight_kg, created_at
+                FROM workout_performance
+                WHERE student_id=? AND plan_id=?
+                ORDER BY week_number, workout_index, exercise_name
+                """,
+                (student_id, plan_id),
+            ).fetchall()
+        keys = (
+            "week_number",
+            "workout_index",
+            "exercise_name",
+            "sets_completed",
+            "reps_per_set",
+            "weight_kg",
+            "created_at",
+        )
+        return [dict(zip(keys, row, strict=True)) for row in rows]
+
+    def save_recommendation(
+        self,
+        student_id: str,
+        plan_id: str,
+        summary: str,
+        reason: str,
+        source_ids: list[str],
+    ) -> str:
+        """Store a proposed change for later review and return its ID."""
+        recommendation_id = str(uuid.uuid4())
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO recommendations (
+                    id, student_id, plan_id, summary, reason, source_ids_json,
+                    status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'proposed', ?)
+                """,
+                (
+                    recommendation_id,
+                    student_id,
+                    plan_id,
+                    summary,
+                    reason,
+                    json.dumps(source_ids),
+                    now(),
+                ),
+            )
+        return recommendation_id
+
+    def list_recommendations(self, student_id: str) -> list[dict[str, object]]:
+        """Return a student's proposed recommendations, newest first."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, plan_id, summary, reason, source_ids_json, created_at
+                FROM recommendations
+                WHERE student_id=? AND status='proposed'
+                ORDER BY created_at DESC, id DESC
+                """,
+                (student_id,),
+            ).fetchall()
+        return [
+            {
+                "id": row[0],
+                "plan_id": row[1],
+                "summary": row[2],
+                "reason": row[3],
+                "source_ids": json.loads(row[4]),
+                "created_at": row[5],
+            }
+            for row in rows
+        ]
+
+    def save_memory_fact(self, student_id: str, fact: str) -> None:
+        """Keep a stable fact about a student. Saving it twice keeps one copy."""
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO memory_facts (student_id, fact, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (student_id, fact, now()),
+            )
+
+    def list_memory_facts(self, student_id: str, limit: int) -> list[str]:
+        """Return a student's remembered facts, newest first."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT fact FROM memory_facts WHERE student_id=?
+                ORDER BY rowid DESC LIMIT ?
+                """,
+                (student_id, limit),
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    def save_memory_episode(self, student_id: str, episode: str) -> None:
+        """Keep a short record of one completed request."""
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO memory_episodes (student_id, episode, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (student_id, episode, now()),
+            )
+
+    def list_memory_episodes(self, student_id: str, limit: int) -> list[str]:
+        """Return a student's latest episodes, newest first."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT episode FROM memory_episodes WHERE student_id=?
+                ORDER BY rowid DESC LIMIT ?
+                """,
+                (student_id, limit),
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    def save_calendar_event(
+        self,
+        student_id: str,
+        plan_id: str,
+        week_number: int,
+        workout_index: int,
+        event_id: str,
+        start_at: str,
+        end_at: str,
+    ) -> None:
+        """Link a workout to its calendar event; a workout has at most one."""
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO calendar_events (
+                    event_id, student_id, plan_id, week_number, workout_index,
+                    start_at, end_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    student_id,
+                    plan_id,
+                    week_number,
+                    workout_index,
+                    start_at,
+                    end_at,
+                    now(),
+                ),
+            )
+
+    def list_calendar_events(
+        self, student_id: str, plan_id: str
+    ) -> list[dict[str, object]]:
+        """Return the calendar events linked to one student's plan."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT event_id, week_number, workout_index, start_at, end_at
+                FROM calendar_events
+                WHERE student_id=? AND plan_id=?
+                ORDER BY start_at
+                """,
+                (student_id, plan_id),
+            ).fetchall()
+        keys = ("event_id", "week_number", "workout_index", "start_at", "end_at")
+        return [dict(zip(keys, row, strict=True)) for row in rows]
 
     def delete_plan(self, student_id: str, plan_id: str) -> bool:
         """Delete a saved plan only when it belongs to the given student.

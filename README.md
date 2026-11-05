@@ -26,8 +26,9 @@ flowchart LR
     Model --> Validate[Validate the plan]
     Validate --> DB[(Saved plans)]
     Validate --> UI
-    Agent --> Tools[Agent tools over MCP]
+    Agent[LangGraph agent] --> Tools[Agent tools]
     Tools --> DB
+    Tools --> Calendar[Calendar and map services]
 ```
 
 ## Try it
@@ -39,6 +40,17 @@ included in this repository. The [setup guide](docs/setup.md) walks through it.
 You can also **speak your request**: on the plan tab, use **Record your request**,
 then **Use recording**, and edit the text before generating. Recording never submits
 a plan by itself. Audio is transcribed locally and never saved.
+
+## The agent
+
+A separate [LangGraph agent](docs/agent/README.md) uses Plan-and-Execute and 15 tools to plan
+training, adapt it from feedback, propose calendar slots, find nearby gyms and shops,
+and answer from the transcripts. It remembers preferences and past tasks across
+sessions. It runs from the command line and isn't part of the app yet:
+
+```powershell
+python -m agentic.run_agent --approve
+```
 
 ## Explore the docs
 

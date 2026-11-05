@@ -81,7 +81,7 @@ def load_tool_definitions() -> list[dict]:
     ]
 
 
-def run_agent(client, model: str, request: str, student_id: str, max_steps: int = 6):
+def run_agent(client, model: str, request: str, student_id: str, max_steps: int = 5):
     """Let the model call tools until it answers, and return its calls and answer."""
     messages = [
         {
