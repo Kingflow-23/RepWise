@@ -70,7 +70,37 @@ in the account menu reopens the editor. Closing without saving keeps the draft
 while signed in on the current page. Sign-out clears the profile and draft
 from the interface. Profiles are not stored in browser storage.
 
-Saved workouts, sources, feedback and the assistant will be connected in later
+## Latest saved plan
+
+Signing in loads the newest saved plan using the authenticated
+`GET /api/v1/students/{student_id}/plans?limit=1` endpoint. The studio card
+opens a full program view below the scene. Select a workout to see its
+exercises, sets, repetitions, rest, coaching notes, equipment and saved
+evidence. The view also includes plan assumptions, the safety note, sources,
+and any recorded workout feedback. Links accept HTTP/HTTPS addresses only.
+**Refresh saved plan** reloads the latest database version, including changes
+made through other clients. An empty account shows an empty state; failed
+requests offer a retry. Signing out clears the displayed plan.
+
+## Generate a plan
+
+Choose **Create a new plan**, or use the request form below the studio. A saved
+profile is required. Enter a training focus, choose a workout count within your
+available days, and optionally add constraints (one per line, up to ten) or
+instructions for changing your latest plan. The existing authenticated
+`POST /api/v1/students/{student_id}/plans` route runs retrieval, generation,
+validation and persistence for one week. A successful response opens the saved
+plan immediately. Failed or declined requests keep the previous plan and draft.
+
+Generation uses the backend's configured Ollama models and corpus; these
+services must be available. The interface shows elapsed time and blocks
+duplicate submissions while waiting. Generation requests allow up to 15
+minutes; the Vite proxy allows 16 minutes. Restart Vite after updating its
+configuration. If a connection is lost, refresh the saved plan before retrying:
+the backend may still finish and save it. Signing out stops waiting in the
+browser and clears the draft; it does not cancel generation on the backend.
+
+Feedback submission and the assistant will be connected in later
 steps. The preview displays no invented training data. Muscle targeting,
 calendar dates and set-by-set persistence are not simulated. The previous
 Streamlit app remains in `../genai_app/`.

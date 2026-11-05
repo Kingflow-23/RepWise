@@ -25,6 +25,10 @@ export function initializeProfile() {
   let saving = false;
   let returnFocus;
 
+  function publish(status, profile = null) {
+    document.dispatchEvent(new CustomEvent('repwise:profile', { detail: { status, profile } }));
+  }
+
   function addDay(day, custom = false) {
     const label = document.createElement('label');
     const input = document.createElement('input');
@@ -90,6 +94,7 @@ export function initializeProfile() {
     description.textContent = saved ? 'These details are saved to your account. Update them whenever your routine changes.' : 'Set your experience, schedule, and equipment before creating a plan.';
     open.textContent = saved ? 'Edit training profile' : 'Set up your profile';
     open.disabled = false; menu.disabled = false;
+    publish(saved ? 'ready' : 'missing', saved);
   }
 
   async function load() {
@@ -99,6 +104,7 @@ export function initializeProfile() {
     open.textContent = 'Loading profile…'; state.textContent = 'Loading your profile';
     description.textContent = 'Getting your saved training details.';
     notice.hidden = true;
+    publish('loading');
     try {
       const profile = await authenticatedRequest(path);
       if (current !== generation) return;
@@ -110,6 +116,7 @@ export function initializeProfile() {
         loadingFailed = true; state.textContent = 'Your profile couldn’t load';
         description.textContent = 'Try again to load your saved details before making changes.';
         open.textContent = 'Retry loading profile'; open.disabled = false;
+        publish('error');
         return;
       }
     }
@@ -180,6 +187,7 @@ export function initializeProfile() {
     dialog.close(); setSaving(false); fill(null);
     summary.replaceChildren(); summary.hidden = true; notice.textContent = ''; notice.hidden = true;
     menu.disabled = true; open.disabled = true;
+    publish(account ? 'loading' : 'signed-out');
     if (account) load();
   });
 }

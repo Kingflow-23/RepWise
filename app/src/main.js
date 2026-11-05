@@ -2,9 +2,13 @@ import './styles.css';
 import { icon, mountIcons } from './icons.js';
 import { initializeLogin } from './login.js';
 import { initializeProfile } from './profile.js';
+import { initializePlan } from './plan.js';
+import { initializeGeneration } from './generation.js';
 
 mountIcons();
 initializeProfile();
+const plans = initializePlan();
+initializeGeneration(plans);
 initializeLogin();
 const lastDialogTrigger = new Map();
 document.querySelectorAll('[data-open]').forEach((button) => {
