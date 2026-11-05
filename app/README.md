@@ -75,8 +75,7 @@ from the interface. Profiles are not stored in browser storage.
 Signing in loads the newest saved plan using the authenticated
 `GET /api/v1/students/{student_id}/plans?limit=1` endpoint. The studio card
 opens a full program view below the scene. Select a workout to see its
-exercises, sets, repetitions, rest, coaching notes, equipment and saved
-evidence. The view also includes plan assumptions, the safety note, sources,
+exercises, sets, repetitions, rest, coaching notes and equipment. The view also includes plan assumptions, the safety note, sources,
 and any recorded workout feedback. Links accept HTTP/HTTPS addresses only.
 **Refresh saved plan** reloads the latest database version, including changes
 made through other clients. An empty account shows an empty state; failed
