@@ -1,6 +1,6 @@
 # RepWise studio frontend
 
-Step one of the web frontend: HTML, CSS and JavaScript, with Three.js for a
+The web frontend uses HTML, CSS and JavaScript, with Three.js for a
 real 3D scene and Vite for local development and production builds.
 
 From `app`, using Node.js 20.19 or newer:
@@ -55,6 +55,19 @@ Reloading verifies the token through `/api/v1/auth/me` before showing a saved
 identity. Expired or rejected sessions return to login. Sign-out clears local
 session state; it does not revoke the backend JWT, which expires normally.
 If session storage is unavailable, sign-in works in memory for the current page.
+
+## Training profile
+
+After sign-in, the studio loads the account's profile through the existing
+authenticated `GET /api/v1/students/{student_id}/profile` route. A missing
+profile opens the way to setup; a connection error offers a retry instead.
+Choose **Set up your profile** for a three-step form: experience and goal,
+available days and session duration, then equipment and optional preferences.
+Saving uses the existing `PUT` route and stores the profile in the backend
+database. Reloading restores it; **Edit training profile** or **Training profile**
+in the account menu reopens the editor. Closing without saving keeps the draft
+while signed in on the current page. Sign-out clears the profile and draft
+from the interface. Profiles are not stored in browser storage.
 
 Saved workouts, sources, feedback and the assistant will be connected in later
 steps. The preview displays no invented training data. Muscle targeting,

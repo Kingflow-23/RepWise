@@ -51,8 +51,6 @@ export function initializeLogin() {
       document.getElementById('account-initials').textContent = initials;
       document.getElementById('account-short-name').textContent = words[0];
       document.getElementById('account-full-name').textContent = session.full_name;
-      document.querySelector('#training-placeholder .connection-note strong').textContent = 'Your account is connected';
-      document.querySelector('#training-placeholder .connection-note p').textContent = 'Your saved workouts and training profile will be connected in the next step.';
       menu.querySelector('summary').focus({ preventScroll: true });
     } else {
       ['account-initials', 'account-short-name', 'account-full-name'].forEach((id) => { document.getElementById(id).textContent = ''; });

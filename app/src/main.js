@@ -1,8 +1,10 @@
 import './styles.css';
 import { icon, mountIcons } from './icons.js';
 import { initializeLogin } from './login.js';
+import { initializeProfile } from './profile.js';
 
 mountIcons();
+initializeProfile();
 initializeLogin();
 const lastDialogTrigger = new Map();
 document.querySelectorAll('[data-open]').forEach((button) => {

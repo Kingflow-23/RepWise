@@ -25,7 +25,12 @@ export async function request(path, { method = 'GET', body, token, signal } = {}
   let payload;
   try { payload = await response.json(); } catch { payload = null; }
   if (!response.ok) {
-    const message = response.status === 401
+    const login = path === '/auth/login';
+    const message = !login
+      ? (response.status === 401 ? 'Your session has expired. Please sign in again.'
+        : response.status === 422 ? 'Check your profile fields and try again.'
+          : 'We couldn’t complete this request. Please try again in a moment.')
+      : response.status === 401
       ? 'That name and password don’t match. Please try again.'
       : response.status === 422
         ? 'Check your account name and password, then try again.'

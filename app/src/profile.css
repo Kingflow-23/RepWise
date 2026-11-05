@@ -1,0 +1,40 @@
+#profile-dialog { width: min(580px, calc(100% - 32px)); max-width: none; max-height: calc(100svh - 32px); overflow-y: auto; }
+#profile-dialog h2 { font-size: 32px; }
+#profile-dialog > p { line-height: 1.7; }
+.profile-progress { display: flex; list-style: none; padding: 0; margin: 24px 0; gap: 12px; }
+.profile-progress li { flex: 1; padding: 10px 0; border-top: 2px solid #ffffff15; color: #858c78; font-size: 10px; }
+.profile-progress li[aria-current] { color: #edba96; border-color: var(--accent); }
+#profile-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+#profile-form .profile-step > legend { font-size: 16px; margin-bottom: 23px; color: #d6d7c8; }
+#profile-form select, #profile-form textarea {
+  width: 100%; padding: 12px 13px; color: #eeeee4; font: inherit; font-size: 13px;
+  background: #11140f80; border: 1px solid #b9c3aa26; border-radius: 7px;
+}
+#profile-form textarea { resize: vertical; min-height: 72px; }
+#profile-form input:focus-visible, #profile-form select:focus-visible, #profile-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#profile-form .day-picker { margin-bottom: 25px; }
+.day-picker legend { color: #cccfc0; font-size: 11px; margin-bottom: 12px; }
+#profile-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+#profile-days label { position: relative; cursor: pointer; min-width: 0; }
+#profile-days input { position: absolute; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+#profile-days span { display: block; text-align: center; padding: 13px 0; font-size: 11px; border: 1px solid #b9c3aa26; border-radius: 6px; color: #a7ac99; }
+#profile-days input:checked + span { background: #d58d5c20; border-color: #d58d5c; color: #f5caab; }
+#profile-days input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 3px; }
+.profile-actions { display: flex; gap: 16px; margin-top: 25px; align-items: center; }
+.profile-back { padding: 12px; background: transparent; color: #bdc1ad; font-size: 12px; }
+.profile-actions .primary-button { margin-left: auto; max-width: 230px; }
+#profile-dialog .profile-footer { font-size: 10px; color: #929981; margin-top: 22px; }
+.profile-summary { margin: 24px 0 0; padding: 18px 0; border-block: 1px solid #ffffff0b; display: grid; grid-template-columns: 75px minmax(0, 1fr); gap: 12px; font-size: 11px; line-height: 1.7; }
+.profile-summary dt { color: #858e78; }
+.profile-summary dd { margin: 0; overflow-wrap: anywhere; color: #d1d2bf; }
+.profile-notice { font-size: 11px; color: #bbc6a4; margin: 14px 0; }
+#training-placeholder #explore-studio { margin-top: 13px; background: transparent; color: #c1c6b2; border-color: #b9c3aa26; }
+#menu-profile { margin-bottom: 8px; }
+@media(max-width:760px) {
+  #profile-dialog { padding: 24px 20px; }
+  #profile-form select, #profile-form textarea { font-size: 16px; }
+  .profile-progress { gap: 8px; }
+  .profile-progress li { font-size: 9px; }
+  #profile-days { grid-template-columns: repeat(4, 1fr); }
+  .profile-summary { font-size: 12px; }
+}
