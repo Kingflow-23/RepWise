@@ -40,4 +40,4 @@ generator_implementation_guide.txt
 *.pdf
 
 # Env
-.venv312
+.venv

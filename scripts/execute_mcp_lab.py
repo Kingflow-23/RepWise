@@ -20,20 +20,38 @@ def main():
         kernels = Path(temporary) / "kernels"
         spec = kernels / "repwise-lab"
         spec.mkdir(parents=True)
-        (spec / "kernel.json").write_text(json.dumps({
-            "argv": [sys.executable, "-m", "ipykernel_launcher", "-f", "{connection_file}"],
-            "display_name": "RepWise lab", "language": "python",
-            "env": {"IPYTHONDIR": str(Path(temporary) / "ipython"),
-                    "JUPYTER_RUNTIME_DIR": str(Path(temporary) / "runtime")},
-        }), encoding="utf-8")
+        (spec / "kernel.json").write_text(
+            json.dumps(
+                {
+                    "argv": [
+                        sys.executable,
+                        "-m",
+                        "ipykernel_launcher",
+                        "-f",
+                        "{connection_file}",
+                    ],
+                    "display_name": "RepWise lab",
+                    "language": "python",
+                    "env": {
+                        "IPYTHONDIR": str(Path(temporary) / "ipython"),
+                        "JUPYTER_RUNTIME_DIR": str(Path(temporary) / "runtime"),
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
         manager = KernelManager(
-            kernel_name="repwise-lab", kernel_spec_manager=KernelSpecManager(kernel_dirs=[str(kernels)])
+            kernel_name="repwise-lab",
+            kernel_spec_manager=KernelSpecManager(kernel_dirs=[str(kernels)]),
         )
         client = NotebookClient(
-            notebook, km=manager, timeout=480,
+            notebook,
+            km=manager,
+            timeout=480,
             resources={"metadata": {"path": str(ROOT)}},
             on_cell_start=lambda cell, cell_index, **kwargs: print(
-                f"Cell {cell_index + 1}/{len(notebook.cells)}: {cell.cell_type}", flush=True
+                f"Cell {cell_index + 1}/{len(notebook.cells)}: {cell.cell_type}",
+                flush=True,
             ),
         )
         try:
@@ -41,14 +59,21 @@ def main():
         finally:
             # Preserve diagnostics on failure; do not mistake a partial run for success.
             notebook.metadata.kernelspec = {
-                "display_name": "Python 3 (RepWise environment)", "name": "python3", "language": "python",
+                "display_name": "Python 3 (RepWise environment)",
+                "name": "python3",
+                "language": "python",
             }
             nbformat.write(notebook, NOTEBOOK)
             if manager.has_kernel:
                 manager.shutdown_kernel(now=True)
             manager.cleanup_resources()
-    errors = [output for cell in notebook.cells if cell.cell_type == "code"
-              for output in cell.outputs if output.output_type == "error"]
+    errors = [
+        output
+        for cell in notebook.cells
+        if cell.cell_type == "code"
+        for output in cell.outputs
+        if output.output_type == "error"
+    ]
     if errors:
         raise RuntimeError("Notebook contains failed cells")
     print(f"Executed notebook: {NOTEBOOK}")

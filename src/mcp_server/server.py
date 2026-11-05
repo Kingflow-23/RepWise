@@ -14,8 +14,11 @@ from ..tools.generate_workout_plan import GenerateWorkoutPlanResult
 
 
 def create_server(
-    api_url: str, user_id: str, access_token: str,
-    *, transport: httpx.AsyncBaseTransport | None = None,
+    api_url: str,
+    user_id: str,
+    access_token: str,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastMCP:
     """Bind one authenticated account outside model-controlled arguments.
 
@@ -24,7 +27,9 @@ def create_server(
     The backend validates the token and account ownership on every request.
     """
     if not api_url or not user_id or not access_token:
-        raise ValueError("Set the API URL, MCP user ID and MCP access token before starting")
+        raise ValueError(
+            "Set the API URL, MCP user ID and MCP access token before starting"
+        )
     mcp = FastMCP("RepWise")
 
     @mcp.tool()
@@ -42,12 +47,15 @@ def create_server(
         failure status. This tool saves a new plan: call once per requested plan.
         """
         options = PlanOptions(
-            focus=focus, workouts_per_week=workouts_per_week,
+            focus=focus,
+            workouts_per_week=workouts_per_week,
             extra_constraints=extra_constraints or [],
             refinement_instructions=refinement_instructions,
         )
         async with httpx.AsyncClient(
-            base_url=api_url.rstrip("/"), timeout=180, transport=transport,
+            base_url=api_url.rstrip("/"),
+            timeout=180,
+            transport=transport,
             headers={"Authorization": f"Bearer {access_token}"},
         ) as client:
             response = await client.post(
@@ -59,8 +67,12 @@ def create_server(
             if isinstance(detail, dict) and "status" in detail:
                 return GenerateWorkoutPlanResult.model_validate(detail)
             if response.status_code == 404:
-                return GenerateWorkoutPlanResult(status="missing_profile", message=str(detail))
-            raise RuntimeError(f"RepWise API rejected the request (HTTP {response.status_code})")
+                return GenerateWorkoutPlanResult(
+                    status="missing_profile", message=str(detail)
+                )
+            raise RuntimeError(
+                f"RepWise API rejected the request (HTTP {response.status_code})"
+            )
         return GenerateWorkoutPlanResult.model_validate(response.json())
 
     return mcp
