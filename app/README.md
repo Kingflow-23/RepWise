@@ -30,9 +30,35 @@ preferences pause rotation and remove camera transitions. Rendering pauses
 when hidden or off screen and stops when the camera is idle. A failed WebGL
 context or missing asset leaves the layout and dialogs usable.
 
-This preview makes **no API calls** and displays **no invented training data**.
-Login, saved workouts, sources, feedback and the assistant will be connected in
-later steps. Muscle targeting, calendar dates and set-by-set persistence are
-not simulated. The previous Streamlit app remains in `../genai_app/`.
+## Account sign-in
+
+Start the backend from the repository root in a separate terminal:
+
+```powershell
+python -m uvicorn src.api.main:app --reload
+```
+
+Use the full name and password of an existing RepWise account. Account creation
+is still available through the existing API or Streamlit app; registration is
+not part of this frontend step.
+
+The browser sends `/api` requests through Vite's same-origin proxy to
+`REPWISE_API_URL` in the root `.env`, defaulting to `http://127.0.0.1:8000`.
+Restart Vite after changing that setting. The same proxy is configured for
+`npm run preview`. A production deployment must route `/api` to FastAPI on
+the same origin; Vite's development proxy is not part of the built files.
+No backend secret is exposed through `VITE_*` settings or the browser bundle.
+
+The login form uses `/api/v1/auth/login`. Tab-scoped session storage retains
+the bearer token and public account identity across reloads, never passwords.
+Reloading verifies the token through `/api/v1/auth/me` before showing a saved
+identity. Expired or rejected sessions return to login. Sign-out clears local
+session state; it does not revoke the backend JWT, which expires normally.
+If session storage is unavailable, sign-in works in memory for the current page.
+
+Saved workouts, sources, feedback and the assistant will be connected in later
+steps. The preview displays no invented training data. Muscle targeting,
+calendar dates and set-by-set persistence are not simulated. The previous
+Streamlit app remains in `../genai_app/`.
 
 The model's source and licence are recorded in `public/models/README.md`.

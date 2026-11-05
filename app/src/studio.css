@@ -51,7 +51,7 @@
 
 .scene-hint {
   position:absolute;
-  bottom:79px;
+  bottom:100px;
   left:58%;
   transform:translateX(-50%);
   white-space:nowrap;
@@ -77,27 +77,36 @@
 
 .scene-toolbar {
   position:absolute;
-  bottom:3px;
+  bottom:31px;
   left:0;
   right:0;
   display:flex;
   justify-content:space-between;
   align-items:center;
   gap:12px;
+  min-height:48px;
+  padding:5px 8px;
+  border:1px solid #b9b9a51c;
+  border-radius:10px;
+  background:#191b16b8;
+  backdrop-filter:blur(8px);
   z-index:2
 }
 
 .view-switch {
   display:flex;
-  background:#ffffff02;
-  border:1px solid #b9b9a51c;
-  border-radius:8px;
-  padding:3px;
+  align-items:center;
   gap:3px
 }
 
 .view-switch button {
-  padding:10px 23px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width:64px;
+  height:36px;
+  padding:0 18px;
+  line-height:1;
   border-radius:5px;
   background:transparent;
   font-size:10px;
@@ -121,14 +130,24 @@
   gap:8px
 }
 
+.toolbar-secondary .icon-button {
+  width:36px;
+  height:36px;
+  flex-shrink:0
+}
+
 .motion-button {
   display:flex;
   align-items:center;
   gap:8px;
-  padding:11px 10px;
+  justify-content:center;
+  height:36px;
+  min-width:116px;
+  padding:0 10px;
+  line-height:1;
   background:none;
   color:#9ea992;
-  font-size:9px;
+  font-size:10px;
   border-radius:6px
 }
 
@@ -187,11 +206,11 @@
   }
 
   .view-switch button {
-    padding:10px 16px
+    padding:0 16px
   }
 
   .motion-button {
-    font-size:8px;
+    font-size:10px;
     gap:6px
   }
 
@@ -203,19 +222,19 @@
   }
 
   .scene-hint {
-    bottom:74px;
+    bottom:100px;
     left:58%;
     font-size:8px
   }
 
   .scene-toolbar {
-    bottom:4px;
+    bottom:32px;
     left:5px;
     right:5px
   }
 
   .view-switch button {
-    padding:11px 22px;
+    padding:0 18px;
     font-size:11px
   }
 
@@ -227,4 +246,33 @@
     inset:170px 15% 60px 15%
   }
 
+}
+
+@media(max-width:420px) {
+  .scene-toolbar {
+    left:0;
+    right:0;
+    padding:5px;
+    gap:6px
+  }
+
+  .view-switch button {
+    min-width:48px;
+    padding:0 10px;
+    font-size:10px
+  }
+
+  .toolbar-secondary {
+    gap:2px
+  }
+
+  .toolbar-secondary .icon-button {
+    width:32px
+  }
+
+  .motion-button {
+    min-width:105px;
+    padding:0 6px;
+    font-size:9px
+  }
 }

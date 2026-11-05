@@ -1,7 +1,9 @@
 import './styles.css';
 import { icon, mountIcons } from './icons.js';
+import { initializeLogin } from './login.js';
 
 mountIcons();
+initializeLogin();
 const lastDialogTrigger = new Map();
 document.querySelectorAll('[data-open]').forEach((button) => {
   button.addEventListener('click', () => {

@@ -1,0 +1,110 @@
+[hidden] { display: none !important; }
+
+.header-signin {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 13px;
+  color: #e7c0a5;
+  border: 1px solid #d58d5c30;
+  border-radius: 7px;
+  background: #d58d5c0b;
+  font-size: 11px;
+}
+.header-signin:hover { background: #d58d5c20; }
+.header-signin svg { width: 14px; height: 14px; }
+.auth-panel h2 { font-size: clamp(40px, 3.5vw, 56px); letter-spacing: -2px; }
+.auth-panel form { margin-top: 25px; }
+.auth-field { margin-bottom: 20px; }
+.auth-field label { display: block; margin-bottom: 9px; font-size: 11px; color: #cccfc0; }
+.auth-field input {
+  display: block;
+  width: 100%;
+  min-height: 46px;
+  padding: 12px 13px;
+  background: #11140f50;
+  border: 1px solid #b9c3aa26;
+  border-radius: 7px;
+  color: #eeeee4;
+  font: inherit;
+  font-size: 13px;
+  transition: border-color .2s, box-shadow .2s;
+}
+.auth-field input::placeholder { color: #737d66; }
+.auth-field input:focus { outline: none; border-color: #d58d5caa; box-shadow: 0 0 0 3px #d58d5c0b; }
+.auth-field input:disabled { opacity: .65; }
+.field-hint { display: block; margin-top: 8px; color: #8b967d; font-size: 10px; line-height: 1.6; }
+.password-field { position: relative; }
+.password-field input { padding-right: 48px; }
+.password-field button {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: #949f86;
+  background: none;
+  border-radius: 6px;
+}
+.password-field button:hover { color: #edc7ab; }
+.password-field svg { width: 18px; height: 18px; }
+.login-submit { margin-top: 23px; min-height: 48px; }
+.login-submit:disabled { cursor: wait; }
+.auth-error {
+  padding: 12px 13px;
+  margin-top: 8px;
+  border: 1px solid #e3957d40;
+  border-radius: 7px;
+  color: #efb49d;
+  background: #b6654610;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.auth-error:focus { outline: none; }
+.auth-status { margin-top: 10px; color: #b9c0a9; font-size: 11px; line-height: 1.7; }
+.auth-footnote { display: flex; align-items: center; gap: 7px; margin-top: 18px; font-size: 9px; line-height: 1.6; color: #8c967d; }
+.auth-footnote svg { width: 12px; height: 12px; flex-shrink: 0; }
+.account-menu { position: relative; }
+.account-menu summary { display: flex; align-items: center; gap: 9px; cursor: pointer; border-radius: 7px; list-style: none; }
+.account-menu summary::-webkit-details-marker { display: none; }
+.account-menu summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
+.account-menu summary > [data-icon] svg { width: 12px; height: 12px; color: #9ba88a; }
+.account-avatar { width: 34px; height: 34px; border: 1px solid #ce895442; border-radius: 50%; display: grid; place-items: center; background: #c47c4920; color: #efc4a4; font-size: 11px; }
+.account-short-name { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.account-popover { position: absolute; right: 0; top: 48px; width: 230px; padding: 19px; border: 1px solid #c2c9ad29; border-radius: 10px; box-shadow: 0 15px 40px #0005; background: #23271e; z-index: 15; }
+.account-popover .eyebrow { display: block; font-size: 8px; color: #a6b392; }
+.account-popover strong { display: block; margin: 10px 0 16px; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.account-popover button { display: flex; align-items: center; gap: 9px; width: 100%; background: #ffffff04; border: 1px solid #ffffff0a; padding: 10px; border-radius: 5px; text-align: left; font-size: 12px; }
+.account-popover button:hover { background: #ffffff0a; }
+.account-popover button svg { width: 16px; height: 16px; }
+
+@media(max-width:1100px) {
+  .topbar-actions { gap: 9px; }
+  .auth-panel h2 { font-size: 44px; }
+}
+@media(max-width:760px) {
+  .header-signin { font-size: 10px; padding: 9px 11px; }
+  .topbar-actions .preview-badge { display: none; }
+  .account-short-name { display: none; }
+  .auth-panel { scroll-margin: 20px; }
+  .auth-panel h2 { font-size: 46px; }
+  .auth-field input { font-size: 16px; }
+  .auth-field label { font-size: 12px; }
+  .auth-footnote { font-size: 10px; }
+  body[data-auth="signed-out"] .session-column { grid-row: 1; padding-top: 24px; }
+  body[data-auth="signed-out"] .studio-stage { grid-row: 2; }
+}
+
+body[data-auth="signed-out"] .detail-card,
+body[data-auth="signed-out"] .studio-caption { display: none; }
+
+@media(max-height:780px) and (min-width:761px) {
+  .auth-panel h2 { font-size: 38px; margin-top: 16px; }
+  .auth-panel .card-description { margin-top: 12px; }
+  .auth-panel form { margin-top: 18px; }
+  .auth-field { margin-bottom: 14px; }
+  .auth-footnote { margin-top: 12px; }
+  .login-submit { margin-top: 18px; }
+}

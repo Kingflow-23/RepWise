@@ -21,7 +21,15 @@
       <header class="topbar">
         <a class="wordmark" href="#studio">RepWise<span>YOUR TRAINING STUDIO</span></a>
         <nav class="top-nav" aria-label="Primary"><a class="selected" href="#studio" aria-current="page">Studio</a><button type="button" data-open="preview-dialog">What’s next <span data-icon="arrow-up-right"></span></button></nav>
-        <div class="topbar-actions"><span class="preview-badge"><i></i> Studio preview</span><button class="icon-button" type="button" data-open="settings-dialog" aria-label="Open studio settings"><span data-icon="settings"></span></button></div>
+        <div class="topbar-actions">
+          <span class="preview-badge"><i></i> Studio preview</span>
+          <button class="header-signin" id="show-login" type="button">Sign in <span data-icon="arrow-up-right"></span></button>
+          <details class="account-menu" id="account-menu" hidden>
+            <summary aria-label="Open account menu"><span class="account-avatar" id="account-initials"></span><span class="account-short-name" id="account-short-name"></span><span data-icon="chevron-down"></span></summary>
+            <div class="account-popover"><span class="eyebrow">SIGNED IN</span><strong id="account-full-name"></strong><button type="button" id="sign-out"><span data-icon="log-out"></span>Sign out</button></div>
+          </details>
+          <button class="icon-button" type="button" data-open="settings-dialog" aria-label="Open studio settings"><span data-icon="settings"></span></button>
+        </div>
       </header>
 
       <main class="main-content" id="studio">
@@ -39,11 +47,24 @@
             </div>
           </section>
 
-          <aside class="session-column" aria-label="Training preview">
-            <section class="session-card">
+          <aside class="session-column" aria-label="Account and training">
+            <section class="session-card auth-panel" id="login-panel" aria-labelledby="login-title">
+              <div class="card-topline"><p class="eyebrow">MAKE THIS SPACE YOURS</p><span class="corner-symbol" data-icon="lock"></span></div>
+              <h2 id="login-title">Welcome<br />back.</h2>
+              <p class="card-description">Your training starts with you. <br />Sign in to your RepWise account.</p>
+              <form id="login-form" method="post" action="/api/v1/auth/login">
+                <div class="auth-field"><label for="login-name">Account name</label><input id="login-name" name="full_name" type="text" autocomplete="username" minlength="3" maxlength="100" placeholder="Your full name" required aria-describedby="login-name-hint" /><span class="field-hint" id="login-name-hint">Use the full name you registered with.</span></div>
+                <div class="auth-field"><label for="login-password">Password</label><div class="password-field"><input id="login-password" name="password" type="password" autocomplete="current-password" minlength="8" required placeholder="Your password" /><button id="toggle-password" type="button" aria-label="Show password" aria-pressed="false"><span data-icon="eye"></span></button></div></div>
+                <p class="auth-error" id="login-error" role="alert" tabindex="-1" hidden></p>
+                <p class="auth-status" id="login-status" role="status" hidden></p>
+                <button class="primary-button login-submit" id="login-submit" type="submit"><span>Sign in to your studio</span><span data-icon="arrow-right"></span></button>
+              </form>
+              <p class="auth-footnote"><span data-icon="lock"></span>Your session stays in this browser tab.</p>
+            </section>
+            <section class="session-card" id="training-placeholder" hidden>
               <div class="card-topline"><p class="eyebrow">YOUR SPACE TO TRAIN</p><span class="corner-symbol" data-icon="spark"></span></div>
               <h2>Good things<br />start with a plan.</h2>
-              <p class="card-description">Your next workout, your own pace.<br />Soon, all in one place.</p>
+              <p class="card-description">Your next workout, your own pace. <br />Soon, all in one place.</p>
               <div class="program-silhouette" aria-hidden="true"><div class="silhouette-icon" data-icon="dumbbell"></div><div><span class="skeleton long"></span><span class="skeleton short"></span></div><span class="silhouette-dot"></span></div>
               <div class="connection-note"><span class="tiny-ring"></span><div><strong>Your plan isn’t connected yet</strong><p>This first step is your visual studio. Saved workouts and profile data come next.</p></div></div>
               <button class="primary-button" id="explore-studio" type="button" disabled>Explore the 3D studio <span data-icon="arrow-up-right"></span></button>
@@ -61,7 +82,7 @@
     </div>
 
     <dialog id="settings-dialog" aria-labelledby="settings-title"><div class="dialog-top"><p class="eyebrow">MAKE YOURSELF AT HOME</p><button class="icon-button" data-close type="button" aria-label="Close settings"><span data-icon="close"></span></button></div><h2 id="settings-title">Your studio, your atmosphere.</h2><p>Change the scene without changing your training.</p><fieldset><legend>Lighting</legend><div class="lighting-options"><button type="button" data-lighting="warm" aria-pressed="true"><i class="light-swatch warm"></i>Warm</button><button type="button" data-lighting="neutral" aria-pressed="false"><i class="light-swatch neutral"></i>Neutral</button></div></fieldset><div class="motion-note"><span data-icon="accessibility"></span><p>Rotation starts paused when your device requests reduced motion. You can always explore using the view buttons.</p></div><button class="primary-button" type="button" data-close>Back to the studio <span data-icon="arrow-right"></span></button></dialog>
-    <dialog id="preview-dialog" aria-labelledby="preview-title"><div class="dialog-top"><p class="eyebrow">STEP ONE / THE VISUAL STUDIO</p><button class="icon-button" data-close type="button" aria-label="Close preview guide"><span data-icon="close"></span></button></div><h2 id="preview-title">The studio is taking shape.</h2><p>For now, explore the figure, switch views and adjust the atmosphere.</p><ul class="preview-list"><li><span data-icon="check"></span>Interactive 3D figure and camera controls</li><li><span data-icon="check"></span>Warm and neutral studio lighting</li><li><span data-icon="check"></span>Responsive layout and motion preferences</li></ul><div class="dialog-next"><strong>Next, your training.</strong><p>Account connection, real workout plans, sources and the assistant will follow. This figure does not show exercise-specific muscle targets.</p></div><button class="primary-button" type="button" data-close>Take a look around <span data-icon="arrow-right"></span></button></dialog>
+    <dialog id="preview-dialog" aria-labelledby="preview-title"><div class="dialog-top"><p class="eyebrow">YOUR STUDIO / TAKING SHAPE</p><button class="icon-button" data-close type="button" aria-label="Close preview guide"><span data-icon="close"></span></button></div><h2 id="preview-title">The studio is taking shape.</h2><p>Sign in with your existing account, explore the figure and adjust the atmosphere.</p><ul class="preview-list"><li><span data-icon="check"></span>Account sign-in and sign-out</li><li><span data-icon="check"></span>Interactive 3D figure and camera controls</li><li><span data-icon="check"></span>Studio lighting and motion preferences</li></ul><div class="dialog-next"><strong>Next, your training.</strong><p>Saved workout plans, profile editing, sources and the assistant will follow. This figure does not show exercise-specific muscle targets.</p></div><button class="primary-button" type="button" data-close>Take a look around <span data-icon="arrow-right"></span></button></dialog>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
