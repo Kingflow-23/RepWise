@@ -31,7 +31,15 @@ logger = logging.getLogger(__name__)
 SLOT_STEP_MINUTES = 30
 OPTIONS_PER_WORKOUT = 3
 # Not strftime("%A"), which follows the computer's language.
-DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+DAY_NAMES = (
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+)
 NOT_CONNECTED = Failure(
     code="calendar_not_connected",
     error="The student has not connected a calendar.",
@@ -226,7 +234,9 @@ def _slots(starts: list[datetime], minutes: int) -> list[Slot]:
     ]
 
 
-def event_key(student_id: str, plan_id: str, week_number: int, workout_index: int) -> str:
+def event_key(
+    student_id: str, plan_id: str, week_number: int, workout_index: int
+) -> str:
     """Build a stable key, so that retrying a booking cannot create a duplicate."""
     text = f"{student_id}:{plan_id}:{week_number}:{workout_index}"
     return hashlib.sha256(text.encode()).hexdigest()
@@ -234,7 +244,9 @@ def event_key(student_id: str, plan_id: str, week_number: int, workout_index: in
 
 def event_description(workout: Workout) -> str:
     """Describe a workout for the calendar. This text is sent to the provider."""
-    lines = [f"{item.name}: {item.sets} x {item.repetitions}" for item in workout.exercises]
+    lines = [
+        f"{item.name}: {item.sets} x {item.repetitions}" for item in workout.exercises
+    ]
     return "\n".join([workout.focus, *lines, "", "Added by RepWise."])
 
 
@@ -290,7 +302,9 @@ def propose_training_slots(
     zone = ZoneInfo(timezone)
     local_now = now.astimezone(zone)
     all_days = [workout.day for week in plan.weeks for workout in week.workouts]
-    first_monday = monday_of(week_start or default_week_start(all_days, local_now.date()))
+    first_monday = monday_of(
+        week_start or default_week_start(all_days, local_now.date())
+    )
     range_start = datetime.combine(first_monday, time.min, zone)
     range_end = range_start + timedelta(days=7 * len(plan.weeks))
     try:
@@ -300,7 +314,8 @@ def propose_training_slots(
         return Failure(code="calendar_unavailable", error=str(error))
 
     done = {
-        (item["week_number"], item["workout_index"]) for item in record["workout_feedback"]
+        (item["week_number"], item["workout_index"])
+        for item in record["workout_feedback"]
     }
     done |= {
         (item["week_number"], item["workout_index"])
@@ -349,7 +364,9 @@ def propose_training_slots(
                     minutes=minutes,
                     options=options,
                     moved_to_another_day=moved,
-                    note=None if options else "No free time that week fits this workout.",
+                    note=(
+                        None if options else "No free time that week fits this workout."
+                    ),
                 )
             )
     return SlotsResult(timezone=timezone, week_start=first_monday, workouts=results)
@@ -391,7 +408,9 @@ def add_workouts_to_calendar(
         }
         workout = find_workout(plan, booking.week_number, booking.workout_index)
         if workout is None:
-            return BookingOutcome(**position, status="failed", detail="Workout not found.")
+            return BookingOutcome(
+                **position, status="failed", detail="Workout not found."
+            )
         linked = existing.get((booking.week_number, booking.workout_index))
         if linked:
             return BookingOutcome(
@@ -403,10 +422,16 @@ def add_workouts_to_calendar(
             )
 
         zone = ZoneInfo(timezone)
-        start = booking.start if booking.start.tzinfo else booking.start.replace(tzinfo=zone)
+        start = (
+            booking.start
+            if booking.start.tzinfo
+            else booking.start.replace(tzinfo=zone)
+        )
         end = start + timedelta(minutes=workout.estimated_minutes)
         if start <= now:
-            return BookingOutcome(**position, status="failed", detail="This time has passed.")
+            return BookingOutcome(
+                **position, status="failed", detail="This time has passed."
+            )
         try:
             if calendar.busy_periods(start, end):
                 return BookingOutcome(
@@ -417,7 +442,9 @@ def add_workouts_to_calendar(
                     detail="The calendar is busy at this time.",
                 )
             event_id = calendar.create_event(
-                event_key(student_id, plan_id, booking.week_number, booking.workout_index),
+                event_key(
+                    student_id, plan_id, booking.week_number, booking.workout_index
+                ),
                 f"RepWise: {workout.focus}",
                 event_description(workout),
                 start,

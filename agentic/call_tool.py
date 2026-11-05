@@ -33,8 +33,9 @@ from agentic.mcp_demo_client import seed_demo_account
 from agentic.places import Location
 from config.config import AppConfig
 
-
-SCHEMA_FILE = Path(__file__).resolve().parents[1] / "docs" / "agent" / "s5_agent_tools.json"
+SCHEMA_FILE = (
+    Path(__file__).resolve().parents[1] / "docs" / "agent" / "s5_agent_tools.json"
+)
 
 
 def agent_tool_schemas() -> dict:
@@ -87,7 +88,9 @@ def main() -> int:
             for item in build_tools(
                 AgentContext(
                     student_id=student_id,
-                    location=Location(label="Cachan", latitude=48.7908, longitude=2.3317),
+                    location=Location(
+                        label="Cachan", latitude=48.7908, longitude=2.3317
+                    ),
                     pipeline_factory=partial(build_plan_pipeline, config),
                     calendar=FakeCalendar(),
                 )

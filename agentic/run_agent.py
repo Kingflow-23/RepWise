@@ -171,7 +171,11 @@ def check_case(case: dict, reply: AgentReply) -> list[str]:
         return ["the answer is empty"]
     if case["tool"] is None:
         expected = case["answer_contains"]
-        return [] if expected in model_answer.lower() else [f'no "{expected}" in the answer']
+        return (
+            []
+            if expected in model_answer.lower()
+            else [f'no "{expected}" in the answer']
+        )
     calls = [args for name, args in reply.tool_calls if name == case["tool"]]
     if not calls:
         return [f"did not call {case['tool']}"]
@@ -242,7 +246,10 @@ def transcript_entry(number: int, case: dict, reply: AgentReply, problems: list)
     ]
     lines += [f"{step}. {task}" for step, task in enumerate(reply.plan, start=1)]
     if reply.revisions:
-        lines += ["", f"The plan was revised {reply.revisions} time(s) after a failed step."]
+        lines += [
+            "",
+            f"The plan was revised {reply.revisions} time(s) after a failed step.",
+        ]
     lines += ["", "Tool calls:", ""]
     lines += [f"- `{name}({json.dumps(args)})`" for name, args in reply.tool_calls]
     lines += [

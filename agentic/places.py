@@ -109,7 +109,9 @@ def _to_place(feature: dict, location: Location) -> Place | None:
     if not properties.get("name"):
         return None
     longitude, latitude = feature["geometry"]["coordinates"]
-    parts = [properties.get(key) for key in ("housenumber", "street", "postcode", "city")]
+    parts = [
+        properties.get(key) for key in ("housenumber", "street", "postcode", "city")
+    ]
     return Place(
         name=properties["name"],
         distance_km=round(

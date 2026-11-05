@@ -49,7 +49,9 @@ def token_path(student_id: str) -> Path:
 class GoogleCalendar:
     """A :class:`CalendarProvider` for the student's primary Google Calendar."""
 
-    def __init__(self, access_token: Callable[[], str], client: httpx.Client | None = None):
+    def __init__(
+        self, access_token: Callable[[], str], client: httpx.Client | None = None
+    ):
         self.access_token = access_token
         self.client = client or httpx.Client(timeout=TIMEOUT_SECONDS)
 

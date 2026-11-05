@@ -80,7 +80,9 @@ def test_saving_performance_again_replaces_it(account):
 def test_one_wrong_exercise_saves_nothing(account):
     wrong = SQUAT.model_copy(update={"exercise_name": "Bench press"})
 
-    result = training.log_workout_performance(account[0], account[1], 1, 0, [SQUAT, wrong])
+    result = training.log_workout_performance(
+        account[0], account[1], 1, 0, [SQUAT, wrong]
+    )
 
     assert result.code == "exercise_not_found"
     assert "Goblet squat" in result.error
@@ -447,7 +449,9 @@ def test_a_full_day_moves_to_a_spare_available_day(account):
     )
     calendar = cal.FakeCalendar([busy_on(NEXT_MONDAY, 0, 23)])
 
-    workout = cal.propose_training_slots(account[0], calendar, TIMEZONE, NOW).workouts[0]
+    workout = cal.propose_training_slots(account[0], calendar, TIMEZONE, NOW).workouts[
+        0
+    ]
 
     assert workout.moved_to_another_day
     assert {slot.day for slot in workout.options} == {"Saturday"}
@@ -456,7 +460,9 @@ def test_a_full_day_moves_to_a_spare_available_day(account):
 def test_no_free_time_is_said_plainly(account):
     calendar = cal.FakeCalendar([busy_on(NEXT_MONDAY, 0, 23)])
 
-    workout = cal.propose_training_slots(account[0], calendar, TIMEZONE, NOW).workouts[0]
+    workout = cal.propose_training_slots(account[0], calendar, TIMEZONE, NOW).workouts[
+        0
+    ]
 
     assert workout.options == []
     assert "No free time" in workout.note
@@ -724,9 +730,7 @@ def call(name, **arguments):
 
 
 def context(account, **extra):
-    return AgentContext(
-        account[0], timezone=TIMEZONE, clock=lambda: NOW, **extra
-    )
+    return AgentContext(account[0], timezone=TIMEZONE, clock=lambda: NOW, **extra)
 
 
 def test_prompt_tells_the_model_the_date(account):
@@ -743,13 +747,24 @@ def test_prompt_tells_the_model_the_date(account):
     [
         (
             "organize_schedule",
-            {"moves": [{"week_number": 1, "workout_index": 0, "new_day": "Friday"},
-                       {"week_number": 1, "workout_index": 2, "new_day": "Monday"}]},
+            {
+                "moves": [
+                    {"week_number": 1, "workout_index": 0, "new_day": "Friday"},
+                    {"week_number": 1, "workout_index": 2, "new_day": "Monday"},
+                ]
+            },
         ),
         (
             "add_workouts_to_calendar",
-            {"bookings": [{"week_number": 1, "workout_index": 0,
-                           "start": "2030-01-14T18:00:00"}]},
+            {
+                "bookings": [
+                    {
+                        "week_number": 1,
+                        "workout_index": 0,
+                        "start": "2030-01-14T18:00:00",
+                    }
+                ]
+            },
         ),
     ],
 )
@@ -795,7 +810,11 @@ def test_performance_runs_with_json_arguments(account):
             week_number=1,
             workout_index=0,
             exercises=[
-                {"exercise_name": "Goblet squat", "sets_completed": 3, "reps_per_set": "10"}
+                {
+                    "exercise_name": "Goblet squat",
+                    "sets_completed": 3,
+                    "reps_per_set": "10",
+                }
             ],
         ),
         AIMessage("Saved."),
@@ -825,7 +844,12 @@ def test_search_and_adaptation_use_the_loaded_pipeline(account):
     give_feedback(account)
     model = ScriptedModel(
         call("search_documents", query="rest times"),
-        call("update_upcoming_workout", plan_id=account[1], week_number=1, workout_index=0),
+        call(
+            "update_upcoming_workout",
+            plan_id=account[1],
+            week_number=1,
+            workout_index=0,
+        ),
         AIMessage("Done."),
     )
     graph = build_agent(
@@ -851,7 +875,8 @@ def test_a_new_plan_shows_free_slots_without_another_model_call(account):
     calendar = cal.FakeCalendar()
     model = ScriptedModel(call("generate_workout_plan"))
     graph = build_agent(
-        context(account, calendar=calendar, pipeline_factory=lambda: StubPipeline()), model
+        context(account, calendar=calendar, pipeline_factory=lambda: StubPipeline()),
+        model,
     )
 
     reply = ask(graph, "Build my legs", thread_id="t", approve=lambda _request: True)
@@ -865,7 +890,9 @@ def test_a_new_plan_shows_free_slots_without_another_model_call(account):
 def test_a_new_plan_survives_an_unreadable_calendar(account):
     model = ScriptedModel(call("generate_workout_plan"))
     graph = build_agent(
-        context(account, calendar=DownCalendar(), pipeline_factory=lambda: StubPipeline()),
+        context(
+            account, calendar=DownCalendar(), pipeline_factory=lambda: StubPipeline()
+        ),
         model,
     )
 
@@ -1020,9 +1047,9 @@ def test_a_gym_search_has_no_shop_to_try_first(monkeypatch):
 def test_published_schemas_match_the_tools():
     published = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
 
-    assert published == agent_tool_schemas(), (
-        "Run: python -m agentic.call_tool --write-schemas"
-    )
+    assert (
+        published == agent_tool_schemas()
+    ), "Run: python -m agentic.call_tool --write-schemas"
 
 
 def test_every_agent_tool_is_documented():

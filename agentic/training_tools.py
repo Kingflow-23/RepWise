@@ -293,7 +293,8 @@ def get_workout_history(
         ),
         workouts=entries,
         pending_recommendations=[
-            Recommendation(**item) for item in repository.list_recommendations(student_id)
+            Recommendation(**item)
+            for item in repository.list_recommendations(student_id)
         ],
     )
 

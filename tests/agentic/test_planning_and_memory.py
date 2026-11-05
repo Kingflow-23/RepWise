@@ -94,7 +94,10 @@ def test_steps_run_in_order_and_the_last_one_answers(account):
 
     assert reply.answer == "Full answer."
     assert reply.plan == ["Use get_user_profile", "Use get_timetable"]
-    assert [name for name, _ in reply.tool_calls] == ["get_user_profile", "get_timetable"]
+    assert [name for name, _ in reply.tool_calls] == [
+        "get_user_profile",
+        "get_timetable",
+    ]
     assert "You are on step 1." in model.seen[0][0].content
     assert "You are on step 2." in model.seen[2][0].content
 

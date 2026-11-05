@@ -137,7 +137,9 @@ def test_step_limit_stops_the_loop_and_conversation_can_continue(account):
     reply = ask(graph, "loop", thread_id="t")
 
     assert reply.answer == LIMIT_MESSAGE
-    assert len([r for r in reply.tool_results if r[1].startswith("{")]) == MAX_TOOL_STEPS
+    assert (
+        len([r for r in reply.tool_results if r[1].startswith("{")]) == MAX_TOOL_STEPS
+    )
     assert ask(graph, "hello", thread_id="t").answer == "still here"
 
 

@@ -162,7 +162,10 @@ def format_plan(result: GenerateWorkoutPlanResult) -> str:
                 f"{item.rest_seconds} s rest"
                 for item in workout.exercises
             )
-    lines += ["", f"Saved as plan {result.plan_id}, with {len(result.sources)} sources."]
+    lines += [
+        "",
+        f"Saved as plan {result.plan_id}, with {len(result.sources)} sources.",
+    ]
     return "\n".join(lines)
 
 
@@ -374,7 +377,9 @@ def build_agent(context: AgentContext, llm: Any, checkpointer: Any = None):
         messages = state["messages"]
         steps, index = state["plan"], state["current_step"]
         # Without a model, or after a refusal, nothing more should run.
-        if messages[-1].content == MODEL_FAILURE_MESSAGE or planning.was_declined(messages):
+        if messages[-1].content == MODEL_FAILURE_MESSAGE or planning.was_declined(
+            messages
+        ):
             return Command(goto="remember")
 
         failure = planning.step_failure(steps[index], messages)
@@ -385,7 +390,9 @@ def build_agent(context: AgentContext, llm: Any, checkpointer: Any = None):
 
         logger.info("Agent step failed: %s", failure)
         if _out_of_time(state) or state["revisions"] >= MAX_REVISIONS:
-            return Command(goto="remember", update={"unfinished": [steps[index]["task"]]})
+            return Command(
+                goto="remember", update={"unfinished": [steps[index]["task"]]}
+            )
         done = [step["task"] for step in steps[:index]]
         remaining = planning.make_plan(
             planner, messages, tools_by_name, state["recalled"], failure, done
@@ -393,7 +400,10 @@ def build_agent(context: AgentContext, llm: Any, checkpointer: Any = None):
         logger.info("Agent revised plan: %s", [step["task"] for step in remaining])
         return Command(
             goto="execute",
-            update={"plan": steps[:index] + remaining, "revisions": state["revisions"] + 1},
+            update={
+                "plan": steps[:index] + remaining,
+                "revisions": state["revisions"] + 1,
+            },
         )
 
     def finish_plan(state: AgentState) -> dict:

@@ -38,7 +38,9 @@ class FactResult(Model):
 
 
 @report_storage_errors
-def remember_fact(student_id: str, fact: str) -> FactResult | Failure | tools.ToolFailure:
+def remember_fact(
+    student_id: str, fact: str
+) -> FactResult | Failure | tools.ToolFailure:
     """Store a stable preference or useful fact. Health details are refused."""
     if mentions_pain(fact):
         return Failure(

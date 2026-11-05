@@ -120,7 +120,9 @@ class OrganizeScheduleArgs(Model):
 
 class RecommendationArgs(Model):
     plan_id: str | None = Field(default=None, description="Omit for the latest plan.")
-    summary: str = Field(min_length=3, max_length=300, description="The proposed change.")
+    summary: str = Field(
+        min_length=3, max_length=300, description="The proposed change."
+    )
     reason: str = Field(min_length=3, max_length=500, description="Why it would help.")
     source_ids: list[str] = Field(
         default_factory=list, description="source_id values from search_documents."

@@ -85,12 +85,16 @@ def make_plan(
         or (isinstance(message, AIMessage) and message.content)
     ]
     try:
-        plan = planner.invoke(
-            [SystemMessage(prompt), *conversation[-PLANNER_HISTORY:]]
-        )
+        plan = planner.invoke([SystemMessage(prompt), *conversation[-PLANNER_HISTORY:]])
         steps = plan.steps
     # A plan is only a guide: without one, the executor handles the whole request.
-    except (AttributeError, ConnectionError, httpx.HTTPError, ResponseError, ValueError):
+    except (
+        AttributeError,
+        ConnectionError,
+        httpx.HTTPError,
+        ResponseError,
+        ValueError,
+    ):
         logger.warning("The model gave no usable plan", exc_info=True)
         return [one_step("Complete the student's request.")]
     return [
@@ -102,7 +106,9 @@ def make_plan(
 
 def latest_request_messages(messages: list) -> list:
     """Return the messages since the student's latest request, including it."""
-    last = max(i for i, message in enumerate(messages) if isinstance(message, HumanMessage))
+    last = max(
+        i for i, message in enumerate(messages) if isinstance(message, HumanMessage)
+    )
     return messages[last:]
 
 
