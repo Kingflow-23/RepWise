@@ -38,9 +38,10 @@ Start the backend from the repository root in a separate terminal:
 python -m uvicorn src.api.main:app --reload
 ```
 
-Use the full name and password of an existing RepWise account. Account creation
-is still available through the existing API or Streamlit app; registration is
-not part of this frontend step.
+Use the full name and password of an existing RepWise account, or choose
+**New here? Create an account**. Registration checks password confirmation and
+uses `/api/v1/auth/register`; its returned token signs the new user in
+immediately so they can set up their profile.
 
 The browser sends `/api` requests through Vite's same-origin proxy to
 `REPWISE_API_URL` in the root `.env`, defaulting to `http://127.0.0.1:8000`.

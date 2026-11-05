@@ -1,4 +1,4 @@
-import { onSessionChange, restoreSession, signIn, signOut } from './auth.js';
+import { onSessionChange, restoreSession, signIn, signOut, register } from './auth.js';
 import { icon } from './icons.js';
 import './login.css';
 
@@ -12,13 +12,31 @@ export function initializeLogin() {
   const panel = document.getElementById('login-panel');
   const menu = document.getElementById('account-menu');
   const toggle = document.getElementById('toggle-password');
+  const confirm = document.getElementById('register-confirm');
+  const switchMode = document.getElementById('switch-auth-mode');
+  let registering = false;
+
+  function mode(create) {
+    registering = create;
+    form.action = create ? '/api/v1/auth/register' : '/api/v1/auth/login';
+    document.getElementById('login-title').innerHTML = create ? 'Your studio.<br />Starts here.' : 'Welcome<br />back.';
+    document.getElementById('auth-description').textContent = create ? 'Create your RepWise account. You’ll be signed in as soon as it’s ready.' : 'Your training starts with you. Sign in to your RepWise account.';
+    document.getElementById('confirm-field').hidden = !create;
+    confirm.required = create;
+    confirm.disabled = !create;
+    confirm.value = ''; confirm.setCustomValidity('');
+    password.autocomplete = create ? 'new-password' : 'current-password';
+    switchMode.textContent = create ? 'Already have an account? Sign in' : 'New here? Create an account';
+    hidePassword(); showError(''); busy(false);
+  }
 
   function busy(active, checking = false) {
     form.setAttribute('aria-busy', String(active));
     form.querySelectorAll('input, button').forEach((input) => { input.disabled = active; });
-    submit.querySelector('span').textContent = active ? (checking ? 'Checking your session…' : 'Signing you in…') : 'Sign in to your studio';
+    confirm.disabled = active || !registering;
+    submit.querySelector('span').textContent = active ? (checking ? 'Checking your session…' : registering ? 'Creating your account…' : 'Signing you in…') : registering ? 'Create account and sign in' : 'Sign in to your studio';
     status.hidden = !active;
-    status.textContent = active ? (checking ? 'Checking your saved session.' : 'Connecting to your account.') : '';
+    status.textContent = active ? (checking ? 'Checking your saved session.' : registering ? 'Creating your account.' : 'Connecting to your account.') : '';
   }
 
   function showError(message) {
@@ -43,6 +61,7 @@ export function initializeLogin() {
     menu.open = false;
     document.getElementById('show-login').hidden = signedIn;
     form.reset();
+    mode(false);
     hidePassword();
     showError(message);
     if (signedIn) {
@@ -62,16 +81,18 @@ export function initializeLogin() {
     event.preventDefault();
     if (form.getAttribute('aria-busy') === 'true') return;
     name.value = name.value.trim();
+    confirm.setCustomValidity(registering && confirm.value !== password.value ? 'Passwords must match.' : '');
     if (!form.reportValidity()) return;
     const accountName = name.value;
     const secret = password.value;
     showError('');
     busy(true);
-    try { await signIn(accountName, secret); }
+    try { await (registering ? register(accountName, secret) : signIn(accountName, secret)); }
     catch (failure) { showError(failure.message); }
     finally { busy(false); }
   });
-  form.addEventListener('input', () => showError(''));
+  form.addEventListener('input', () => { confirm.setCustomValidity(''); showError(''); });
+  switchMode.addEventListener('click', () => { if (form.getAttribute('aria-busy') !== 'true') { mode(!registering); name.focus(); } });
   toggle.addEventListener('click', () => {
     const show = password.type === 'password';
     password.type = show ? 'text' : 'password';

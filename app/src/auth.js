@@ -61,6 +61,12 @@ export async function signIn(fullName, password) {
   if (revision === current) accept(value);
 }
 
+export async function register(fullName, password) {
+  const current = ++revision;
+  const value = await request('/auth/register', { method: 'POST', body: { full_name: fullName.trim(), password } });
+  if (revision === current) accept(value);
+}
+
 export async function restoreSession() {
   let stored;
   try { stored = JSON.parse(sessionStorage.getItem(STORAGE_KEY)); } catch { persist(null); }

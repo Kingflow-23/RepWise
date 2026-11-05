@@ -52,6 +52,7 @@
 .password-field svg { width: 18px; height: 18px; }
 .login-submit { margin-top: 23px; min-height: 48px; }
 .login-submit:disabled { cursor: wait; }
+.auth-switch { font-size: 11px; color: #d5b79e; padding-block: 6px; }
 .auth-error {
   padding: 12px 13px;
   margin-top: 8px;

@@ -26,7 +26,16 @@ export async function request(path, { method = 'GET', body, token, signal } = {}
   try { payload = await response.json(); } catch { payload = null; }
   if (!response.ok) {
     const login = path === '/auth/login';
-    const message = !login
+    const registration = path === '/auth/register';
+    const message = (login || registration) && response.status === 404
+      ? 'The account service isn’t connected. Restart the frontend server, then try again.'
+      : registration && response.status === 409
+        ? 'That account name is already registered. Sign in or choose another name.'
+      : registration && response.status === 422
+        ? 'Use a name with 3–100 characters and a password with 8–200 characters.'
+      : registration
+        ? 'Account creation is unavailable right now. Please try again in a moment.'
+      : !login
       ? (response.status === 401 ? 'Your session has expired. Please sign in again.'
         : response.status === 422 ? 'Check your profile fields and try again.'
           : 'We couldn’t complete this request. Please try again in a moment.')

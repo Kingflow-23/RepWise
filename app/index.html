@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#141411" />
-    <meta name="description" content="RepWise — an interactive space for your training." />
-    <title>RepWise — Your training studio</title>
+    <meta name="description" content="RepWise â€” an interactive space for your training." />
+    <title>RepWise â€” Your training studio</title>
     <link rel="icon" type="image/svg+xml" href="/mark.svg" />
   </head>
   <body>
@@ -20,7 +20,7 @@
 
       <header class="topbar">
         <a class="wordmark" href="#studio">RepWise<span>YOUR TRAINING STUDIO</span></a>
-        <nav class="top-nav" aria-label="Primary"><a class="selected" href="#studio" aria-current="page">Studio</a><button type="button" data-open="preview-dialog">What’s next <span data-icon="arrow-up-right"></span></button></nav>
+        <nav class="top-nav" aria-label="Primary"><a class="selected" href="#studio" aria-current="page">Studio</a><button type="button" data-open="preview-dialog">Whatâ€™s next <span data-icon="arrow-up-right"></span></button></nav>
         <div class="topbar-actions">
           <span class="preview-badge"><i></i> Studio preview</span>
           <button class="header-signin" id="show-login" type="button">Sign in <span data-icon="arrow-up-right"></span></button>
@@ -40,7 +40,7 @@
             </div>
             <div class="studio-intro"><p class="eyebrow"><span></span> A NEW PERSPECTIVE ON TRAINING</p><h1 id="studio-title">Your training.<br /><em>In perspective.</em></h1><p class="intro-copy">A little more focus.<br />A little more room to move.</p></div>
             <div class="scene-meta" aria-hidden="true"><span class="scene-meta-line"></span> THE HUMAN FORM<br /><small>GRAPHITE STUDY / 01</small></div>
-            <div class="scene-hint" id="scene-hint"><span data-icon="orbit"></span><span>Drag to rotate <b>·</b> Scroll to zoom</span></div>
+            <div class="scene-hint" id="scene-hint"><span data-icon="orbit"></span><span>Drag to rotate <b>Â·</b> Scroll to zoom</span></div>
             <div class="scene-toolbar" role="group" aria-label="3D view controls">
               <div class="view-switch"><button type="button" data-view="front" aria-pressed="true" disabled>Front</button><button type="button" data-view="back" aria-pressed="false" disabled>Back</button></div>
               <div class="toolbar-secondary"><button class="icon-button" id="reset-view" type="button" aria-label="Reset 3D view" title="Reset view" disabled><span data-icon="reset"></span></button><button class="motion-button" id="toggle-motion" type="button" aria-pressed="false" disabled><span data-icon="play"></span><span id="motion-label">Auto rotate</span></button></div>
@@ -51,13 +51,15 @@
             <section class="session-card auth-panel" id="login-panel" aria-labelledby="login-title">
               <div class="card-topline"><p class="eyebrow">MAKE THIS SPACE YOURS</p><span class="corner-symbol" data-icon="lock"></span></div>
               <h2 id="login-title">Welcome<br />back.</h2>
-              <p class="card-description">Your training starts with you. <br />Sign in to your RepWise account.</p>
+              <p class="card-description" id="auth-description">Your training starts with you. <br />Sign in to your RepWise account.</p>
               <form id="login-form" method="post" action="/api/v1/auth/login">
                 <div class="auth-field"><label for="login-name">Account name</label><input id="login-name" name="full_name" type="text" autocomplete="username" minlength="3" maxlength="100" placeholder="Your full name" required aria-describedby="login-name-hint" /><span class="field-hint" id="login-name-hint">Use the full name you registered with.</span></div>
-                <div class="auth-field"><label for="login-password">Password</label><div class="password-field"><input id="login-password" name="password" type="password" autocomplete="current-password" minlength="8" required placeholder="Your password" /><button id="toggle-password" type="button" aria-label="Show password" aria-pressed="false"><span data-icon="eye"></span></button></div></div>
+                <div class="auth-field"><label for="login-password">Password</label><div class="password-field"><input id="login-password" name="password" type="password" autocomplete="current-password" minlength="8" maxlength="200" required placeholder="Your password" /><button id="toggle-password" type="button" aria-label="Show password" aria-pressed="false"><span data-icon="eye"></span></button></div></div>
+                <div class="auth-field" id="confirm-field" hidden><label for="register-confirm">Confirm password</label><input id="register-confirm" type="password" autocomplete="new-password" minlength="8" maxlength="200" placeholder="Repeat your password" disabled /></div>
                 <p class="auth-error" id="login-error" role="alert" tabindex="-1" hidden></p>
                 <p class="auth-status" id="login-status" role="status" hidden></p>
                 <button class="primary-button login-submit" id="login-submit" type="submit"><span>Sign in to your studio</span><span data-icon="arrow-right"></span></button>
+                <button class="text-button auth-switch" id="switch-auth-mode" type="button">New here? Create an account</button>
               </form>
               <p class="auth-footnote"><span data-icon="lock"></span>Your session stays in this browser tab.</p>
             </section>
@@ -67,10 +69,10 @@
               <p class="card-description">Start with your goal, your schedule, and what you have to train with.</p>
               <dl class="profile-summary" id="profile-summary" hidden></dl>
               <div class="connection-note"><span class="tiny-ring"></span><div><strong id="profile-state">Loading your profile</strong><p id="profile-description">Getting your saved training details.</p></div></div>
-              <button class="primary-button" id="open-profile" type="button" disabled>Loading profile…</button>
+              <button class="primary-button" id="open-profile" type="button" disabled>Loading profileâ€¦</button>
               <p class="profile-notice" id="profile-notice" role="status" hidden></p>
               <button class="primary-button" id="explore-studio" type="button" disabled>Explore the 3D studio <span data-icon="arrow-up-right"></span></button>
-              <button class="text-button" type="button" data-open="preview-dialog"><span data-icon="info"></span> What’s available in this preview?</button>
+              <button class="text-button" type="button" data-open="preview-dialog"><span data-icon="info"></span> Whatâ€™s available in this preview?</button>
             </section>
 
             <section class="detail-card" aria-labelledby="details-title"><div class="detail-icon" data-icon="orbit"></div><div><p class="eyebrow" id="details-title">BUILT AROUND YOU</p><p>Turn the view.<br />Find your focus.</p></div><span class="detail-number">01</span></section>
@@ -89,7 +91,7 @@
       <div class="dialog-top"><p class="eyebrow">YOUR TRAINING PROFILE</p><button class="icon-button" data-close type="button" aria-label="Close profile setup"><span data-icon="close"></span></button></div>
       <h2 id="profile-title">Make it your own.</h2>
       <p>Your saved details will help shape your workout plans.</p>
-      <ol class="profile-progress" aria-label="Setup progress"><li aria-current="step">1 · Your goal</li><li>2 · Your time</li><li>3 · Your equipment</li></ol>
+      <ol class="profile-progress" aria-label="Setup progress"><li aria-current="step">1 Â· Your goal</li><li>2 Â· Your time</li><li>3 Â· Your equipment</li></ol>
       <form id="profile-form" method="dialog">
         <fieldset class="profile-step" data-step="0"><legend>Where are you starting?</legend>
           <div class="auth-field"><label for="profile-experience">Training experience</label><select id="profile-experience" name="experience" required><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></div>
@@ -104,7 +106,7 @@
           <div class="auth-field"><label for="profile-preferences">Preferences (optional)</label><textarea id="profile-preferences" name="preferences" rows="3" maxlength="500" placeholder="For example, low impact or no jumping"></textarea><span class="field-hint">Up to 500 characters.</span></div>
         </fieldset>
         <p class="auth-error" id="profile-error" role="alert" tabindex="-1" hidden></p>
-        <p class="auth-status" id="profile-saving" role="status" hidden>Saving your profile…</p>
+        <p class="auth-status" id="profile-saving" role="status" hidden>Saving your profileâ€¦</p>
         <div class="profile-actions"><button class="profile-back" id="profile-back" type="button">Back</button><button class="primary-button" id="profile-next" type="button">Continue <span data-icon="arrow-right"></span></button><button class="primary-button" id="profile-save" type="submit" hidden>Save profile <span data-icon="check"></span></button></div>
       </form>
       <p class="profile-footer">You can update these details at any time from your account menu.</p>

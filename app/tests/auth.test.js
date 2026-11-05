@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { authenticatedRequest, onSessionChange, restoreSession, signIn, signOut } from '../src/auth.js';
+import { authenticatedRequest, onSessionChange, restoreSession, signIn, signOut, register } from '../src/auth.js';
 
 const originalFetch = globalThis.fetch;
 function token(expires = Date.now() / 1000 + 3600) {
@@ -17,6 +17,28 @@ beforeEach(() => {
   };
 });
 afterEach(() => { signOut(); globalThis.fetch = originalFetch; });
+
+test('registration immediately accepts the returned session without a second login', async (context) => {
+  let current;
+  let calls = 0;
+  context.after(onSessionChange((value) => { current = value; }));
+  globalThis.fetch = async (url, options) => {
+    calls += 1;
+    assert.equal(url, '/api/v1/auth/register');
+    assert.deepEqual(JSON.parse(options.body), { full_name: 'Alex Test', password: 'new password' });
+    return Response.json({ ...identity, access_token: token() });
+  };
+  await register(' Alex Test ', 'new password');
+  assert.equal(calls, 1);
+  assert.equal(current.user_id, identity.user_id);
+  assert(!store.get('repwise.session').includes('new password'));
+});
+
+test('duplicate registration reports the conflict without creating a session', async () => {
+  globalThis.fetch = async () => Response.json({}, { status: 409 });
+  await assert.rejects(register('Alex Test', 'new password'), /already registered/);
+  assert.equal(store.size, 0);
+});
 
 test('sign-in posts JSON and stores a session without the password; sign-out clears it', async (context) => {
   let current;

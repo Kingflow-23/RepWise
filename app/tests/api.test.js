@@ -2,6 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from '../src/api.js';
 
+test('missing account routes explain how to restore the frontend connection', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 404 }));
+  await assert.rejects(request('/auth/login'), /Restart the frontend server/);
+  await assert.rejects(request('/auth/register'), /Restart the frontend server/);
+});
+
 test('profile requests send the bearer token and JSON to the saved-profile endpoint', async (t) => {
   const profile = { goal: 'Build strength', available_days: ['Monday'] };
   t.mock.method(globalThis, 'fetch', async (url, options) => {
