@@ -1,0 +1,56 @@
+.latest-plan h2 { font-size: clamp(26px, 2.5vw, 38px); overflow-wrap: anywhere; }
+.latest-plan .primary-button { margin-top: 22px; }
+.plan-meta { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+.plan-meta span { padding: 7px 10px; border: 1px solid #e58a5930; border-radius: 20px; font-size: 10px; color: #e7c0a5; }
+.profile-card h2 { font-size: 24px; margin-top: 18px; }
+.profile-card .card-description { margin-top: 12px; }
+.profile-overview { margin-top: 20px; font-size: 11px; color: #aeb69b; }
+.profile-overview summary { cursor: pointer; padding: 5px 0; }
+.profile-overview:has(#profile-summary[hidden]) { display: none; }
+.plan-viewer { margin-top: 36px; border: 1px solid #b8b4a527; padding: 30px; border-radius: 16px; background: #1c1e17; scroll-margin-top: 24px; }
+.plan-heading { display: flex; justify-content: space-between; gap: 20px; align-items: start; }
+.plan-heading h2 { margin-top: 12px; font-size: 30px; font-weight: 450; letter-spacing: -.7px; overflow-wrap: anywhere; }
+.plan-heading > p { color: #9b9f8b; font-size: 11px; line-height: 1.7; }
+.plan-introduction { margin-top: 16px; color: #b6bba8; font-size: 13px; line-height: 1.8; white-space: pre-line; }
+.plan-browser { display: grid; grid-template-columns: minmax(180px, .75fr) minmax(0, 2fr); gap: 28px; margin-top: 28px; }
+.workout-week + .workout-week { margin-top: 24px; }
+.workout-week h3 { font-size: 14px; font-weight: 500; margin: 0; }
+.week-objective { color: #909a80; font-size: 11px; line-height: 1.7; margin: 8px 0 14px; }
+.workout-week button { display: flex; flex-direction: column; width: 100%; text-align: left; gap: 7px; padding: 15px; margin-bottom: 8px; border: 1px solid #b9c3aa1a; border-radius: 8px; background: #ffffff02; }
+.workout-week button[aria-current] { background: #e58a5910; border-color: #e58a5980; }
+.workout-week button:hover { background: #ffffff08; }
+.workout-week button strong { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.workout-week button span { font-size: 10px; color: #a1ad8b; }
+.workout-week button .workout-day { color: #e5b08b; }
+#workout-detail { min-width: 0; padding: 24px; border: 1px solid #b9c3aa1a; border-radius: 12px; background: #11140f40; overflow-wrap: anywhere; }
+#workout-title { font-size: 24px; font-weight: 450; margin: 12px 0; }
+.workout-duration { font-size: 11px; color: #a0a68f; }
+.exercise-list { padding-left: 22px; margin: 24px 0 0; }
+.exercise-list > li { padding-left: 8px; padding-block: 18px; border-top: 1px solid #ffffff0b; }
+.exercise-list > li::marker { color: #e5a377; font-size: 12px; }
+.exercise-list h4 { font-size: 16px; font-weight: 500; margin: 0 0 14px; }
+.exercise-prescription { display: flex; gap: 7px 12px; flex-wrap: wrap; font-size: 11px; margin: 0 0 14px; }
+.exercise-prescription dt { color: #8f9a7e; }
+.exercise-prescription dd { margin: 0 10px 0 0; }
+.coaching-note { color: #c4c8b7; font-size: 12px; line-height: 1.8; white-space: pre-line; }
+.exercise-equipment { font-size: 11px; color: #98a087; line-height: 1.7; margin-top: 10px; }
+.exercise-evidence { font-size: 11px; line-height: 1.8; color: #a2ad8e; margin-top: 14px; }
+.exercise-evidence summary, .plan-notes > summary { cursor: pointer; padding-block: 8px; }
+.exercise-evidence a { display: block; color: #e3b28f; text-decoration: underline; }
+.exercise-evidence blockquote { margin: 10px 0; padding-left: 12px; border-left: 2px solid #b7c49d30; white-space: pre-line; }
+.plan-notes { margin-top: 22px; padding-top: 12px; border-top: 1px solid #ffffff10; font-size: 12px; color: #adb79b; line-height: 1.8; }
+.plan-safety, .workout-log { margin-top: 24px; padding: 18px; border: 1px solid #dba47125; border-radius: 8px; background: #dba47105; }
+.plan-safety h3 { font-size: 12px; font-weight: 500; margin: 0 0 8px; color: #e1b89b; }
+.plan-safety p, .workout-log { font-size: 12px; color: #c6c5b2; line-height: 1.8; white-space: pre-line; }
+.workout-log strong { font-weight: 500; }
+.source-item { padding: 16px 0; overflow-wrap: anywhere; }
+.source-item h4 { margin: 0 0 8px; color: #d8d9c9; font-weight: 500; }
+.source-item a { color: #e3b28f; text-decoration: underline; }
+.source-item p { margin-top: 12px; white-space: pre-line; }
+@media(max-width:760px) {
+  .plan-viewer { padding: 22px 18px; margin-top: 24px; }
+  .plan-heading { flex-direction: column; gap: 12px; }
+  .plan-heading h2 { font-size: 26px; }
+  .plan-browser { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  #workout-detail { padding: 20px 14px; }
+}

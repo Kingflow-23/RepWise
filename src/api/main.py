@@ -44,6 +44,7 @@ from ..retrieval.semantic import SemanticRetriever, load_chunks
 from ..retrieval.sparse import BM25Retriever
 from ..schemas.models import (
     AccessToken,
+    AccountIdentity,
     AccountCredentials,
     PlanOptions,
     PlanRequest,
@@ -373,6 +374,14 @@ def create_app(
             user_id=user_id,
             full_name=full_name,
         )
+
+    @app.get("/api/v1/auth/me", response_model=AccountIdentity)
+    def current_account(user_id: str = Depends(require_account)) -> AccountIdentity:
+        """Verify the bearer token and return the signed-in account's identity."""
+        account = repository.get_account_identity(user_id)
+        if account is None:
+            raise HTTPException(status_code=401, detail="Account is no longer available")
+        return AccountIdentity.model_validate(account)
 
     @app.get("/api/v1/health")
     def health() -> dict[str, object]:

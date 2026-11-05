@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#141411" />
+    <meta name="description" content="RepWise — an interactive space for your training." />
+    <title>RepWise — Your training studio</title>
+    <link rel="icon" type="image/svg+xml" href="/mark.svg" />
+  </head>
+  <body>
+    <a class="skip-link" href="#studio">Skip to the studio</a>
+    <div class="app-shell">
+      <aside class="rail" aria-label="Studio navigation">
+        <a class="brand-mark" href="#studio" aria-label="RepWise studio"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M9 5h17c9 0 13 12 6 18l-5 3 8 10H24L13 22h12c4 0 5-8 0-8H5zM9 22h10L9 36H0z" fill="currentColor"/></svg></a>
+        <a href="#studio" class="rail-item active" aria-label="Studio" aria-current="page"><span data-icon="home"></span><span class="rail-tooltip">Studio</span></a>
+        <button class="rail-item" type="button" data-open="preview-dialog" aria-label="About this preview"><span data-icon="layers"></span><span class="rail-tooltip">Preview guide</span></button>
+        <div class="rail-bottom"><button class="rail-item" type="button" data-open="settings-dialog" aria-label="Studio settings"><span data-icon="sliders"></span><span class="rail-tooltip">Studio settings</span></button></div>
+      </aside>
+
+      <header class="topbar">
+        <a class="wordmark" href="#studio">RepWise<span>YOUR TRAINING STUDIO</span></a>
+        <nav class="top-nav" aria-label="Primary"><a class="selected" href="#studio" aria-current="page">Studio</a><button type="button" data-open="preview-dialog">What’s next <span data-icon="arrow-up-right"></span></button></nav>
+        <div class="topbar-actions">
+          <span class="preview-badge"><i></i> Studio preview</span>
+          <button class="header-signin" id="show-login" type="button">Sign in <span data-icon="arrow-up-right"></span></button>
+          <details class="account-menu" id="account-menu" hidden>
+            <summary aria-label="Open account menu"><span class="account-avatar" id="account-initials"></span><span class="account-short-name" id="account-short-name"></span><span data-icon="chevron-down"></span></summary>
+            <div class="account-popover"><span class="eyebrow">SIGNED IN</span><strong id="account-full-name"></strong><button type="button" id="menu-profile">Training profile</button><button type="button" id="sign-out"><span data-icon="log-out"></span>Sign out</button></div>
+          </details>
+          <button class="icon-button" type="button" data-open="settings-dialog" aria-label="Open studio settings"><span data-icon="settings"></span></button>
+        </div>
+      </header>
+
+      <main class="main-content" id="studio">
+        <div class="workspace">
+          <section class="studio-stage" aria-labelledby="studio-title">
+            <div id="scene" class="scene" aria-busy="true">
+              <div class="scene-message" id="scene-message" role="status"><span class="loader"></span><span>Preparing your studio</span></div>
+            </div>
+            <div class="studio-intro"><p class="eyebrow"><span></span> A NEW PERSPECTIVE ON TRAINING</p><h1 id="studio-title">Your training.<br /><em>In perspective.</em></h1><p class="intro-copy">A little more focus.<br />A little more room to move.</p></div>
+            <div class="scene-meta" aria-hidden="true"><span class="scene-meta-line"></span> THE HUMAN FORM<br /><small>GRAPHITE STUDY / 01</small></div>
+            <div class="scene-hint" id="scene-hint"><span data-icon="orbit"></span><span>Drag to rotate <b>·</b> Scroll to zoom</span></div>
+            <div class="scene-toolbar" role="group" aria-label="3D view controls">
+              <div class="view-switch"><button type="button" data-view="front" aria-pressed="true" disabled>Front</button><button type="button" data-view="back" aria-pressed="false" disabled>Back</button></div>
+              <div class="toolbar-secondary"><button class="icon-button" id="reset-view" type="button" aria-label="Reset 3D view" title="Reset view" disabled><span data-icon="reset"></span></button><button class="motion-button" id="toggle-motion" type="button" aria-pressed="false" disabled><span data-icon="play"></span><span id="motion-label">Auto rotate</span></button></div>
+            </div>
+          </section>
+
+          <aside class="session-column" aria-label="Account and training">
+            <section class="session-card auth-panel" id="login-panel" aria-labelledby="login-title">
+              <div class="card-topline"><p class="eyebrow">MAKE THIS SPACE YOURS</p><span class="corner-symbol" data-icon="lock"></span></div>
+              <h2 id="login-title">Welcome<br />back.</h2>
+              <p class="card-description" id="auth-description">Your training starts with you. <br />Sign in to your RepWise account.</p>
+              <form id="login-form" method="post" action="/api/v1/auth/login">
+                <div class="auth-field"><label for="login-name">Account name</label><input id="login-name" name="full_name" type="text" autocomplete="username" minlength="3" maxlength="100" placeholder="Your full name" required aria-describedby="login-name-hint" /><span class="field-hint" id="login-name-hint">Use the full name you registered with.</span></div>
+                <div class="auth-field"><label for="login-password">Password</label><div class="password-field"><input id="login-password" name="password" type="password" autocomplete="current-password" minlength="8" maxlength="200" required placeholder="Your password" /><button id="toggle-password" type="button" aria-label="Show password" aria-pressed="false"><span data-icon="eye"></span></button></div></div>
+                <div class="auth-field" id="confirm-field" hidden><label for="register-confirm">Confirm password</label><input id="register-confirm" type="password" autocomplete="new-password" minlength="8" maxlength="200" placeholder="Repeat your password" disabled /></div>
+                <p class="auth-error" id="login-error" role="alert" tabindex="-1" hidden></p>
+                <p class="auth-status" id="login-status" role="status" hidden></p>
+                <button class="primary-button login-submit" id="login-submit" type="submit"><span>Sign in to your studio</span><span data-icon="arrow-right"></span></button>
+                <button class="text-button auth-switch" id="switch-auth-mode" type="button">New here? Create an account</button>
+              </form>
+              <p class="auth-footnote"><span data-icon="lock"></span>Your session stays in this browser tab.</p>
+            </section>
+            <section class="session-card latest-plan" id="latest-plan" hidden aria-labelledby="latest-plan-title">
+              <div class="card-topline"><p class="eyebrow">YOUR LATEST PLAN</p><span data-icon="dumbbell" class="corner-symbol"></span></div>
+              <h2 id="latest-plan-title">Loading your plan</h2>
+              <p class="card-description" id="latest-plan-description" role="status">Getting your saved workouts.</p>
+              <div id="latest-plan-meta" class="plan-meta" hidden></div>
+              <button class="primary-button" id="view-latest-plan" type="button" hidden>View your plan <span data-icon="arrow-right"></span></button>
+              <button class="plan-create-link" id="start-plan" type="button">Create a new plan <span data-icon="arrow-right"></span></button>
+              <button class="text-button" id="reload-plan" type="button">Refresh saved plan</button>
+            </section>
+            <section class="session-card profile-card" id="training-placeholder" hidden>
+              <div class="card-topline"><p class="eyebrow">YOUR SPACE TO TRAIN</p><span class="corner-symbol" data-icon="spark"></span></div>
+              <h2>Your training profile.</h2>
+              <p class="card-description">Start with your goal, your schedule, and what you have to train with.</p>
+              <details class="profile-overview"><summary>View profile details</summary><dl class="profile-summary" id="profile-summary" hidden></dl></details>
+              <div class="connection-note"><span class="tiny-ring"></span><div><strong id="profile-state">Loading your profile</strong><p id="profile-description">Getting your saved training details.</p></div></div>
+              <button class="primary-button" id="open-profile" type="button" disabled>Loading profile…</button>
+              <p class="profile-notice" id="profile-notice" role="status" hidden></p>
+              <button class="primary-button" id="explore-studio" type="button" disabled>Explore the 3D studio <span data-icon="arrow-up-right"></span></button>
+              <button class="text-button" type="button" data-open="preview-dialog"><span data-icon="info"></span> What’s available in this preview?</button>
+            </section>
+
+            <section class="detail-card" aria-labelledby="details-title"><div class="detail-icon" data-icon="orbit"></div><div><p class="eyebrow" id="details-title">BUILT AROUND YOU</p><p>Turn the view.<br />Find your focus.</p></div><span class="detail-number">01</span></section>
+            <div class="studio-caption"><span class="small-cross">+</span><p>Space to move.<br /><strong>Clarity to keep going.</strong></p></div>
+          </aside>
+        </div>
+
+        <section class="generation-panel" id="generation-panel" aria-labelledby="generation-title" hidden>
+          <div class="generation-heading"><div><p class="eyebrow">BUILD YOUR NEXT WEEK</p><h2 id="generation-title">What are we training for?</h2><p>Tell RepWise what you want to work on. Your saved profile shapes the plan.</p></div><span data-icon="dumbbell" aria-hidden="true"></span></div>
+          <div class="generation-profile"><p id="generation-profile-status" role="status">Loading your training profile.</p><button class="text-button" id="generation-setup" type="button" hidden>Set up your profile</button></div>
+          <form id="generation-form" method="post" action="/api/v1/students/me/plans">
+            <fieldset id="generation-fields" disabled>
+              <div class="auth-field"><label for="generation-focus">What would you like to work on?</label><textarea id="generation-focus" name="focus" minlength="3" maxlength="300" rows="3" required placeholder="Build stronger legs with two beginner workouts this week." aria-describedby="generation-focus-hint"></textarea><span class="field-hint" id="generation-focus-hint">Describe your training focus in 3–300 characters.</span></div>
+              <div class="generation-options"><div class="auth-field"><label for="generation-count">Workouts this week</label><input id="generation-count" name="workouts_per_week" type="number" min="1" max="7" step="1" required value="1" /><span class="field-hint" id="generation-count-hint">Limited to your available days.</span></div><div class="auth-field"><label for="generation-constraints">Additional constraints (optional)</label><textarea id="generation-constraints" name="extra_constraints" rows="2" placeholder="No jumping&#10;Keep warm-ups short" aria-describedby="generation-constraints-hint"></textarea><span class="field-hint" id="generation-constraints-hint">One constraint per line, up to 10.</span></div></div>
+              <details class="generation-refinement"><summary>Changes from your latest plan (optional)</summary><div class="auth-field"><label for="generation-refinement">What should change?</label><textarea id="generation-refinement" name="refinement_instructions" maxlength="500" rows="2" placeholder="For example, make it easier or add more variety."></textarea></div></details>
+            </fieldset>
+            <p class="auth-error" id="generation-error" role="alert" tabindex="-1" hidden></p>
+            <p class="generation-status" id="generation-status" role="status" hidden></p>
+            <div class="generation-submit"><p>One week of workouts, saved to your account.</p><button class="primary-button" id="generate-plan" type="submit" disabled><span>Generate my plan</span><span data-icon="arrow-right"></span></button></div>
+          </form>
+        </section>
+        <section class="plan-viewer" id="plan-viewer" aria-labelledby="plan-title" hidden>
+          <div class="plan-heading"><div><p class="eyebrow">YOUR SAVED PROGRAM</p><h2 id="plan-title" tabindex="-1"></h2></div><p id="plan-saved-at"></p></div>
+          <p class="plan-introduction" id="plan-summary"></p>
+          <div class="plan-browser"><nav id="plan-workouts" aria-label="Plan workouts"></nav><article id="workout-detail" aria-labelledby="workout-title" aria-live="polite"></article></div>
+          <details class="plan-notes" id="plan-assumptions"><summary>Plan assumptions</summary><ul></ul></details>
+          <section class="plan-safety" aria-label="Training safety"><h3>Training safety</h3><p id="plan-safety-note"></p></section>
+          <details class="plan-notes" id="plan-sources"><summary>Plan sources</summary><div id="plan-source-list"></div></details>
+        </section>
+
+        <footer class="studio-footer"><span>DESIGNED FOR THE WAY YOU MOVE</span><span id="render-status" role="status">Loading the studio</span></footer>
+      </main>
+    </div>
+
+    <dialog id="settings-dialog" aria-labelledby="settings-title"><div class="dialog-top"><p class="eyebrow">MAKE YOURSELF AT HOME</p><button class="icon-button" data-close type="button" aria-label="Close settings"><span data-icon="close"></span></button></div><h2 id="settings-title">Your studio, your atmosphere.</h2><p>Change the scene without changing your training.</p><fieldset><legend>Lighting</legend><div class="lighting-options"><button type="button" data-lighting="warm" aria-pressed="true"><i class="light-swatch warm"></i>Warm</button><button type="button" data-lighting="neutral" aria-pressed="false"><i class="light-swatch neutral"></i>Neutral</button></div></fieldset><div class="motion-note"><span data-icon="accessibility"></span><p>Rotation starts paused when your device requests reduced motion. You can always explore using the view buttons.</p></div><button class="primary-button" type="button" data-close>Back to the studio <span data-icon="arrow-right"></span></button></dialog>
+    <dialog id="preview-dialog" aria-labelledby="preview-title"><div class="dialog-top"><p class="eyebrow">YOUR STUDIO / TAKING SHAPE</p><button class="icon-button" data-close type="button" aria-label="Close preview guide"><span data-icon="close"></span></button></div><h2 id="preview-title">The studio is taking shape.</h2><p>Sign in with your existing account, explore the figure and adjust the atmosphere.</p><ul class="preview-list"><li><span data-icon="check"></span>Account sign-in and sign-out</li><li><span data-icon="check"></span>Training profile setup and editing</li><li><span data-icon="check"></span>Latest saved plan, workouts and sources</li><li><span data-icon="check"></span>Generate a plan from your saved profile</li><li><span data-icon="check"></span>Interactive 3D figure and camera controls</li><li><span data-icon="check"></span>Studio lighting and motion preferences</li></ul><div class="dialog-next"><strong>Next, your training.</strong><p>The agent assistant will follow. This figure does not show exercise-specific muscle targets.</p></div><button class="primary-button" type="button" data-close>Take a look around <span data-icon="arrow-right"></span></button></dialog>
+    <dialog id="profile-dialog" aria-labelledby="profile-title">
+      <div class="dialog-top"><p class="eyebrow">YOUR TRAINING PROFILE</p><button class="icon-button" data-close type="button" aria-label="Close profile setup"><span data-icon="close"></span></button></div>
+      <h2 id="profile-title">Make it your own.</h2>
+      <p>Your saved details will help shape your workout plans.</p>
+      <ol class="profile-progress" aria-label="Setup progress"><li aria-current="step">1 · Your goal</li><li>2 · Your time</li><li>3 · Your equipment</li></ol>
+      <form id="profile-form" method="dialog">
+        <fieldset class="profile-step" data-step="0"><legend>Where are you starting?</legend>
+          <div class="auth-field"><label for="profile-experience">Training experience</label><select id="profile-experience" name="experience" required><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></div>
+          <div class="auth-field"><label for="profile-goal">Main training goal</label><input id="profile-goal" name="goal" type="text" minlength="3" maxlength="200" required placeholder="For example, build strength in my legs" /></div>
+        </fieldset>
+        <fieldset class="profile-step" data-step="1" hidden><legend>Make room for training.</legend>
+          <fieldset class="day-picker"><legend>Days you can train</legend><div id="profile-days"></div></fieldset>
+          <div class="auth-field"><label for="profile-minutes">Minutes per session</label><input id="profile-minutes" name="session_minutes" type="number" min="15" max="180" step="1" value="45" required /><span class="field-hint">Between 15 and 180 minutes.</span></div>
+        </fieldset>
+        <fieldset class="profile-step" data-step="2" hidden><legend>What will you train with?</legend>
+          <div class="auth-field"><label for="profile-equipment">Available equipment</label><textarea id="profile-equipment" name="equipment" rows="2" placeholder="Bodyweight, dumbbells, resistance bands" aria-describedby="equipment-hint"></textarea><span class="field-hint" id="equipment-hint">Separate items with commas. Leave blank if you have no equipment.</span></div>
+          <div class="auth-field"><label for="profile-preferences">Preferences (optional)</label><textarea id="profile-preferences" name="preferences" rows="3" maxlength="500" placeholder="For example, low impact or no jumping"></textarea><span class="field-hint">Up to 500 characters.</span></div>
+        </fieldset>
+        <p class="auth-error" id="profile-error" role="alert" tabindex="-1" hidden></p>
+        <p class="auth-status" id="profile-saving" role="status" hidden>Saving your profile…</p>
+        <div class="profile-actions"><button class="profile-back" id="profile-back" type="button">Back</button><button class="primary-button" id="profile-next" type="button">Continue <span data-icon="arrow-right"></span></button><button class="primary-button" id="profile-save" type="submit" hidden>Save profile <span data-icon="check"></span></button></div>
+      </form>
+      <p class="profile-footer">You can update these details at any time from your account menu.</p>
+    </dialog>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

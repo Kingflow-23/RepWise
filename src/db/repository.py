@@ -237,6 +237,14 @@ class StudentRepository:
             ).fetchone()
         return row[0] if row else None
 
+    def get_account_identity(self, user_id: str) -> dict[str, str] | None:
+        """Read only the public fields for an authenticated account."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT user_id, full_name FROM users WHERE user_id=?", (user_id,)
+            ).fetchone()
+        return {"user_id": row[0], "full_name": row[1]} if row else None
+
     def get_account_by_name(self, full_name: str) -> tuple[str, str, str] | None:
         """Look up the account fields needed for login.
 
