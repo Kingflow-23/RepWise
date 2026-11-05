@@ -34,10 +34,7 @@
 .exercise-prescription dd { margin: 0 10px 0 0; }
 .coaching-note { color: #c4c8b7; font-size: 12px; line-height: 1.8; white-space: pre-line; }
 .exercise-equipment { font-size: 11px; color: #98a087; line-height: 1.7; margin-top: 10px; }
-.exercise-evidence { font-size: 11px; line-height: 1.8; color: #a2ad8e; margin-top: 14px; }
-.exercise-evidence summary, .plan-notes > summary { cursor: pointer; padding-block: 8px; }
-.exercise-evidence a { display: block; color: #e3b28f; text-decoration: underline; }
-.exercise-evidence blockquote { margin: 10px 0; padding-left: 12px; border-left: 2px solid #b7c49d30; white-space: pre-line; }
+.plan-notes > summary { cursor: pointer; padding-block: 8px; }
 .plan-notes { margin-top: 22px; padding-top: 12px; border-top: 1px solid #ffffff10; font-size: 12px; color: #adb79b; line-height: 1.8; }
 .plan-safety, .workout-log { margin-top: 24px; padding: 18px; border: 1px solid #dba47125; border-radius: 8px; background: #dba47105; }
 .plan-safety h3 { font-size: 12px; font-weight: 500; margin: 0 0 8px; color: #e1b89b; }

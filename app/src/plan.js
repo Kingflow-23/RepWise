@@ -53,7 +53,7 @@ export function initializePlan() {
       else item.removeAttribute('aria-current');
     });
     detail.replaceChildren();
-    detail.append(element('p', `WEEK ${week.number} · ${entry.day}`, 'eyebrow'));
+    detail.append(element('p', `WEEK · ${entry.day}`, 'eyebrow'));
     const heading = element('h3', entry.focus); heading.id = 'workout-title';
     detail.append(heading, element('p', `${entry.estimated_minutes} min · ${entry.exercises.length} ${entry.exercises.length === 1 ? 'exercise' : 'exercises'}`, 'workout-duration'));
     const feedback = (record.workout_feedback || []).find((item) => item.week_number === week.number && item.workout_index === index);
@@ -71,19 +71,6 @@ export function initializePlan() {
       [['Sets', exercise.sets], ['Reps', exercise.repetitions], ['Rest', `${exercise.rest_seconds}s`], ['Estimate', `${exercise.estimated_minutes} min`]].forEach(([label, value]) => prescription.append(element('dt', label), element('dd', value)));
       item.append(prescription, element('p', exercise.coaching_note, 'coaching-note'));
       if (exercise.equipment?.length) item.append(element('p', `Equipment: ${exercise.equipment.join(', ')}`, 'exercise-equipment'));
-      if (exercise.source_ids?.length || exercise.supporting_evidence?.length) {
-        const evidence = element('details', null, 'exercise-evidence');
-        evidence.append(element('summary', `Supporting evidence${exercise.source_ids?.length ? ` · ${exercise.source_ids.join(', ')}` : ''}`));
-        (exercise.source_ids || []).forEach((id) => {
-          const source = (record.sources || []).find((entry) => entry.source_id === id);
-          const url = source && (sourceLink(source.start_url) || sourceLink(source.url));
-          if (url) {
-            const link = element('a', `${id} · ${source.title}`); link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; evidence.append(link);
-          } else evidence.append(element('p', `${id}: no source link saved.`));
-        });
-        (exercise.supporting_evidence || []).forEach((quote) => evidence.append(element('blockquote', `${quote.source_id}: ${quote.quote}`)));
-        item.append(evidence);
-      }
       exercises.append(item);
     });
     detail.append(exercises);
@@ -107,7 +94,7 @@ export function initializePlan() {
     sourcesPanel(record);
     plan.weeks.forEach((week) => {
       const group = element('div', null, 'workout-week');
-      group.append(element('h3', `Week ${week.number}`), element('p', week.objective, 'week-objective'));
+      group.append(element('h3', 'Week'), element('p', week.objective, 'week-objective'));
       week.workouts.forEach((entry, index) => {
         const button = element('button'); button.type = 'button';
         button.append(element('span', entry.day, 'workout-day'), element('strong', entry.focus), element('span', `${entry.estimated_minutes} min`));
