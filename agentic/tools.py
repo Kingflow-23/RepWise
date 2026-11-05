@@ -113,7 +113,7 @@ def open_repository() -> StudentRepository:
     return StudentRepository(path)
 
 
-def _report_storage_errors(tool):
+def report_storage_errors(tool):
     """Return a ``ToolFailure`` instead of raising when the database fails."""
 
     @wraps(tool)
@@ -127,7 +127,7 @@ def _report_storage_errors(tool):
     return wrapper
 
 
-@_report_storage_errors
+@report_storage_errors
 def get_user_profile(student_id: str) -> ProfileResult | ToolFailure:
     """Read a student's saved profile. Nothing is written."""
     profile = open_repository().get_profile(student_id)
@@ -136,7 +136,7 @@ def get_user_profile(student_id: str) -> ProfileResult | ToolFailure:
     return ProfileResult(student_id=student_id, profile=profile)
 
 
-@_report_storage_errors
+@report_storage_errors
 def get_timetable(student_id: str) -> TimetableResult | ToolFailure:
     """Read a student's availability and latest plan's workouts. Nothing is written."""
     repository = open_repository()
@@ -169,7 +169,7 @@ def get_timetable(student_id: str) -> TimetableResult | ToolFailure:
     )
 
 
-@_report_storage_errors
+@report_storage_errors
 def save_workout_feedback(
     student_id: str,
     plan_id: str,

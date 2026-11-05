@@ -60,78 +60,109 @@
     {
       "name": "get_user_profile",
       "type": "read",
-      "description": "Read a user's experience, goal, available_days, session_minutes, equipment, and preferences.",
+      "description": "Read a student's experience, goal, available_days, session_minutes, equipment, and preferences.",
       "parameters": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "user_id": {
-            "description": "Account ID: the API's user_id / student_id, e.g. demo_user.",
+          "student_id": {
+            "description": "Account ID, as in the API's student routes.",
             "minLength": 1,
             "type": "string"
           }
         },
         "required": [
-          "user_id"
+          "student_id"
         ]
       }
     },
     {
       "name": "get_timetable",
       "type": "read",
-      "description": "Read a user's weekly availability and planned workouts, each with its workout_id and saved feedback.",
+      "description": "Read a student's weekly availability and planned workouts, each with its plan_id, week_number, workout_index, and saved feedback.",
       "parameters": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "user_id": {
-            "description": "Account ID: the API's user_id / student_id, e.g. demo_user.",
+          "student_id": {
+            "description": "Account ID, as in the API's student routes.",
             "minLength": 1,
             "type": "string"
           }
         },
         "required": [
-          "user_id"
+          "student_id"
         ]
       }
     },
     {
       "name": "save_workout_feedback",
       "type": "write",
-      "description": "Save feedback for a completed workout. Call only when the user explicitly asks to log it.",
+      "description": "Save feedback for one workout. Call only when the student explicitly asks to log it.",
       "parameters": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "user_id": {
-            "description": "Account ID: the API's user_id / student_id, e.g. demo_user.",
+          "student_id": {
+            "description": "Account ID, as in the API's student routes.",
             "minLength": 1,
             "type": "string"
           },
-          "workout_id": {
-            "description": "A workout_id returned by get_timetable.",
+          "plan_id": {
+            "description": "A plan_id returned by get_timetable.",
             "minLength": 1,
             "type": "string"
           },
-          "difficulty": {
-            "description": "How the workout felt. Stored as the API values slightly_too_easy, just_right, and slightly_too_hard respectively.",
+          "week_number": {
+            "description": "A week_number returned by get_timetable.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "workout_index": {
+            "description": "A zero-based workout_index returned by get_timetable.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "completion_status": {
+            "description": "Whether the student finished the workout.",
             "enum": [
-              "easy",
-              "moderate",
-              "hard"
+              "completed",
+              "partially_completed",
+              "not_completed"
             ],
             "type": "string"
           },
-          "notes": {
-            "default": "",
-            "description": "Optional user comment, stored as the API's comment field.",
-            "maxLength": 500,
+          "difficulty": {
+            "description": "How the workout felt to the student.",
+            "enum": [
+              "much_too_easy",
+              "slightly_too_easy",
+              "just_right",
+              "slightly_too_hard",
+              "much_too_hard"
+            ],
             "type": "string"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional comment from the student."
           }
         },
         "required": [
-          "user_id",
-          "workout_id",
+          "student_id",
+          "plan_id",
+          "week_number",
+          "workout_index",
+          "completion_status",
           "difficulty"
         ]
       }
