@@ -10,7 +10,7 @@ Each topic has one home. Start with the question you have:
 | Use the routes, or check how accounts and data are stored | [API and database](api.md) |
 | Know what the transcripts can and can't support | [Knowledge base](knowledge_base.md) |
 | See how we measure quality, and what we found | [Evaluation](evaluation.md) |
-| Use the agent tools and schemas | [Agent tools](agent/README.md) |
+| Run or debug the agent, or use its tools | [The RepWise agent](agent/README.md) |
 
 Preparing transcripts is covered by the [corpus guide](../data/corpus/README.md),
 next to the data it describes.
