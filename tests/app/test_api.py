@@ -18,6 +18,7 @@ from src.schemas.models import (
     UserProfile,
     Workout,
 )
+from src.agents.health import FixedHealthChecker
 from src.retrieval.query_expansion import QueryAnalysis
 
 
@@ -33,6 +34,13 @@ def allow_test_request_scope(monkeypatch):
         api_module,
         "OllamaQueryExpander",
         lambda *_args: InScopeAnalyzer(),
+    )
+    # The health check is a local model call; tests use a fixed stand-in that
+    # flags comments mentioning pain.
+    monkeypatch.setattr(
+        api_module,
+        "OllamaHealthChecker",
+        lambda *_args: FixedHealthChecker(("pain",)),
     )
 
 

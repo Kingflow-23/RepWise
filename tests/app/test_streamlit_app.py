@@ -9,7 +9,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 import streamlit as st
 
-APP_PATH = Path(__file__).resolve().parents[2] / "app" / "streamlit_app.py"
+APP_PATH = Path(__file__).resolve().parents[2] / "genai_app" / "streamlit_app.py"
 
 
 class FakeResponse:

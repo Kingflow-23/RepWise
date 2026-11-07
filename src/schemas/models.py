@@ -221,39 +221,72 @@ class Workout(Model):
     exercises: list[Exercise] = Field(min_length=1, max_length=10)
 
 
+CompletionStatus = Literal["completed", "partially_completed", "not_completed"]
+WorkoutDifficulty = Literal[
+    "much_too_easy",
+    "slightly_too_easy",
+    "just_right",
+    "slightly_too_hard",
+    "much_too_hard",
+]
+# Plan names use English weekdays. Kept here, not strftime("%A"), which follows
+# the computer's language.
+WEEKDAYS = (
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+)
+# "draft": generated but not approved yet; "active": the plan the student
+# follows; "archived": replaced by a newer active plan.
+PlanStatus = Literal["draft", "active", "archived"]
+
+
+def weekday_number(day: str) -> int | None:
+    """Return 0 for Monday through 6 for Sunday.
+
+    Args:
+        day: An English weekday name, in any letter case.
+
+    Returns:
+        The weekday number, or ``None`` when the name is not a weekday.
+    """
+    names = [name.casefold() for name in WEEKDAYS]
+    cleaned = day.strip().casefold()
+    return names.index(cleaned) if cleaned in names else None
+
+
 class WorkoutFeedbackRequest(Model):
     """A student's concise report on one scheduled workout."""
 
-    completion_status: Literal["completed", "partially_completed", "not_completed"]
-    difficulty: Literal[
-        "much_too_easy",
-        "slightly_too_easy",
-        "just_right",
-        "slightly_too_hard",
-        "much_too_hard",
-    ]
+    completion_status: CompletionStatus
+    difficulty: WorkoutDifficulty
     comment: str | None = Field(default=None, max_length=500)
 
 
 class WorkoutFeedback(Model):
-    """Persisted workout feedback and the workout it adapted, if any."""
+    """Persisted workout feedback and the workout it adapted, if any.
+
+    ``health_concern`` is decided once, when the feedback is saved, by the
+    health check in ``src/agents/health.py``: ``True`` when the comment may
+    describe pain or injury, ``False`` when it does not, and ``None`` when
+    there was no comment to check.
+    """
 
     id: str
     plan_id: str
     week_number: int = Field(ge=1)
     workout_index: int = Field(ge=0)
-    completion_status: Literal["completed", "partially_completed", "not_completed"]
-    difficulty: Literal[
-        "much_too_easy",
-        "slightly_too_easy",
-        "just_right",
-        "slightly_too_hard",
-        "much_too_hard",
-    ]
+    completion_status: CompletionStatus
+    difficulty: WorkoutDifficulty
     comment: str | None = None
     created_at: str
     adapted_week_number: int | None = Field(default=None, ge=1)
     adapted_workout_index: int | None = Field(default=None, ge=0)
+    health_concern: bool | None = None
 
 
 class Week(Model):

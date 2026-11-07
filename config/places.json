@@ -1,0 +1,32 @@
+{
+  "description": "Place categories the Location Agent may search, mapped to OpenStreetMap tags, and the area RepWise serves. Edit this file, not the code, to change what each category finds or where searches are allowed. Name hints are matched as whole words, ignoring case and accents.",
+  "service_area": {
+    "label": "metropolitan France",
+    "country_codes": ["FR"],
+    "bbox": [-5.3, 41.2, 9.7, 51.2]
+  },
+  "too_broad_place_types": ["country", "state", "county", "region"],
+  "categories": {
+    "gym": {
+      "label": "Gym or fitness centre",
+      "osm_tags": ["leisure:fitness_centre"],
+      "exclude_name_hints": ["yoga", "pilates", "danse", "dance", "escalade", "climbing", "aquagym", "aqua"]
+    },
+    "sports_store": {
+      "label": "Sports or fitness equipment store",
+      "osm_tags": ["shop:sports"],
+      "fitness_name_hints": ["fitness", "muscu", "musculation", "decathlon", "intersport", "go sport", "sport 2000"],
+      "exclude_name_hints": ["escrime", "running", "run", "runner", "golf", "ski", "tennis", "padel", "equitation", "cheval", "velo", "cycle", "cycles", "bike", "plongee", "surf", "glisse", "peche", "chasse", "armurerie", "danse", "foot", "football", "basket", "rugby", "natation", "montagne", "randonnee", "trail", "roller", "skate", "kite", "voile", "nautique", "sneakers"]
+    },
+    "supplement_store": {
+      "label": "Sports nutrition or supplement store",
+      "osm_tags": ["shop:nutrition_supplements", "shop:health_food"],
+      "exclude_name_hints": ["biocoop", "la vie claire", "naturalia", "bio c bon"]
+    }
+  },
+  "default_radius_km": 5,
+  "max_radius_km": 20,
+  "max_results": 8,
+  "timeout_seconds": 10,
+  "attribution": "Data from OpenStreetMap contributors via Photon. It may be out of date, may include private venues, and does not show stock or opening hours, so check before you go."
+}

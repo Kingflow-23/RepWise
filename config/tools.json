@@ -1,0 +1,1142 @@
+{
+  "description": "The single authoritative catalog of RepWise agent tools. Descriptions, owner agents, read/write access, approval rules and failure codes are read from here at runtime by the agents and the MCP server. input_schema and output_models are generated from src/tools/registry.py: run `python -m scripts.sync_tool_catalog` after changing a tool's arguments.",
+  "version": 1,
+  "tools": [
+    {
+      "name": "get_user_profile",
+      "description": "Read the student's experience, goal, available days, session length, equipment and preferences.",
+      "agents": [
+        "orchestrator"
+      ],
+      "access": "read",
+      "approval": "never",
+      "failure_codes": [
+        "student_not_found",
+        "storage_error"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "The tool takes no arguments: everything comes from the session.",
+        "properties": {},
+        "title": "NoArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "ProfileResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "get_current_plan",
+      "description": "Read the student's current active training plan and the evidence sources it cites. Draft plans waiting for approval are not returned.",
+      "agents": [
+        "orchestrator"
+      ],
+      "access": "read",
+      "approval": "never",
+      "failure_codes": [
+        "plan_not_found",
+        "storage_error"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "The tool takes no arguments: everything comes from the session.",
+        "properties": {},
+        "title": "NoArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "CurrentPlanResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "get_timetable",
+      "description": "Read the student's available days and every workout of the current plan, each with plan_id, week_number, workout_index, saved feedback and calendar booking.",
+      "agents": [
+        "orchestrator"
+      ],
+      "access": "read",
+      "approval": "never",
+      "failure_codes": [
+        "student_not_found",
+        "storage_error"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "The tool takes no arguments: everything comes from the session.",
+        "properties": {},
+        "title": "NoArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "TimetableResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "get_workout",
+      "description": "Read one workout of a plan with its feedback, calendar booking and logged weights and reps.",
+      "agents": [
+        "orchestrator"
+      ],
+      "access": "read",
+      "approval": "never",
+      "failure_codes": [
+        "plan_not_found",
+        "workout_not_found",
+        "storage_error"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "One workout, using the values from ``get_timetable``.",
+        "properties": {
+          "week_number": {
+            "description": "A week_number from get_timetable.",
+            "minimum": 1,
+            "title": "Week Number",
+            "type": "integer"
+          },
+          "workout_index": {
+            "description": "A workout_index from get_timetable.",
+            "minimum": 0,
+            "title": "Workout Index",
+            "type": "integer"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A plan_id from get_timetable; omit for the current plan.",
+            "title": "Plan Id"
+          }
+        },
+        "required": [
+          "week_number",
+          "workout_index"
+        ],
+        "title": "WorkoutReference",
+        "type": "object"
+      },
+      "output_models": [
+        "WorkoutResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "remember_fact",
+      "description": "Remember a stable preference or useful fact the student explicitly asked RepWise to remember. Health details are refused and never stored.",
+      "agents": [
+        "orchestrator"
+      ],
+      "access": "write",
+      "approval": "never",
+      "external_services": [
+        "ollama"
+      ],
+      "failure_codes": [
+        "health_not_stored",
+        "storage_error"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "A preference or fact to remember.",
+        "properties": {
+          "fact": {
+            "description": "The fact, as the student said it.",
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Fact",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fact"
+        ],
+        "title": "FactArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "FactResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "get_workout_history",
+      "description": "Read logged workouts (completed, partial and missed), difficulty, weights and reps, summary counts and pending recommendations across the student's recent plans.",
+      "agents": [
+        "planning",
+        "performance"
+      ],
+      "access": "read",
+      "approval": "never",
+      "failure_codes": [
+        "student_not_found",
+        "storage_error"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "How much history to read.",
+        "properties": {
+          "max_plans": {
+            "default": 5,
+            "description": "How many recent plans.",
+            "maximum": 20,
+            "minimum": 1,
+            "title": "Max Plans",
+            "type": "integer"
+          }
+        },
+        "title": "HistoryArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "HistoryResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "generate_workout_plan",
+      "description": "Generate a validated, evidence-based one-week workout plan from the student's profile and this request, using the RAG pipeline. When the student already has an active plan, the new plan is saved as a draft and activating it needs approval.",
+      "agents": [
+        "planning"
+      ],
+      "access": "write",
+      "approval": "never",
+      "external_services": [
+        "ollama",
+        "fitness_corpus"
+      ],
+      "failure_codes": [
+        "missing_profile",
+        "invalid_request",
+        "out_of_scope",
+        "retrieval_error",
+        "insufficient_evidence",
+        "generation_error",
+        "unavailable"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Options for a new one-week plan (the profile is read from the database).",
+        "properties": {
+          "focus": {
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Focus",
+            "type": "string"
+          },
+          "workouts_per_week": {
+            "anyOf": [
+              {
+                "maximum": 7,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Workouts Per Week"
+          },
+          "extra_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Extra Constraints",
+            "type": "array"
+          },
+          "refinement_instructions": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refinement Instructions"
+          }
+        },
+        "required": [
+          "focus"
+        ],
+        "title": "PlanArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "GenerateWorkoutPlanResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "activate_plan",
+      "description": "Make a draft plan the student's active plan. The previous active plan is archived, not deleted.",
+      "agents": [
+        "planning"
+      ],
+      "access": "write",
+      "approval": "always",
+      "approval_reason": "This replaces your current training plan with the new one.",
+      "failure_codes": [
+        "plan_not_found",
+        "storage_error"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "The draft plan to activate.",
+        "properties": {
+          "plan_id": {
+            "description": "The draft plan's plan_id.",
+            "minLength": 1,
+            "title": "Plan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_id"
+        ],
+        "title": "ActivatePlanArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "ActivatePlanResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "save_recommendation",
+      "description": "Store a proposed change to the training for later review, with the source_ids that support it. It does not change the plan.",
+      "agents": [
+        "planning",
+        "performance"
+      ],
+      "access": "write",
+      "approval": "never",
+      "failure_codes": [
+        "plan_not_found",
+        "storage_error"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "A proposed change to keep for later review.",
+        "properties": {
+          "summary": {
+            "description": "The proposed change.",
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Summary",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why it would help.",
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_ids": {
+            "description": "source_id values from search_documents.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Source Ids",
+            "type": "array"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Omit for the current plan.",
+            "title": "Plan Id"
+          }
+        },
+        "required": [
+          "summary",
+          "reason"
+        ],
+        "title": "RecommendationArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "RecommendationResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "save_workout_feedback",
+      "description": "Record how one workout went: completed, partially completed, or missed (not_completed), its difficulty and an optional comment. Call only when the student reports it.",
+      "agents": [
+        "performance"
+      ],
+      "access": "write",
+      "approval": "conditional",
+      "approval_reason": "This feedback may describe pain or injury, so it is confirmed before it is saved.",
+      "external_services": [
+        "ollama"
+      ],
+      "failure_codes": [
+        "invalid_request",
+        "student_not_found",
+        "plan_not_found",
+        "workout_not_found",
+        "storage_error"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Feedback on one workout.",
+        "properties": {
+          "week_number": {
+            "description": "A week_number from get_timetable.",
+            "minimum": 1,
+            "title": "Week Number",
+            "type": "integer"
+          },
+          "workout_index": {
+            "description": "A workout_index from get_timetable.",
+            "minimum": 0,
+            "title": "Workout Index",
+            "type": "integer"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A plan_id from get_timetable; omit for the current plan.",
+            "title": "Plan Id"
+          },
+          "completion_status": {
+            "description": "completed, partially_completed, or not_completed for a missed workout.",
+            "enum": [
+              "completed",
+              "partially_completed",
+              "not_completed"
+            ],
+            "title": "Completion Status",
+            "type": "string"
+          },
+          "difficulty": {
+            "description": "How the workout felt.",
+            "enum": [
+              "much_too_easy",
+              "slightly_too_easy",
+              "just_right",
+              "slightly_too_hard",
+              "much_too_hard"
+            ],
+            "title": "Difficulty",
+            "type": "string"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The student's own words, if any.",
+            "title": "Comment"
+          }
+        },
+        "required": [
+          "week_number",
+          "workout_index",
+          "completion_status",
+          "difficulty"
+        ],
+        "title": "FeedbackArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "FeedbackResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "log_workout_performance",
+      "description": "Save the weights, sets and reps the student reports for the exercises of one workout.",
+      "agents": [
+        "performance"
+      ],
+      "access": "write",
+      "approval": "never",
+      "failure_codes": [
+        "plan_not_found",
+        "workout_not_found",
+        "exercise_not_found",
+        "invalid_request",
+        "storage_error"
+      ],
+      "input_schema": {
+        "$defs": {
+          "PerformanceRecord": {
+            "additionalProperties": false,
+            "description": "What the student actually did for one exercise.",
+            "properties": {
+              "exercise_name": {
+                "maxLength": 100,
+                "minLength": 1,
+                "title": "Exercise Name",
+                "type": "string"
+              },
+              "sets_completed": {
+                "maximum": 50,
+                "minimum": 0,
+                "title": "Sets Completed",
+                "type": "integer"
+              },
+              "reps_per_set": {
+                "maxLength": 100,
+                "minLength": 1,
+                "title": "Reps Per Set",
+                "type": "string"
+              },
+              "weight_kg": {
+                "anyOf": [
+                  {
+                    "maximum": 1000,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Weight Kg"
+              }
+            },
+            "required": [
+              "exercise_name",
+              "sets_completed",
+              "reps_per_set"
+            ],
+            "title": "PerformanceRecord",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "What the student did in one workout.",
+        "properties": {
+          "week_number": {
+            "description": "A week_number from get_timetable.",
+            "minimum": 1,
+            "title": "Week Number",
+            "type": "integer"
+          },
+          "workout_index": {
+            "description": "A workout_index from get_timetable.",
+            "minimum": 0,
+            "title": "Workout Index",
+            "type": "integer"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A plan_id from get_timetable; omit for the current plan.",
+            "title": "Plan Id"
+          },
+          "exercises": {
+            "description": "One record per exercise done.",
+            "items": {
+              "$ref": "#/$defs/PerformanceRecord"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Exercises",
+            "type": "array"
+          }
+        },
+        "required": [
+          "week_number",
+          "workout_index",
+          "exercises"
+        ],
+        "title": "PerformanceArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "PerformanceResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "update_upcoming_workout",
+      "description": "Adjust the sets, reps, rest and notes of the next unlogged workout, using the saved feedback on a logged workout. Give the logged workout, not the one to change. Exercises are never added, removed or renamed.",
+      "agents": [
+        "performance"
+      ],
+      "access": "write",
+      "approval": "always",
+      "approval_reason": "This changes the training load of your next workout, based on your feedback.",
+      "external_services": [
+        "ollama"
+      ],
+      "failure_codes": [
+        "plan_not_found",
+        "workout_not_found",
+        "feedback_not_found",
+        "already_adapted",
+        "health_concern",
+        "no_upcoming_workout",
+        "unavailable",
+        "adaptation_failed",
+        "storage_error"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "The logged workout whose feedback adapts the next one.",
+        "properties": {
+          "week_number": {
+            "description": "A week_number from get_timetable.",
+            "minimum": 1,
+            "title": "Week Number",
+            "type": "integer"
+          },
+          "workout_index": {
+            "description": "A workout_index from get_timetable.",
+            "minimum": 0,
+            "title": "Workout Index",
+            "type": "integer"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A plan_id from get_timetable; omit for the current plan.",
+            "title": "Plan Id"
+          }
+        },
+        "required": [
+          "week_number",
+          "workout_index"
+        ],
+        "title": "LoggedWorkoutArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "UpdatedWorkoutResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "get_calendar_busy",
+      "description": "Read when the student is busy in their connected external calendar. Gives times only, never event titles or details.",
+      "agents": [
+        "schedule"
+      ],
+      "access": "read",
+      "approval": "never",
+      "external_services": [
+        "google_calendar"
+      ],
+      "failure_codes": [
+        "calendar_not_connected",
+        "calendar_unavailable"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Which days to read from the calendar.",
+        "properties": {
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "First day, or today.",
+            "title": "Start Date"
+          },
+          "days": {
+            "default": 7,
+            "description": "How many days to read.",
+            "maximum": 31,
+            "minimum": 1,
+            "title": "Days",
+            "type": "integer"
+          }
+        },
+        "title": "BusyArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "BusyResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "propose_training_slots",
+      "description": "Find free times in the connected calendar for the current plan's workouts that are not booked or logged yet, with real dates and times. Books nothing.",
+      "agents": [
+        "schedule"
+      ],
+      "access": "read",
+      "approval": "never",
+      "external_services": [
+        "google_calendar"
+      ],
+      "failure_codes": [
+        "calendar_not_connected",
+        "calendar_unavailable",
+        "student_not_found",
+        "plan_not_found",
+        "storage_error"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Constraints for proposed training times.",
+        "properties": {
+          "week_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A date in the first week to schedule, if the student named one.",
+            "title": "Week Start"
+          },
+          "earliest": {
+            "default": "07:00:00",
+            "description": "Earliest start, as HH:MM.",
+            "format": "time",
+            "title": "Earliest",
+            "type": "string"
+          },
+          "latest": {
+            "default": "21:00:00",
+            "description": "Latest finish, as HH:MM.",
+            "format": "time",
+            "title": "Latest",
+            "type": "string"
+          }
+        },
+        "title": "SlotArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "SlotsResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "organize_schedule",
+      "description": "Move workouts of the plan to other available days. After missed workouts, give catch_up_week (and from_day): code puts the missed workouts first on the available days left in that week. Otherwise give explicit moves; all apply, or none do, and two moves can swap days.",
+      "agents": [
+        "schedule"
+      ],
+      "access": "write",
+      "approval": "always",
+      "approval_reason": "This moves workouts to other days in your plan.",
+      "failure_codes": [
+        "plan_not_found",
+        "student_not_found",
+        "workout_not_found",
+        "day_not_available",
+        "day_conflict",
+        "invalid_schedule",
+        "invalid_request",
+        "nothing_to_catch_up",
+        "no_day_left",
+        "storage_error"
+      ],
+      "input_schema": {
+        "$defs": {
+          "WorkoutMove": {
+            "additionalProperties": false,
+            "description": "Move one workout to another day of the same week.",
+            "properties": {
+              "week_number": {
+                "minimum": 1,
+                "title": "Week Number",
+                "type": "integer"
+              },
+              "workout_index": {
+                "minimum": 0,
+                "title": "Workout Index",
+                "type": "integer"
+              },
+              "new_day": {
+                "maxLength": 20,
+                "minLength": 1,
+                "title": "New Day",
+                "type": "string"
+              }
+            },
+            "required": [
+              "week_number",
+              "workout_index",
+              "new_day"
+            ],
+            "title": "WorkoutMove",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Workouts to move to other days: explicit moves, or a catch-up week.",
+        "properties": {
+          "moves": {
+            "description": "Explicit moves. Leave empty when catch_up_week is given.",
+            "items": {
+              "$ref": "#/$defs/WorkoutMove"
+            },
+            "maxItems": 21,
+            "title": "Moves",
+            "type": "array"
+          },
+          "catch_up_week": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "After missed workouts: the week to reorganise. Code puts the missed workouts first on the available days left; do not write moves.",
+            "title": "Catch Up Week"
+          },
+          "from_day": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "With catch_up_week: the first day that may be used, such as today's weekday.",
+            "title": "From Day"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Omit for the current plan.",
+            "title": "Plan Id"
+          }
+        },
+        "title": "ScheduleArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "ScheduleResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "add_workouts_to_calendar",
+      "description": "Add workouts to the student's connected calendar at the exact start times that propose_training_slots offered. Each booking is rechecked for conflicts first.",
+      "agents": [
+        "schedule"
+      ],
+      "access": "write",
+      "approval": "always",
+      "approval_reason": "This adds events to your calendar.",
+      "external_services": [
+        "google_calendar"
+      ],
+      "failure_codes": [
+        "calendar_not_connected",
+        "plan_not_found",
+        "invalid_request",
+        "storage_error"
+      ],
+      "input_schema": {
+        "$defs": {
+          "Booking": {
+            "additionalProperties": false,
+            "description": "Book one workout at a time the student approved.",
+            "properties": {
+              "week_number": {
+                "minimum": 1,
+                "title": "Week Number",
+                "type": "integer"
+              },
+              "workout_index": {
+                "minimum": 0,
+                "title": "Workout Index",
+                "type": "integer"
+              },
+              "start": {
+                "format": "date-time",
+                "title": "Start",
+                "type": "string"
+              }
+            },
+            "required": [
+              "week_number",
+              "workout_index",
+              "start"
+            ],
+            "title": "Booking",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Approved times to add to the calendar.",
+        "properties": {
+          "bookings": {
+            "items": {
+              "$ref": "#/$defs/Booking"
+            },
+            "maxItems": 21,
+            "minItems": 1,
+            "title": "Bookings",
+            "type": "array"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Omit for the current plan.",
+            "title": "Plan Id"
+          }
+        },
+        "required": [
+          "bookings"
+        ],
+        "title": "BookingArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "BookingResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "get_location",
+      "description": "Resolve where to search: a place name the student gave, a location shared by the app for this request, or the location the student chose to save. Never guesses. Only places in metropolitan France are served for now; a country or region is too vague.",
+      "agents": [
+        "location"
+      ],
+      "access": "read",
+      "approval": "never",
+      "external_services": [
+        "photon"
+      ],
+      "failure_codes": [
+        "location_unknown",
+        "place_not_found",
+        "place_too_vague",
+        "outside_service_area",
+        "invalid_request",
+        "places_unavailable",
+        "storage_error"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "Where to search, if the student named a place.",
+        "properties": {
+          "place": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A place name the student gave. Omit to use their own location.",
+            "title": "Place"
+          }
+        },
+        "title": "LocationArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "LocationResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "search_nearby_places",
+      "description": "Find gyms (gym), sports or fitness equipment shops (sports_store) or supplement shops (supplement_store) near the student or a named place in metropolitan France, nearest first, with addresses, coordinates and distances. Places unrelated to strength training are left out. Map data cannot confirm stock or opening hours.",
+      "agents": [
+        "location"
+      ],
+      "access": "read",
+      "approval": "never",
+      "external_services": [
+        "photon"
+      ],
+      "failure_codes": [
+        "location_unknown",
+        "place_not_found",
+        "place_too_vague",
+        "outside_service_area",
+        "places_unavailable",
+        "invalid_request"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "A nearby-place search.",
+        "properties": {
+          "place": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A place name the student gave. Omit to use their own location.",
+            "title": "Place"
+          },
+          "category": {
+            "description": "gym, sports_store (fitness equipment), or supplement_store.",
+            "enum": [
+              "gym",
+              "sports_store",
+              "supplement_store"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "radius_km": {
+            "anyOf": [
+              {
+                "maximum": 20,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Search radius in km; omit for the default.",
+            "title": "Radius Km"
+          }
+        },
+        "required": [
+          "category"
+        ],
+        "title": "NearbyArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "PlacesResult",
+        "ToolFailure"
+      ]
+    },
+    {
+      "name": "search_documents",
+      "description": "Search the curated fitness knowledge base and return matching transcript passages with their source_id, title and link. Returns evidence only, never generated advice. Pain and injury questions are refused.",
+      "agents": [
+        "knowledge"
+      ],
+      "access": "read",
+      "approval": "never",
+      "external_services": [
+        "fitness_corpus",
+        "ollama"
+      ],
+      "failure_codes": [
+        "health_question",
+        "search_unavailable",
+        "out_of_scope"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "description": "A knowledge-base query.",
+        "properties": {
+          "query": {
+            "description": "What to look up.",
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Query",
+            "type": "string"
+          },
+          "top_k": {
+            "default": 3,
+            "description": "How many passages.",
+            "maximum": 8,
+            "minimum": 1,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "SearchArguments",
+        "type": "object"
+      },
+      "output_models": [
+        "SearchResult",
+        "ToolFailure"
+      ]
+    }
+  ]
+}

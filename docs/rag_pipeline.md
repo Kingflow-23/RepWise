@@ -129,8 +129,16 @@ the model to adjust **only the next unlogged workout** in that plan:
   estimates, and coaching notes can change.
 - The result is checked against the original request before it's saved.
 - Resubmitting updates the record but doesn't adapt a workout a second time.
-- A comment matching the English pain and discomfort keyword list is saved without
-  changing anything. That's a cautious word check, not pain detection.
+- The comment goes through the [health check](agents.md#pain-injury-and-medical-questions),
+  a small local model that understands English and French. Its decision is stored
+  with the feedback. A comment that may describe pain, injury or a medical issue is
+  saved without changing anything. If the check can't run, the comment is treated
+  the same way (fail closed). It flags possible concerns; it doesn't diagnose.
+
+The API route and the agent's `update_upcoming_workout` tool share these rules
+through `adapt_after_feedback` in
+[`src/generation/adaptation.py`](../src/generation/adaptation.py). Through the
+agent, the adjustment also waits for the student's approval.
 
 Feedback is still saved if adaptation isn't possible. This isn't multi-week
 progression, and the corpus [can't yet ground such rules](knowledge_base.md#5-adaptation-engine-what-each-rule-can-rest-on).

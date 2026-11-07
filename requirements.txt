@@ -1,5 +1,6 @@
 pydantic
 ollama
+# MCP server and client; fastmcp 4 brings the MCP Python SDK v2.
 fastmcp>=4.0,<5.0
 fastapi
 uvicorn
@@ -16,7 +17,7 @@ sentence-transformers
 faster-whisper>=1.1,<2
 # Keep the decoder API used by faster-whisper 1.x (PyAV 19 removed it).
 av>=11,<17
-# Session 5: the LangGraph agent
+# Multi-agent orchestration (LangGraph) and the local Ollama chat model
 langgraph>=1.2,<2
 langchain-ollama>=1.1,<2
 # Calendar sign-in, and time zones on Windows

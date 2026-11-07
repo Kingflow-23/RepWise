@@ -1,68 +1,97 @@
 # RepWise
 
-**From training transcripts to a workout plan you can inspect.**
+**A local multi-agent fitness assistant whose plans you can inspect.**
 
-RepWise is a local-first learning project: it searches prepared fitness
-transcripts, asks a local Ollama model to draft a plan, checks the plan against
-your schedule and equipment, and shows the sources behind it.
+RepWise searches prepared fitness transcripts, asks a local Ollama model to
+draft a workout plan, checks the plan against your schedule and equipment, and
+shows the sources behind it. One orchestrator and five specialist agents also
+let you ask for more:
 
-It is a prototype for general fitness planning, not a medical or coaching
-service. It does not diagnose injuries or guarantee that a plan is safe.
+- "Find a gym near me and create a training programme."
+- "I missed two workouts; organise the rest of my week."
+- "How much rest between sets do the documents recommend?"
 
-Saved workouts can also be logged with completion and difficulty feedback.
-RepWise stores that feedback with the specific workout and can use it to adjust
-the next unlogged workout in the same plan, without regenerating the rest of the
-plan. Feedback mentioning pain or discomfort is saved without automatically
-changing the plan.
+Any change to your plan or your calendar waits for your explicit approval.
+
+It is a learning prototype for general fitness planning, not a medical or
+coaching service. It does not diagnose injuries or guarantee that a plan is safe.
+When you mention pain or injury, RepWise does not change your training
+automatically and suggests seeing a health professional.
 
 ## How it fits together
 
 ```mermaid
 flowchart LR
-    Student --> UI[Streamlit app]
-    UI --> API[FastAPI]
-    API --> Search[Search transcripts]
-    Search --> Model[Local Ollama model]
-    Model --> Validate[Validate the plan]
-    Validate --> DB[(Saved plans)]
-    Validate --> UI
-    Agent[LangGraph agent] --> Tools[Agent tools]
-    Tools --> DB
-    Tools --> Calendar[Calendar and map services]
+    Student --> UI[Web app / Streamlit]
+    UI -->|HTTP + token| API[FastAPI]
+    Host[MCP host] -->|stdio| MCP[MCP server]
+    API --> Orchestrator
+    subgraph Agents
+        Orchestrator --> Planning
+        Orchestrator --> Performance[Performance & Adaptation]
+        Orchestrator --> Schedule[Schedule & Calendar]
+        Orchestrator --> Location
+        Orchestrator --> Knowledge[Fitness Knowledge]
+    end
+    Agents --> Gate[Approval gate]
+    MCP --> Gate
+    Gate --> Tools[19 tools<br/>config/tools.json]
+    Tools --> DB[(SQLite)]
+    Tools --> RAG[RAG plan pipeline]
+    Tools --> Ext[Google Calendar,<br/>OpenStreetMap]
+    RAG --> Ollama[Local Ollama models]
 ```
 
-## Try it
+| Agent | Does |
+|---|---|
+| Orchestrator | Reads your profile and plan, decides which specialists to use, coordinates them, and writes one answer. |
+| Workout Planning | Generates validated, evidence-based weekly programmes. |
+| Performance & Adaptation | Records completed or missed workouts and adjusts the next one within guardrails. |
+| Schedule & Calendar | Finds free time in your calendar, moves workouts, and books approved sessions. |
+| Location | Finds nearby gyms, fitness equipment shops and supplement shops. |
+| Fitness Knowledge | Answers from the curated transcripts, with sources. |
 
-You'll need Python 3.11 or 3.12, an authorized prepared transcript corpus, and
-[Ollama](https://ollama.com/). Corpus files and model weights are local and aren't
-included in this repository. The [setup guide](docs/setup.md) walks through it.
+## Quick start
 
-You can also **speak your request**: on the plan tab, use **Record your request**,
-then **Use recording**, and edit the text before generating. Recording never submits
-a plan by itself. Audio is transcribed locally and never saved.
-
-## The agent
-
-A separate [LangGraph agent](docs/agent/README.md) uses Plan-and-Execute and 15 tools to plan
-training, adapt it from feedback, propose calendar slots, find nearby gyms and shops,
-and answer from the transcripts. It remembers preferences and past tasks across
-sessions. It runs from the command line and isn't part of the app yet:
+You need Python 3.11 or 3.12, [Ollama](https://ollama.com/) and an authorized
+prepared transcript corpus. Corpus files and model weights stay local and aren't
+in this repository. The [setup guide](docs/setup.md) has every step.
 
 ```powershell
-python -m agentic.run_agent --approve
+python -m venv .venv; .venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env        # then set REPWISE_AUTH_SECRET and REPWISE_CHUNK_FILE
+ollama pull qwen3.5:9b; ollama pull qwen3.5:4b
+
+python -m uvicorn src.api.main:app --reload          # backend API
+python -m streamlit run .\genai_app\streamlit_app.py  # Streamlit UI
+python -m scripts.run_agent                           # the agents, on a demo account
+python -m pytest -q                                   # tests (no Ollama needed)
 ```
 
-## Explore the docs
+The MCP server (`python -m src.mcp_server.server`) is optional. It serves the same tools to an
+MCP host; see [the MCP guide](docs/mcp.md).
 
-The [documentation hub](docs/README.md) has one guide per topic. Two good starting
-points are [how a request becomes a plan](docs/rag_pipeline.md) and
-[what we measured](docs/evaluation.md).
+## Documentation
+
+The [documentation hub](docs/README.md) has one guide per topic:
+
+- [architecture](docs/architecture.md)
+- [the agents](docs/agents.md), with Plan-and-Execute, memory and approvals
+- [the tools](docs/tools.md)
+- [the API](docs/api.md)
+- [the RAG pipeline](docs/rag_pipeline.md)
+- [evaluation](docs/evaluation.md)
+- [implementation status](docs/status.md)
 
 ## Important limits
 
-RepWise checks plan structure, schedule constraints, equipment declarations,
-and that cited source IDs were retrieved. It does not require exact transcript
-quotes, which lets the model use non-English evidence while producing a
-coherent English plan. These checks cannot prove that a source supports an
-exercise, that advice is medically appropriate, or that the model followed
-every instruction.
+RepWise checks plan structure, schedule constraints, equipment declarations, and
+that cited source IDs were retrieved. These checks cannot prove that a source
+supports an exercise, that advice is medically appropriate, or that a model
+followed every instruction.
+
+Agent answers come from a local model. Code checks tool results, approvals and
+dates, but the model's wording can still be imperfect. Authentication is suitable
+for a local course project and hasn't had a security review; see
+[security limits](docs/api.md#security-limits).

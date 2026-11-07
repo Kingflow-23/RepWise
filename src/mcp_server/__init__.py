@@ -1,1 +1,1 @@
-"""RepWise tools exposed over the Model Context Protocol."""
+"""The RepWise MCP server; run it with ``python -m src.mcp_server.server``."""

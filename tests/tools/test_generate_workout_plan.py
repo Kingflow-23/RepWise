@@ -1,7 +1,5 @@
 """Exercise the generation tool with real validation and SQLite persistence."""
 
-import json
-from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -17,10 +15,13 @@ from src.schemas.models import (
     TrainingPlan,
     UserProfile,
 )
-from src.tools.generate_workout_plan import (
+from src.tools.catalog import get_tool_spec
+from src.tools.planning import (
     GenerateWorkoutPlanResult,
+    generate_plan_for_agent,
     generate_workout_plan,
 )
+from tests.conftest import make_context
 
 
 @pytest.fixture
@@ -205,18 +206,37 @@ def test_pipeline_failures_return_structured_result_without_saving(account, fail
 
 
 def test_tool_catalog_uses_actual_input_schema():
-    catalog = json.loads(
-        (Path(__file__).resolve().parents[2] / "docs/agent/tools.json").read_text()
-    )
-    tool = next(
-        item for item in catalog["tools"] if item["name"] == "generate_workout_plan"
-    )
-    assert tool["parameters"] == PlanOptions.model_json_schema()
-    assert "student_id" not in tool["parameters"]["properties"]
+    schema = get_tool_spec("generate_workout_plan").input_schema
+    assert schema["properties"] == PlanOptions.model_json_schema()["properties"]
+    assert "student_id" not in schema["properties"]
     with pytest.raises(ValidationError):
         PlanOptions.model_validate(
             {"focus": "Build legs", "student_id": "another-account"}
         )
+
+
+def test_agent_plan_is_active_first_then_a_draft_that_keeps_the_current_plan(account):
+    repository, user_id = account
+    pipeline, _, _ = make_pipeline()
+    context = make_context(repository, user_id, pipeline_factory=lambda: pipeline)
+
+    first = generate_plan_for_agent(context, focus="Build leg muscles")
+    second = generate_plan_for_agent(context, focus="Build leg muscles again")
+
+    assert (first.status, first.plan_status) == ("completed", "active")
+    assert (second.status, second.plan_status) == ("completed", "draft")
+    assert repository.get_current_plan(user_id)["id"] == first.plan_id
+
+
+def test_agent_plan_without_a_pipeline_is_unavailable(account):
+    repository, user_id = account
+
+    result = generate_plan_for_agent(
+        make_context(repository, user_id), focus="Build legs"
+    )
+
+    assert result.status == "unavailable"
+    assert repository.list_plans(user_id) == []
 
 
 def test_completed_result_cannot_claim_success_without_a_saved_id():

@@ -1,9 +1,16 @@
-"""HTTP routes for the RepWise demo."""
+"""HTTP routes for the RepWise backend.
+
+This is the FastAPI server (``python -m uvicorn src.api.main:app``). It serves
+accounts, profiles, plans and feedback for the web app, and the agent,
+approval and location routes from ``agent_routes.py``. The MCP server
+(``python -m src.mcp_server.server``) is a separate process for MCP hosts; both share the
+same tools, database and catalog.
+"""
 
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+from collections.abc import Callable
 from time import perf_counter
 from uuid import uuid4
 
@@ -19,35 +26,36 @@ from fastapi import (
     Response,
 )
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from langgraph.checkpoint.memory import InMemorySaver
 from starlette.concurrency import run_in_threadpool
 
 from config.config import AppConfig
 from ..db.repository import StudentRepository
 from ..observability import configure_logging, request_id_context
 from .auth import create_access_token, hash_password, read_access_token, verify_password
+from ..agents.health import HealthChecker, OllamaHealthChecker
+from ..agents.orchestrator import build_chat_model
 from ..generation.adaptation import (
     WorkoutGenerator,
     WorkoutAdaptationPipeline,
-    feedback_mentions_pain,
-    next_unlogged_workout,
+    adapt_after_feedback,
 )
-from ..generation.pipeline import PlanPipeline, validate_plan
+from ..generation.pipeline import PlanPipeline
+from ..integrations.google_calendar import load_google_calendar
+from ..integrations.photon import PhotonClient
 from ..llm.ollama import OllamaGenerator, PlanGenerator
 from ..retrieval.base import MissingRetriever, Retriever
-from ..retrieval.hybrid import HybridRetriever
+from ..retrieval.factory import build_retriever
 from ..retrieval.query_expansion import (
     OllamaQueryExpander,
     QueryExpansionRetriever,
     ScopeAnalyzer,
 )
-from ..retrieval.semantic import SemanticRetriever, load_chunks
-from ..retrieval.bm25 import BM25Retriever
 from ..schemas.models import (
     AccessToken,
     AccountIdentity,
     AccountCredentials,
     PlanOptions,
-    PlanRequest,
     TrainingPlan,
     UserProfile,
     WorkoutFeedbackRequest,
@@ -58,7 +66,10 @@ from ..speech import (
     WhisperTranscriber,
     validate_recording,
 )
-from ..tools.generate_workout_plan import generate_workout_plan
+from ..tools.calendar import CalendarProvider
+from ..tools.context import Location, ToolContext
+from ..tools.planning import generate_workout_plan
+from .agent_routes import build_agent_router
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +83,10 @@ def create_app(
     generator: PlanGenerator | None = None,
     workout_generator: WorkoutGenerator | None = None,
     transcriber: SpeechTranscriber | None = None,
+    health_checker: HealthChecker | None = None,
+    agent_llm: object | None = None,
+    places_client: PhotonClient | None = None,
+    calendar_loader: Callable[[str], CalendarProvider | None] | None = None,
 ) -> FastAPI:
     """Build the API, persistence layer, retriever, generator, and routes.
 
@@ -88,6 +103,13 @@ def create_app(
         workout_generator: Optional structured workout generator. The default
             Ollama generator is reused when it is also the plan generator.
         transcriber: Optional speech-to-text service; defaults to lazy local Whisper.
+        health_checker: Decides whether text mentions pain or injury; defaults
+            to the local Ollama health check.
+        agent_llm: Chat model for the agents; defaults to ``ChatOllama`` with
+            ``REPWISE_AGENT_MODEL``, created on first use.
+        places_client: Map service for location tools; defaults to Photon.
+        calendar_loader: Returns an account's connected calendar, or ``None``;
+            defaults to the saved Google Calendar token.
 
     Returns:
         A configured FastAPI application. If default retriever initialization
@@ -117,29 +139,10 @@ def create_app(
     if retriever is None:
         retrieval_started = perf_counter()
         try:
-            if not config.chunk_file:
-                raise FileNotFoundError(
-                    "Set REPWISE_CHUNK_FILE to the prepared JSONL corpus before starting the API."
-                )
-            chunks = load_chunks(Path(config.chunk_file).parent)
-            lexical = BM25Retriever(chunks)
-            if config.retrieval_strategy == "bm25":
-                retriever = lexical
-            elif config.retrieval_strategy == "semantic":
-                retriever = SemanticRetriever(
-                    chunks, config.embedding_index, config.embedding_model
-                )
-            elif config.retrieval_strategy == "hybrid":
-                semantic = SemanticRetriever(
-                    chunks, config.embedding_index, config.embedding_model
-                )
-                retriever = HybridRetriever(lexical, semantic)
-            else:
-                raise ValueError("REPWISE_RETRIEVAL must be bm25, semantic or hybrid.")
+            retriever = build_retriever(config)
             logger.info(
-                "Retriever initialized strategy=%s chunks=%s elapsed_ms=%.1f",
+                "Retriever initialized strategy=%s elapsed_ms=%.1f",
                 config.retrieval_strategy,
-                len(chunks),
                 (perf_counter() - retrieval_started) * 1000,
             )
         except (OSError, RuntimeError, ValueError) as error:
@@ -173,6 +176,52 @@ def create_app(
     )
     pipeline = PlanPipeline(retriever, generator, config.top_k)
     logger.info("Generation pipeline initialized top_k=%s", config.top_k)
+    health_checker = health_checker or OllamaHealthChecker(
+        config.health_check_model, config.ollama_url
+    )
+    places_client = places_client or PhotonClient(
+        config.photon_url, config.http_user_agent
+    )
+    if calendar_loader is None:
+
+        def calendar_loader(student_id: str) -> CalendarProvider | None:
+            """Return the account's Google Calendar when it is connected."""
+            return load_google_calendar(config, student_id)
+
+    agent_models: list[object] = [agent_llm] if agent_llm is not None else []
+
+    def make_llm() -> object:
+        """Return the agents' chat model, creating it on first use."""
+        if not agent_models:
+            agent_models.append(build_chat_model(config))
+        return agent_models[0]
+
+    def make_context(
+        student_id: str,
+        session_location: Location | None = None,
+        timezone: str | None = None,
+    ) -> ToolContext:
+        """Build the trusted tool context for an authenticated account.
+
+        Args:
+            student_id: Account ID already checked against the bearer token.
+            session_location: Location shared for this request only.
+            timezone: Time zone for this request, or the configured default.
+
+        Returns:
+            A context that reuses the API's repository and pipeline.
+        """
+        return ToolContext(
+            student_id=student_id,
+            repository=repository,
+            config=config,
+            health=health_checker,
+            pipeline_factory=lambda: pipeline,
+            calendar=calendar_loader(student_id),
+            places=places_client,
+            session_location=session_location,
+            timezone=timezone or config.timezone,
+        )
 
     app = FastAPI(
         title="RepWise",
@@ -539,30 +588,44 @@ def create_app(
         feedback_request: WorkoutFeedbackRequest = ...,
         user_id: str = Depends(require_account),
     ) -> dict[str, object]:
-        """Save workout feedback and adapt only the next unlogged workout."""
+        """Save workout feedback and adapt only the next unlogged workout.
+
+        The comment goes through the health check once and the decision is
+        stored with the feedback. Feedback that may describe pain or injury is
+        saved, but never adapts a workout automatically. The adaptation rules
+        are shared with the agent tool (``adapt_after_feedback``).
+
+        Args:
+            student_id: Account ID from the route path.
+            plan_id: Plan containing the workout.
+            week_number: Week of the logged workout.
+            workout_index: Position of the logged workout in its week.
+            feedback_request: Completion status, difficulty and comment.
+            user_id: Authenticated account ID supplied by the bearer dependency.
+
+        Returns:
+            The saved feedback, all feedback of the plan, the (possibly
+            adapted) plan, whether a workout was adapted, and a message.
+
+        Raises:
+            HTTPException: 403 for an account mismatch, 404 when the plan or
+                workout does not exist.
+        """
         check_owner(student_id, user_id)
         saved = repository.get_plan(student_id, plan_id)
         if saved is None:
             raise HTTPException(status_code=404, detail="Saved plan not found")
-
-        request = PlanRequest.model_validate(saved["request"])
         plan = TrainingPlan.model_validate(saved["plan"])
         week = next((item for item in plan.weeks if item.number == week_number), None)
         if week is None or workout_index >= len(week.workouts):
             raise HTTPException(
                 status_code=404, detail="Workout not found in saved plan"
             )
-        logged_workout = week.workouts[workout_index]
 
-        existing_feedback = repository.list_workout_feedback(student_id, plan_id)
-        prior_log = next(
-            (
-                item
-                for item in existing_feedback
-                if item.week_number == week_number
-                and item.workout_index == workout_index
-            ),
-            None,
+        concern = (
+            health_checker.check(feedback_request.comment)
+            if feedback_request.comment
+            else None
         )
         feedback = repository.save_workout_feedback(
             student_id,
@@ -570,120 +633,45 @@ def create_app(
             week_number,
             workout_index,
             feedback_request,
+            health_concern=None if concern is None else concern.health_concern,
         )
-        updated_plan = plan
-        adapted_workout: dict[str, int] | None = None
-        adapted = False
-        if prior_log and prior_log.adapted_week_number is not None:
-            message = "Feedback updated. Its previously adapted workout was not changed again."
-        elif feedback_mentions_pain(feedback_request):
-            message = (
+        try:
+            outcome = adapt_after_feedback(
+                repository,
+                student_id,
+                plan_id,
+                week_number,
+                workout_index,
+                workout_adapter,
+            )
+        except LookupError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        messages = {
+            "already_adapted": (
+                "Feedback updated. Its previously adapted workout was not changed again."
+            ),
+            "health_concern": (
                 "Feedback saved. No workout was changed because the comment "
                 "mentions pain or discomfort; review the plan's safety note."
-            )
-        elif workout_adapter is None:
-            message = (
+            ),
+            "unavailable": (
                 "Feedback saved, but workout adaptation is unavailable for the "
                 "configured generator."
-            )
-        else:
-            logged_workouts = {
-                (item.week_number, item.workout_index) for item in existing_feedback
-            }
-            logged_workouts.add((week_number, workout_index))
-            target = next_unlogged_workout(
-                plan,
-                after_week_number=week_number,
-                after_workout_index=workout_index,
-                logged_workouts=logged_workouts,
-            )
-            if target is None:
-                message = "Feedback saved. There is no later unlogged workout in this plan to adapt."
-            else:
-                target_week_number, target_index, target_workout = target
-                try:
-                    replacement = workout_adapter.adapt(
-                        request=request,
-                        plan=plan,
-                        logged_workout=logged_workout,
-                        target_workout=target_workout,
-                        target_week_number=target_week_number,
-                        feedback=feedback_request,
-                    )
-                    if replacement == target_workout:
-                        message = (
-                            "Feedback saved. The next unlogged workout was reviewed "
-                            "and did not need changes."
-                        )
-                    else:
-                        updated_weeks = [
-                            (
-                                item.model_copy(
-                                    update={
-                                        "workouts": [
-                                            (
-                                                replacement
-                                                if index == target_index
-                                                else workout
-                                            )
-                                            for index, workout in enumerate(
-                                                item.workouts
-                                            )
-                                        ]
-                                    }
-                                )
-                                if item.number == target_week_number
-                                else item
-                            )
-                            for item in plan.weeks
-                        ]
-                        updated_plan = plan.model_copy(update={"weeks": updated_weeks})
-                        source_ids = {
-                            source["source_id"] for source in saved["sources"]
-                        }
-                        validate_plan(updated_plan, request, source_ids)
-                        if not repository.update_plan_after_feedback(
-                            student_id,
-                            plan_id,
-                            updated_plan,
-                            week_number,
-                            workout_index,
-                            target_week_number,
-                            target_index,
-                        ):
-                            raise HTTPException(
-                                status_code=404, detail="Saved plan not found"
-                            )
-                        adapted = True
-                        adapted_workout = {
-                            "week_number": target_week_number,
-                            "workout_index": target_index,
-                        }
-                        message = (
-                            "Feedback saved and the next unlogged workout was adjusted."
-                        )
-                        logger.info(
-                            "Workout adapted plan_id=%s from_week=%s from_index=%s "
-                            "to_week=%s to_index=%s",
-                            plan_id,
-                            week_number,
-                            workout_index,
-                            target_week_number,
-                            target_index,
-                        )
-                except (OSError, RuntimeError, ValueError) as error:
-                    logger.exception(
-                        "Workout adaptation failed plan_id=%s week=%s index=%s",
-                        plan_id,
-                        week_number,
-                        workout_index,
-                    )
-                    updated_plan = plan
-                    message = (
-                        "Feedback was saved, but the next workout was left "
-                        f"unchanged because adaptation failed: {error}"
-                    )
-
+            ),
+            "no_upcoming_workout": (
+                "Feedback saved. There is no later unlogged workout in this plan to adapt."
+            ),
+            "unchanged": (
+                "Feedback saved. The next unlogged workout was reviewed "
+                "and did not need changes."
+            ),
+            "adapted": "Feedback saved and the next unlogged workout was adjusted.",
+            "failed": (
+                "Feedback was saved, but the next workout was left "
+                f"unchanged because adaptation failed: {outcome.detail}"
+            ),
+        }
+        adapted = outcome.status == "adapted"
         feedback_records = repository.list_workout_feedback(student_id, plan_id)
         feedback = next(
             (
@@ -698,10 +686,14 @@ def create_app(
             "plan_id": plan_id,
             "feedback": feedback.model_dump(),
             "workout_feedback": [item.model_dump() for item in feedback_records],
-            "plan": updated_plan.model_dump(),
+            "plan": outcome.plan.model_dump(),
             "adapted": adapted,
-            "adapted_workout": adapted_workout,
-            "message": message,
+            "adapted_workout": (
+                {"week_number": outcome.target[0], "workout_index": outcome.target[1]}
+                if adapted
+                else None
+            ),
+            "message": messages[outcome.status],
         }
 
     @app.put("/api/v1/students/{student_id}/plans/{plan_id}")
@@ -758,6 +750,15 @@ def create_app(
         logger.info("Saved plan deleted")
         return Response(status_code=204)
 
+    app.include_router(
+        build_agent_router(
+            require_account=require_account,
+            check_owner=check_owner,
+            make_context=make_context,
+            make_llm=make_llm,
+            checkpointer=InMemorySaver(),
+        )
+    )
     return app
 
 
