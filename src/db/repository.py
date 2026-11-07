@@ -54,14 +54,16 @@ class StudentRepository:
         logger.info("Initializing SQLite repository")
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
-            connection.execute("""
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS users (
                     full_name TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL UNIQUE,
                     password_hash TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 )
-            """)
+            """
+            )
             user_columns = {
                 row[1] for row in connection.execute("PRAGMA table_info(users)")
             }
@@ -77,14 +79,16 @@ class StudentRepository:
                     "Back it up and configure a fresh database path; automatic "
                     "schema migration is not supported."
                 )
-            connection.execute("""
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS student_profiles (
                     student_id TEXT PRIMARY KEY,
                     profile_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(student_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
-            """)
+            """
+            )
             profile_foreign_keys = connection.execute(
                 "PRAGMA foreign_key_list(student_profiles)"
             ).fetchall()
@@ -97,7 +101,8 @@ class StudentRepository:
                     "schema. Back it up and configure a fresh database path; "
                     "automatic schema migration is not supported."
                 )
-            connection.execute("""
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS training_plans (
                     id TEXT PRIMARY KEY,
                     student_id TEXT NOT NULL,
@@ -107,7 +112,8 @@ class StudentRepository:
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(student_id) REFERENCES student_profiles(student_id) ON DELETE CASCADE
                 )
-            """)
+            """
+            )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS plans_by_student "
                 "ON training_plans(student_id, created_at DESC)"
@@ -116,7 +122,8 @@ class StudentRepository:
                 "CREATE UNIQUE INDEX IF NOT EXISTS plans_by_id_and_student "
                 "ON training_plans(id, student_id)"
             )
-            connection.execute("""
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS workout_feedback (
                     id TEXT PRIMARY KEY,
                     student_id TEXT NOT NULL,
@@ -133,8 +140,10 @@ class StudentRepository:
                     FOREIGN KEY(plan_id, student_id)
                         REFERENCES training_plans(id, student_id) ON DELETE CASCADE
                 )
-            """)
-            connection.execute("""
+            """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS workout_performance (
                     id TEXT PRIMARY KEY,
                     student_id TEXT NOT NULL,
@@ -150,8 +159,10 @@ class StudentRepository:
                     FOREIGN KEY(plan_id, student_id)
                         REFERENCES training_plans(id, student_id) ON DELETE CASCADE
                 )
-            """)
-            connection.execute("""
+            """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS recommendations (
                     id TEXT PRIMARY KEY,
                     student_id TEXT NOT NULL,
@@ -164,8 +175,10 @@ class StudentRepository:
                     FOREIGN KEY(plan_id, student_id)
                         REFERENCES training_plans(id, student_id) ON DELETE CASCADE
                 )
-            """)
-            connection.execute("""
+            """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS memory_facts (
                     student_id TEXT NOT NULL,
                     fact TEXT NOT NULL,
@@ -173,16 +186,20 @@ class StudentRepository:
                     UNIQUE(student_id, fact),
                     FOREIGN KEY(student_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
-            """)
-            connection.execute("""
+            """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS memory_episodes (
                     student_id TEXT NOT NULL,
                     episode TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(student_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
-            """)
-            connection.execute("""
+            """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS calendar_events (
                     event_id TEXT NOT NULL,
                     student_id TEXT NOT NULL,
@@ -196,7 +213,8 @@ class StudentRepository:
                     FOREIGN KEY(plan_id, student_id)
                         REFERENCES training_plans(id, student_id) ON DELETE CASCADE
                 )
-            """)
+            """
+            )
         logger.info("SQLite repository initialized")
 
     def create_user(self, full_name: str, password_hash: str) -> str:

@@ -29,7 +29,7 @@ from src.llm.ollama import OllamaGenerator
 from src.retrieval.hybrid import HybridRetriever
 from src.retrieval.query_expansion import OllamaQueryExpander, QueryExpansionRetriever
 from src.retrieval.semantic import SemanticRetriever, load_chunks
-from src.retrieval.sparse import BM25Retriever
+from src.retrieval.bm25 import BM25Retriever
 from src.schemas.models import Model, PlanOptions
 from src.tools.generate_workout_plan import (
     GenerateWorkoutPlanResult,

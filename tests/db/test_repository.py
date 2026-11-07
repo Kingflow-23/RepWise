@@ -232,13 +232,15 @@ def test_initialize_rejects_legacy_database_without_migrating_it(tmp_path):
     database_path = tmp_path / "legacy.sqlite3"
     connection = sqlite3.connect(database_path)
     try:
-        connection.executescript("""
+        connection.executescript(
+            """
             CREATE TABLE users (
                 username TEXT PRIMARY KEY,
                 password_hash TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
-        """)
+        """
+        )
         connection.execute(
             "INSERT INTO users VALUES (?, ?, ?)", ("alex", "hash", "now")
         )

@@ -8,7 +8,7 @@ from .base import MissingRetriever, Retriever
 from .hybrid import HybridRetriever
 from .query_expansion import OllamaQueryExpander, QueryExpansionRetriever
 from .semantic import SemanticRetriever
-from .sparse import BM25Retriever
+from .bm25 import BM25Retriever
 
 __all__ = [
     "BM25Retriever",

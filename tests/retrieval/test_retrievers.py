@@ -15,7 +15,7 @@ from src.retrieval.semantic import (
     build_index,
     corpus_fingerprint,
 )
-from src.retrieval.sparse import BM25Retriever
+from src.retrieval.bm25 import BM25Retriever
 from src.schemas import RetrievedChunk
 
 

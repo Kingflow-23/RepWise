@@ -366,7 +366,7 @@ def build_retrievers(
         QueryExpansionRetriever,
     )
     from ..retrieval.semantic import SemanticRetriever
-    from ..retrieval.sparse import BM25Retriever
+    from ..retrieval.bm25 import BM25Retriever
     from ..schemas.models import RetrievedChunk
 
     chunk_records = [

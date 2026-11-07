@@ -103,7 +103,7 @@ def test_comparison_builds_shared_retrieval_components(chunks_dir, monkeypatch):
     from config.config import AppConfig
     from src.retrieval import hybrid as hybrid_module
     from src.retrieval import semantic as semantic_module
-    from src.retrieval import sparse as sparse_module
+    from src.retrieval import bm25 as bm25_module
 
     created = {}
 
@@ -172,7 +172,7 @@ def test_comparison_builds_shared_retrieval_components(chunks_dir, monkeypatch):
             """
             return []
 
-    monkeypatch.setattr(sparse_module, "BM25Retriever", FakeBM25)
+    monkeypatch.setattr(bm25_module, "BM25Retriever", FakeBM25)
     monkeypatch.setattr(semantic_module, "SemanticRetriever", FakeSemantic)
     monkeypatch.setattr(hybrid_module, "HybridRetriever", FakeHybrid)
     monkeypatch.setattr(AppConfig, "from_environment", classmethod(lambda cls: cls()))
