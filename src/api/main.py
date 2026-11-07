@@ -380,7 +380,9 @@ def create_app(
         """Verify the bearer token and return the signed-in account's identity."""
         account = repository.get_account_identity(user_id)
         if account is None:
-            raise HTTPException(status_code=401, detail="Account is no longer available")
+            raise HTTPException(
+                status_code=401, detail="Account is no longer available"
+            )
         return AccountIdentity.model_validate(account)
 
     @app.get("/api/v1/health")

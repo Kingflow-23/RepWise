@@ -3,7 +3,6 @@ GenAI_project_starter
 
 # Environment files
 .env
-.venv
 
 # Corpus
 /corpus/
