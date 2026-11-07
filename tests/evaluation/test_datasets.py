@@ -7,6 +7,15 @@ import pytest
 from src.evaluation import adapters, datasets
 from src.evaluation.metrics.grounding import normalise
 
+# The built corpus is gitignored, so it is absent on a fresh clone (and in CI).
+# Tests that compare the datasets with it are skipped there instead of failing.
+CORPUS = datasets.REPO / "data" / "corpus"
+needs_corpus = pytest.mark.skipif(
+    not any((CORPUS / "chunks").glob("*.jsonl"))
+    or not any((CORPUS / "passages").glob("*.jsonl")),
+    reason="corpus not built (data/corpus/chunks and passages are gitignored)",
+)
+
 
 def test_retrieval_cases_link_to_relevance_judgments():
     """Require the retrieval set to contain only answerable, judged queries."""
@@ -23,6 +32,7 @@ def test_retrieval_queries_are_unique_and_cleanly_encoded():
     assert all(not datasets._has_mojibake(case.query) for case in cases)
 
 
+@needs_corpus
 def test_every_relevance_span_overlaps_a_real_corpus_chunk():
     """Ensure every judged interval occurs in at least one indexed chunk."""
     cases = datasets.load_retrieval_cases()
@@ -40,6 +50,7 @@ def test_every_relevance_span_overlaps_a_real_corpus_chunk():
             ), (case.id, span)
 
 
+@needs_corpus
 def test_every_relevance_span_overlaps_a_timestamped_source_passage():
     """Ensure every judged interval is grounded in timestamped source passages."""
     cases = datasets.load_retrieval_cases()
@@ -57,6 +68,7 @@ def test_every_relevance_span_overlaps_a_timestamped_source_passage():
             ), (case.id, span)
 
 
+@needs_corpus
 def test_relevance_judgments_show_verbatim_source_evidence():
     """Match each judgment's excerpt and URL to its source passage interval."""
     judgments = datasets.read_jsonl(datasets.RELEVANCE_JUDGMENTS)
