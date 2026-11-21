@@ -36,14 +36,14 @@ left for the web frontend (`app/`). Last verified on 2026-11-07.
 
 ## Deferred to the web frontend phase
 
-The web frontend (`app/`) was deliberately left unchanged. Everything below already
-works in the Streamlit app, and the backend contracts are ready for `app/`:
+The web frontend (`app/`) distinguishes the active program from drafts, with
+read-only draft previews. The remaining features below already work in Streamlit:
 
 - a chat view calling `POST /agent/requests`;
 - approve and decline buttons for `pending_actions`;
 - a list of pending actions after a reload;
 - a location-sharing permission prompt, and the opt-in saved location (`/location`);
-- showing draft plans (`status: "draft"` in the plan list) apart from the active one.
+- approving or declining draft activation from the web frontend.
 
 See [the approval contract](agents.md#contract-for-the-frontend).
 

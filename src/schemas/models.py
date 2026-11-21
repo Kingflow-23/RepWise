@@ -313,6 +313,18 @@ class TrainingPlan(Model):
     safety_note: str
 
 
+class SavedPlan(Model):
+    """An owned plan snapshot, with its lifecycle status and recorded feedback."""
+
+    id: str
+    request: PlanRequest
+    plan: TrainingPlan
+    sources: list[Source]
+    created_at: str
+    status: PlanStatus
+    workout_feedback: list[WorkoutFeedback] = Field(default_factory=list)
+
+
 class PlanResult(Model):
     """Pipeline outcome shared with the API, including optional source records.
 

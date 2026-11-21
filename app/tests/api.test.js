@@ -2,6 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from '../src/api.js';
 
+test('a decoded JSON null from the current-plan route means no active program', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json(null));
+  assert.equal(await request('/students/account/plans/current'), null);
+  await assert.rejects(request('/auth/me'), /unexpected response/);
+});
+
+test('malformed JSON is never treated as an empty active program', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 200, headers: { 'Content-Type': 'application/json' } }));
+  await assert.rejects(request('/students/account/plans/current'), /unexpected response/);
+});
+
 test('missing account routes explain how to restore the frontend connection', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 404 }));
   await assert.rejects(request('/auth/login'), /Restart the frontend server/);

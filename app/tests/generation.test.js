@@ -21,9 +21,10 @@ test('invalid requests cannot bypass profile or weekly schedule limits', () => {
 test('only a completed, saved, readable generation can replace the displayed plan', () => {
   assert.throws(() => generatedRecord({ status: 'out_of_scope' }), /outside workout planning/);
   assert.throws(() => generatedRecord({ status: 'completed', plan: {} }), /wasn’t confirmed/);
-  const result = { status: 'completed', plan_id: 'saved-id', plan: { title: 'Strength', summary: 'A week', safety_note: 'Stop if painful.', weeks: [{ workouts: [{ exercises: [{}] }] }] } };
+  const result = { status: 'completed', plan_id: 'saved-id', plan_status: 'active', plan: { title: 'Strength', summary: 'A week', safety_note: 'Stop if painful.', weeks: [{ workouts: [{ exercises: [{}] }] }] } };
   assert.equal(generatedRecord(result).id, 'saved-id');
   assert.equal(generatedRecord(result).plan, result.plan);
+  assert.throws(() => generatedRecord({ ...result, plan_status: 'draft' }), /not active/);
 });
 
 test('generation failure outcomes produce useful messages without raw diagnostics', async (t) => {

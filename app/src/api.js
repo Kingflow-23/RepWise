@@ -26,7 +26,8 @@ export async function request(path, { method = 'GET', body, token, signal, timeo
     throw new ApiError('We couldn’t reach RepWise. Please try again in a moment.');
   }
   let payload;
-  try { payload = await response.json(); } catch { payload = null; }
+  let decoded = false;
+  try { payload = await response.json(); decoded = true; } catch { payload = null; }
   if (!response.ok) {
     if (generation) {
       const outcome = payload?.detail?.status;
@@ -61,6 +62,11 @@ export async function request(path, { method = 'GET', body, token, signal, timeo
         ? 'Check your account name and password, then try again.'
         : 'Sign-in is unavailable right now. Please try again in a moment.';
     throw new ApiError(message, response.status);
+  }
+  if (payload === null && method === 'GET' && path.endsWith('/plans/current') && response.status === 200
+      && response.headers.get('content-type')?.includes('application/json')) {
+    // Only a successfully decoded JSON null means there is no active plan.
+    if (decoded) return null;
   }
   if (!payload || typeof payload !== 'object') throw new ApiError('RepWise returned an unexpected response. Please try again.');
   return payload;

@@ -1,7 +1,4 @@
-export function latestPlan(records) {
-  if (!Array.isArray(records)) throw new Error('The saved-plan response is invalid. Please try again.');
-  if (!records.length) return null;
-  const record = records[0];
+export function savedPlan(record) {
   const plan = record?.plan;
   if (!record?.id || !plan || typeof plan.title !== 'string' || typeof plan.summary !== 'string'
       || typeof plan.safety_note !== 'string' || !Array.isArray(plan.weeks) || !plan.weeks.length
@@ -10,6 +7,22 @@ export function latestPlan(records) {
     throw new Error('This saved plan could not be read. Please try loading it again.');
   }
   return record;
+}
+
+export function activePlan(record) {
+  if (record === null) return null;
+  const saved = savedPlan(record);
+  if (saved.status !== 'active') throw new Error('This plan is not active. Refresh your active program.');
+  return saved;
+}
+
+export function draftPlans(records) {
+  if (!Array.isArray(records)) throw new Error('The draft-plan response is invalid. Please try again.');
+  return records.map((record) => {
+    const saved = savedPlan(record);
+    if (saved.status !== 'draft') throw new Error('This response contains a plan that is not a draft.');
+    return saved;
+  });
 }
 
 export function sourceLink(value) {

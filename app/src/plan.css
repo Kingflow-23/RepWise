@@ -44,6 +44,17 @@
 .source-item h4 { margin: 0 0 8px; color: #d8d9c9; font-weight: 500; }
 .source-item a { color: #e3b28f; text-decoration: underline; }
 .source-item p { margin-top: 12px; white-space: pre-line; }
+.draft-plans { margin-top: 28px; padding: 26px; border: 1px solid #b8b4a527; border-radius: 16px; background: #1b1d17; }
+.draft-plans h2 { margin: 12px 0; font-size: 24px; font-weight: 450; }
+#draft-plan-status { font-size: 12px; color: #b0b69f; line-height: 1.8; }
+#draft-plan-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 16px; }
+.draft-plan-item { margin-top: 20px; padding: 18px; border: 1px solid #c6b79630; border-radius: 10px; overflow-wrap: anywhere; }
+.draft-badge { color: #e1bd87; font-size: 10px; }
+.draft-plan-item h3 { font-size: 17px; font-weight: 500; margin: 12px 0; }
+.draft-plan-item p { font-size: 12px; line-height: 1.8; color: #aeb79d; }
+.draft-plan-item .draft-date { font-size: 10px; margin-top: 10px; }
+.plan-viewer[data-plan-status="draft"] { border-color: #d6af6550; }
+.plan-viewer[data-plan-status="draft"] #plan-viewer-status { color: #e1bd87; }
 @media(max-width:760px) {
   .plan-viewer { padding: 22px 18px; margin-top: 24px; }
   .plan-heading { flex-direction: column; gap: 12px; }

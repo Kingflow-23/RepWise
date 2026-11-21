@@ -14,6 +14,7 @@ from typing import Iterator
 from ..schemas.models import (
     PlanRequest,
     PlanResult,
+    PlanStatus,
     TrainingPlan,
     UserProfile,
     WorkoutFeedback,
@@ -489,12 +490,15 @@ class StudentRepository:
         ]
         return record
 
-    def list_plans(self, student_id: str, limit: int = 20) -> list[dict[str, object]]:
+    def list_plans(
+        self, student_id: str, limit: int = 20, *, status: PlanStatus | None = None
+    ) -> list[dict[str, object]]:
         """List the most recent saved plans for one student.
 
         Args:
             student_id: Internal account ID whose plans are requested.
             limit: Maximum number of plans to return, from 1 through 100.
+            status: Optional lifecycle filter, applied before the limit.
 
         Returns:
             Plan records ordered newest first, each containing its ID, original
@@ -510,13 +514,21 @@ class StudentRepository:
             or not 1 <= limit <= 100
         ):
             raise ValueError("limit must be an integer between 1 and 100")
+        if status is not None and status not in {"active", "draft", "archived"}:
+            raise ValueError("status must be active, draft or archived")
+        query = (
+            "SELECT id, request_json, plan_json, sources_json, created_at, status "
+            "FROM training_plans WHERE student_id=?"
+        )
+        parameters: list[object] = [student_id]
+        if status is not None:
+            query += " AND status=?"
+            parameters.append(status)
+        query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+        parameters.append(limit)
         with self._connect() as connection:
             rows = connection.execute(
-                """
-                SELECT id, request_json, plan_json, sources_json, created_at, status
-                FROM training_plans WHERE student_id=? ORDER BY created_at DESC LIMIT ?
-            """,
-                (student_id, limit),
+                query, parameters,
             ).fetchall()
         logger.info("Database plan history read count=%s", len(rows))
         return [

@@ -70,16 +70,22 @@ in the account menu reopens the editor. Closing without saving keeps the draft
 while signed in on the current page. Sign-out clears the profile and draft
 from the interface. Profiles are not stored in browser storage.
 
-## Latest saved plan
+## Active program and drafts
 
-Signing in loads the newest saved plan using the authenticated
-`GET /api/v1/students/{student_id}/plans?limit=1` endpoint. The studio card
-opens a full program view below the scene. Select a workout to see its
-exercises, sets, repetitions, rest, coaching notes and equipment. The view also includes plan assumptions, the safety note, sources,
-and any recorded workout feedback. Links accept HTTP/HTTPS addresses only.
-**Refresh saved plan** reloads the latest database version, including changes
-made through other clients. An empty account shows an empty state; failed
-requests offer a retry. Signing out clears the displayed plan.
+Signing in loads `GET /api/v1/students/{student_id}/plans/current`. Only an
+explicitly active record is accepted; JSON `null` displays the no-active-program
+state. A newer draft or archived plan never becomes the current program.
+The active card opens the full workout view, with exercises, sets, repetitions,
+rest, equipment, coaching notes, assumptions, safety guidance, sources and
+recorded feedback.
+
+Recent drafts load separately through `GET .../plans?status=draft&limit=20`.
+**Preview draft** opens a clearly labelled preview without changing the active
+card or database. **View your plan** returns to the active program. Draft
+activation continues through the existing approval workflow (API/Streamlit);
+there is no activation shortcut in the web frontend. **Refresh programs**
+reloads both views, including changes made through other clients. Sign-out
+clears the active program and all draft previews.
 
 ## Generate a plan
 

@@ -1,4 +1,4 @@
-import { latestPlan } from './plan-data.js';
+import { activePlan } from './plan-data.js';
 
 export function planOptions({ focus, count, constraints = '', refinement = '' }, profile) {
   const text = focus.trim();
@@ -22,5 +22,5 @@ export function generatedRecord(result) {
     };
     throw new Error(messages[result?.status] || 'A saved plan wasn’t confirmed. Refresh your saved plan before trying again.');
   }
-  return latestPlan([{ id: result.plan_id, plan: result.plan, sources: result.sources || [], workout_feedback: [] }]);
+  return activePlan({ id: result.plan_id, status: result.plan_status, plan: result.plan, sources: result.sources || [], workout_feedback: [] });
 }

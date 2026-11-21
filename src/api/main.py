@@ -56,6 +56,8 @@ from ..schemas.models import (
     AccountIdentity,
     AccountCredentials,
     PlanOptions,
+    PlanStatus,
+    SavedPlan,
     TrainingPlan,
     UserProfile,
     WorkoutFeedbackRequest,
@@ -552,10 +554,21 @@ def create_app(
         status_code = 503 if result.status == "retrieval_error" else 422
         raise HTTPException(status_code=status_code, detail=payload)
 
-    @app.get("/api/v1/students/{student_id}/plans")
+    @app.get(
+        "/api/v1/students/{student_id}/plans/current", response_model=SavedPlan | None
+    )
+    def current_plan(
+        student_id: str, user_id: str = Depends(require_account)
+    ) -> dict[str, object] | None:
+        """Return the owned active plan, or null; drafts and archives never qualify."""
+        check_owner(student_id, user_id)
+        return repository.get_current_plan(student_id)
+
+    @app.get("/api/v1/students/{student_id}/plans", response_model=list[SavedPlan])
     def list_plans(
         student_id: str,
         limit: int = Query(20, ge=1, le=100),
+        status: PlanStatus | None = Query(None),
         user_id: str = Depends(require_account),
     ) -> list[dict[str, object]]:
         """List saved plans belonging to the authenticated student.
@@ -563,6 +576,7 @@ def create_app(
         Args:
             student_id: Account ID from the route path.
             limit: Maximum number of recent plans to return (1 through 100).
+            status: Optional lifecycle filter: active, draft or archived.
             user_id: Authenticated account ID supplied by the bearer dependency.
 
         Returns:
@@ -572,7 +586,7 @@ def create_app(
             HTTPException: With status 403 if the route account is not the caller.
         """
         check_owner(student_id, user_id)
-        plans = repository.list_plans(student_id, limit)
+        plans = repository.list_plans(student_id, limit, status=status)
         logger.info("Plan history loaded count=%s", len(plans))
         return plans
 

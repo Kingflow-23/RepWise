@@ -64,13 +64,13 @@
               <p class="auth-footnote"><span data-icon="lock"></span>Your session stays in this browser tab.</p>
             </section>
             <section class="session-card latest-plan" id="latest-plan" hidden aria-labelledby="latest-plan-title">
-              <div class="card-topline"><p class="eyebrow">YOUR LATEST PLAN</p><span data-icon="dumbbell" class="corner-symbol"></span></div>
+              <div class="card-topline"><p class="eyebrow">YOUR ACTIVE PROGRAM</p><span data-icon="dumbbell" class="corner-symbol"></span></div>
               <h2 id="latest-plan-title">Loading your plan</h2>
               <p class="card-description" id="latest-plan-description" role="status">Getting your saved workouts.</p>
               <div id="latest-plan-meta" class="plan-meta" hidden></div>
               <button class="primary-button" id="view-latest-plan" type="button" hidden>View your plan <span data-icon="arrow-right"></span></button>
               <button class="plan-create-link" id="start-plan" type="button">Create a new plan <span data-icon="arrow-right"></span></button>
-              <button class="text-button" id="reload-plan" type="button">Refresh saved plan</button>
+              <button class="text-button" id="reload-plan" type="button">Refresh programs</button>
             </section>
             <section class="session-card profile-card" id="training-placeholder" hidden>
               <div class="card-topline"><p class="eyebrow">YOUR SPACE TO TRAIN</p><span class="corner-symbol" data-icon="spark"></span></div>
@@ -103,8 +103,12 @@
             <div class="generation-submit"><p>One week of workouts, saved to your account.</p><button class="primary-button" id="generate-plan" type="submit" disabled><span>Generate my plan</span><span data-icon="arrow-right"></span></button></div>
           </form>
         </section>
+        <section class="draft-plans" id="draft-plans" aria-labelledby="draft-plans-title" hidden>
+          <p class="eyebrow">PROPOSALS TO REVIEW</p><h2 id="draft-plans-title">Recent draft plans</h2>
+          <p id="draft-plan-status" role="status"></p><div id="draft-plan-list"></div>
+        </section>
         <section class="plan-viewer" id="plan-viewer" aria-labelledby="plan-title" hidden>
-          <div class="plan-heading"><div><p class="eyebrow">YOUR SAVED PROGRAM</p><h2 id="plan-title" tabindex="-1"></h2></div><p id="plan-saved-at"></p></div>
+          <div class="plan-heading"><div><p class="eyebrow" id="plan-viewer-status">YOUR ACTIVE PROGRAM</p><h2 id="plan-title" tabindex="-1"></h2></div><p id="plan-saved-at"></p></div>
           <p class="plan-introduction" id="plan-summary"></p>
           <div class="plan-browser"><nav id="plan-workouts" aria-label="Plan workouts"></nav><article id="workout-detail" aria-labelledby="workout-title" aria-live="polite"></article></div>
           <details class="plan-notes" id="plan-assumptions"><summary>Plan assumptions</summary><ul></ul></details>

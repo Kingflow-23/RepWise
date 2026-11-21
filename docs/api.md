@@ -29,7 +29,8 @@ All paths start with `/api/v1`, and `{student}` stands for `students/{student_id
 | `POST` | `/auth/login` | No | Verify a password and return a token. |
 | `PUT`, `GET` | `/{student}/profile` | Yes | Save or read the profile. |
 | `POST` | `/{student}/plans` | Yes | Generate and save a validated plan. |
-| `GET` | `/{student}/plans` | Yes | List saved plans. |
+| `GET` | `/{student}/plans/current` | Yes | Read the active program; returns JSON `null` when none exists. |
+| `GET` | `/{student}/plans` | Yes | List saved plans, optionally filtered by `status=active`, `draft` or `archived`. |
 | `PUT` | `/{student}/plans/{plan_id}` | Yes | Replace a saved plan's content. |
 | `DELETE` | `/{student}/plans/{plan_id}` | Yes | Delete a saved plan. |
 | `POST` | `/{student}/plans/{plan_id}/weeks/{week_number}/workouts/{workout_index}/feedback` | Yes | Log feedback; may adapt the next workout. |
@@ -39,6 +40,26 @@ All paths start with `/api/v1`, and `{student}` stands for `students/{student_id
 | `POST` | `/{student}/agent/actions/{action_id}/approve` | Yes | Run one pending action exactly as proposed. |
 | `POST` | `/{student}/agent/actions/{action_id}/decline` | Yes | Refuse one pending action; nothing runs. |
 | `PUT`, `GET`, `DELETE` | `/{student}/location` | Yes | Opt in to saving a home location, read it, or forget it. |
+
+### Active program and drafts
+
+`GET /{student}/plans/current` returns one `SavedPlan` object with its ID,
+request, plan, sources, creation time, `status: "active"` and recorded workout
+feedback. It returns **200 with JSON `null`** when no active plan exists, even
+if there are drafts or archived plans. Authentication and owner checks still
+apply (401/403).
+
+`GET /{student}/plans?status=draft&limit=20` lists recent drafts. The status
+filter is applied before the limit; an invalid status returns 422. Omitting
+`status` keeps the existing history behavior and includes all statuses.
+**The newest history entry is not necessarily the active program.**
+
+Draft previews do not activate a program. The existing approval workflow calls
+`activate_plan`, which activates the approved draft and archives the previous
+active plan in one transaction. After approval, reload the current-program and
+draft endpoints. The web frontend keeps drafts separate and labels previews
+as not active. Approval controls remain available through the existing agent
+API and Streamlit UI.
 
 ### Logging feedback
 

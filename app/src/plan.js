@@ -1,5 +1,5 @@
 import { authenticatedRequest, onSessionChange } from './auth.js';
-import { latestPlan, savedDate, sourceLink } from './plan-data.js';
+import { activePlan, draftPlans, savedDate, sourceLink } from './plan-data.js';
 import './plan.css';
 
 function element(tag, text, className) {
@@ -19,15 +19,25 @@ export function initializePlan() {
   const refresh = document.getElementById('reload-plan');
   const navigation = document.getElementById('plan-workouts');
   const detail = document.getElementById('workout-detail');
+  const drafts = document.getElementById('draft-plans');
+  const draftList = document.getElementById('draft-plan-list');
+  const draftStatus = document.getElementById('draft-plan-status');
   let account = null;
+  let currentPlan = null;
   let revision = 0;
 
-  function clear() {
-    viewer.hidden = true; view.hidden = true; meta.hidden = true;
-    meta.replaceChildren(); navigation.replaceChildren(); detail.replaceChildren();
+  function clearViewer() {
+    viewer.hidden = true;
+    navigation.replaceChildren(); detail.replaceChildren();
     ['plan-title', 'plan-summary', 'plan-saved-at', 'plan-safety-note'].forEach((id) => { document.getElementById(id).textContent = ''; });
     document.querySelector('#plan-assumptions ul').replaceChildren();
     document.getElementById('plan-source-list').replaceChildren();
+    document.getElementById('plan-viewer-status').textContent = '';
+  }
+
+  function clear() {
+    clearViewer(); view.hidden = true; meta.hidden = true;
+    meta.replaceChildren(); currentPlan = null;
   }
 
   function sourcesPanel(record) {
@@ -76,13 +86,20 @@ export function initializePlan() {
     detail.append(exercises);
   }
 
-  function render(record) {
+  function render(record, preview = false) {
+    clearViewer();
     const { plan } = record;
-    title.textContent = plan.title;
-    description.textContent = plan.summary;
-    const count = plan.weeks.reduce((total, week) => total + week.workouts.length, 0);
-    meta.append(element('span', `${plan.weeks.length} ${plan.weeks.length === 1 ? 'week' : 'weeks'}`), element('span', `${count} ${count === 1 ? 'workout' : 'workouts'}`));
-    meta.hidden = false; view.hidden = false; viewer.hidden = false;
+    if (!preview) {
+      currentPlan = record;
+      title.textContent = plan.title;
+      description.textContent = plan.summary;
+      const count = plan.weeks.reduce((total, week) => total + week.workouts.length, 0);
+      meta.append(element('span', `${plan.weeks.length} ${plan.weeks.length === 1 ? 'week' : 'weeks'}`), element('span', `${count} ${count === 1 ? 'workout' : 'workouts'}`));
+      meta.hidden = false; view.hidden = false; viewer.hidden = false;
+    }
+    viewer.hidden = false;
+    viewer.dataset.planStatus = record.status;
+    document.getElementById('plan-viewer-status').textContent = preview ? 'DRAFT PREVIEW · NOT ACTIVE' : 'YOUR ACTIVE PROGRAM';
     document.getElementById('plan-title').textContent = plan.title;
     document.getElementById('plan-summary').textContent = plan.summary;
     const date = savedDate(record.created_at);
@@ -106,18 +123,44 @@ export function initializePlan() {
     navigation.querySelector('button').click();
   }
 
+  function showViewer() {
+    viewer.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
+    document.getElementById('plan-title').focus({ preventScroll: true });
+  }
+
+  async function loadDrafts(userId, current) {
+    draftList.replaceChildren(); draftStatus.textContent = 'Loading drafts…';
+    try {
+      const records = draftPlans(await authenticatedRequest(`/students/${encodeURIComponent(userId)}/plans?status=draft&limit=20`));
+      if (current !== revision) return;
+      draftStatus.textContent = records.length ? 'Drafts do not replace your active program. Activation requires the approval workflow.' : 'No draft plans.';
+      records.forEach((record) => {
+        const item = element('article', null, 'draft-plan-item');
+        item.append(element('span', 'Draft · not active', 'draft-badge'), element('h3', record.plan.title), element('p', record.plan.summary));
+        const date = savedDate(record.created_at);
+        if (date) item.append(element('p', `Saved ${date}`, 'draft-date'));
+        const button = element('button', 'Preview draft', 'plan-create-link'); button.type = 'button';
+        button.addEventListener('click', () => { render(record, true); showViewer(); });
+        item.append(button); draftList.append(item);
+      });
+    } catch {
+      if (current === revision) draftStatus.textContent = 'Drafts couldn’t load. Use Refresh programs to try again.';
+    }
+  }
+
   async function load() {
     if (!account) return;
     const current = ++revision;
     clear(); card.setAttribute('aria-busy', 'true'); refresh.disabled = true;
-    title.textContent = 'Loading your plan'; description.textContent = 'Getting your saved workouts.';
+    const draftRequest = loadDrafts(account.user_id, current);
+    title.textContent = 'Loading your active program'; description.textContent = 'Getting your saved workouts.';
     try {
-      const records = await authenticatedRequest(`/students/${encodeURIComponent(account.user_id)}/plans?limit=1`);
+      const payload = await authenticatedRequest(`/students/${encodeURIComponent(account.user_id)}/plans/current`);
       if (current !== revision) return;
-      const record = latestPlan(records);
+      const record = activePlan(payload);
       if (record) render(record);
-      else { title.textContent = 'Your next chapter starts here.'; description.textContent = 'You don’t have a saved plan yet. Plans created with RepWise will appear here.'; }
-      refresh.textContent = 'Refresh saved plan';
+      else { title.textContent = 'No active program yet'; description.textContent = 'Create a program to get started. Draft plans appear separately below and are not active.'; }
+      refresh.textContent = 'Refresh programs';
     } catch (failure) {
       if (current !== revision) return;
       clear();
@@ -126,14 +169,15 @@ export function initializePlan() {
     } finally {
       if (current === revision) { card.setAttribute('aria-busy', 'false'); refresh.disabled = false; }
     }
+    await draftRequest;
   }
   refresh.addEventListener('click', load);
   view.addEventListener('click', () => {
-    viewer.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
-    document.getElementById('plan-title').focus({ preventScroll: true });
+    if (currentPlan) { meta.replaceChildren(); render(currentPlan); showViewer(); }
   });
   onSessionChange((session) => {
     revision += 1; account = session; clear(); card.hidden = !session;
+    drafts.hidden = !session; draftList.replaceChildren(); draftStatus.textContent = '';
     title.textContent = ''; description.textContent = '';
     document.querySelectorAll('#plan-viewer details').forEach((item) => { item.open = false; });
     if (session) load();
@@ -141,10 +185,11 @@ export function initializePlan() {
   return {
     showSavedPlan(record) {
       if (!account) return;
-      const validated = latestPlan([record]);
+      const validated = activePlan(record);
       revision += 1; clear(); render(validated);
       card.setAttribute('aria-busy', 'false'); refresh.disabled = false;
-      refresh.textContent = 'Refresh saved plan';
+      refresh.textContent = 'Refresh programs';
+      loadDrafts(account.user_id, revision);
       view.click();
     },
   };
