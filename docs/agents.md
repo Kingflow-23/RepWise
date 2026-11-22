@@ -164,6 +164,17 @@ A pending action stores the exact tool, the exact validated arguments (with thei
 SHA-256 hash), the reason, the proposing agent, the owning account and an expiry
 (`REPWISE_APPROVAL_MINUTES`, 30 by default). Approving one:
 
+For a calendar booking request, one pending action contains the exact preferred
+time for every unbooked workout. If any workout has no free time on its planned
+day, no partial booking action is created. Schedule changes are never inferred
+from a booking request.
+
+When approving a newly generated draft, the activation approval also contains
+the exact preferred time for each workout. Those times are checked again when
+approved; if availability changed, the result reports the conflicts rather than
+silently choosing different times. If any workout had no free time when the
+approval was prepared, no events are included and the approval says why.
+
 - works only for the account that owns it. Any other account gets *not found*;
 - re-checks the hash, so tampered arguments are refused;
 - changes the status from `pending` to `approved` in one conditional update, so it

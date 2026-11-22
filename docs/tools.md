@@ -106,7 +106,11 @@ one workout.
   `generation_error`, `plan_not_compliant`, `unavailable`
   ([meanings](rag_pipeline.md)).
 - **`activate_plan`**: makes a draft the active plan and archives the previous
-  one. The previous plan is kept, not deleted.
+  one. The previous plan is kept, not deleted. If Google Calendar is connected,
+  the approval itself lists and pins every chosen daytime start time on the
+  workouts' planned days. No day is changed automatically, and conflicts are
+  rechecked before booking. If any workout has no free slot, the approval
+  explains why and includes no events.
 - **`get_workout_history`**: logged workouts (completed, partial and missed), their
   difficulty, weights and reps, and pending recommendations. Code computes the
   summary counts, including `health_concern_reports`. A new student gets empty
@@ -142,8 +146,8 @@ returns `calendar_unavailable`, never "free".
 - **`get_calendar_busy`**: busy times, with no event titles.
 - **`propose_training_slots`**: free start times for each unbooked, unlogged
   workout, with real dates in the student's time zone (daylight saving is
-  handled). A workout keeps its planned day when it can. Otherwise its options go
-  on another available day that week. Two workouts are never offered the same
+  handled). A workout is never moved to another day automatically; a day change
+  must be requested and approved separately. Two preferred workout times are never offered the same
   time. Starts and finishes are restricted to 06:00–22:00 local time, leaving an
   eight-hour overnight window for sleep. Options are
   chosen near 10:00, 14:00 and 17:00, in that preference order; when possible,
@@ -159,10 +163,17 @@ returns `calendar_unavailable`, never "free".
   the concrete change; the approval message lists every move. Failures:
   `day_not_available`, `day_conflict`, `invalid_schedule`,
   `nothing_to_catch_up`, `no_day_left`. The result lists calendar events that
-  now show an old time.
+  now show an old time. Invalid moves, including moves onto an already-used day,
+  are rejected before an approval is created.
 - **`add_workouts_to_calendar`**: rechecks each chosen time, then creates one event
-  per workout, using a stable key so a retry never duplicates it. Each booking has
-  its own outcome: `booked`, `already_booked`, `conflict` or `failed`.
+  per workout, using a stable key so a retry never duplicates it. If no times were
+  supplied, code selects one preferred free time per unbooked workout, sequentially.
+  The full schedule is held as one approval action; if any workout has no slot on
+  its planned day, no booking is proposed. Each booking has its own outcome:
+  `booked`, `already_booked`, `conflict` or `failed`. Booking results include
+  ISO start/end timestamps, the timezone, the calendar event URL, and structured
+  workout/exercise details with source titles and URLs; source excerpts are not
+  copied to events.
 
 ### Location
 

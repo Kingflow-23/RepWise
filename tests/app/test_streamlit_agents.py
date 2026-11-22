@@ -1,6 +1,9 @@
 """The Streamlit assistant, approvals and location screens, with the API faked."""
 
+from io import BytesIO
+
 from streamlit.testing.v1 import AppTest
+import streamlit as st
 
 from tests.app.test_streamlit_app import (
     APP_PATH,
@@ -89,6 +92,65 @@ def test_opening_the_app_only_checks_health(monkeypatch):
     assert [url for _, url, _ in calls] == ["http://127.0.0.1:8000/api/v1/health"]
 
 
+def test_agent_recording_fills_editable_draft_without_sending(monkeypatch):
+    transcription_calls = []
+    agent_calls = []
+
+    def fake_microphone(_label, *, key, **_kwargs):
+        st.session_state[key] = BytesIO(b"agent microphone recording")
+        return st.session_state[key]
+
+    def handler(method, url, kwargs):
+        if url.endswith("/speech/transcribe"):
+            transcription_calls.append(kwargs)
+            return FakeResponse({"text": "Find a gym near me."})
+        if url.endswith("/agent/requests"):
+            agent_calls.append(kwargs)
+            return FakeResponse(AGENT_RESPONSE)
+        raise AssertionError(f"Unexpected API request: {method} {url}")
+
+    monkeypatch.setattr("streamlit.audio_input", fake_microphone)
+    app, _calls = start(monkeypatch, handler)
+    app.run(timeout=20)
+    app.button(key="use-agent-recording").click().run(timeout=20)
+
+    assert not app.exception
+    assert app.text_area(key="agent-draft").value == "Find a gym near me."
+    assert transcription_calls[0]["data"] == b"agent microphone recording"
+    assert transcription_calls[0]["headers"]["Content-Type"] == "audio/wav"
+    assert agent_calls == []
+
+
+def test_agent_request_uses_detected_browser_location(monkeypatch):
+    agent_payloads = []
+
+    def handler(method, url, kwargs):
+        if url.endswith("/agent/requests"):
+            agent_payloads.append(kwargs["json"])
+            return FakeResponse(AGENT_RESPONSE)
+        raise AssertionError(f"Unexpected API request: {method} {url}")
+
+    app, _calls = start(monkeypatch, handler)
+    app.session_state["agent-share-location"] = True
+    app.session_state["agent-current-location"] = {
+        "latitude": 48.7908,
+        "longitude": 2.3317,
+        "status": "ready",
+        "error": "",
+    }
+    app.text_area(key="agent-draft").set_value("Find me a gym")
+    next(
+        button for button in app.button if button.label == "Send to the agents"
+    ).click().run(timeout=20)
+
+    assert not app.exception
+    assert agent_payloads[0]["location"] == {
+        "label": "Current location",
+        "latitude": 48.7908,
+        "longitude": 2.3317,
+    }
+
+
 def test_a_message_shows_the_plan_and_the_action_can_be_approved(monkeypatch):
     def handler(method, url, kwargs):
         if url.endswith("/agent/requests"):
@@ -132,6 +194,51 @@ def test_a_message_shows_the_plan_and_the_action_can_be_approved(monkeypatch):
     assert any(url.endswith("/approve") for _, url, _ in calls)
     assert any(
         "organize_schedule ran after your approval" in s.value for s in app.success
+    )
+
+
+def test_activation_result_explains_when_workouts_could_not_be_booked(monkeypatch):
+    pending = {
+        **PENDING,
+        "action_id": "action-2",
+        "tool_name": "activate_plan",
+        "reason": "No calendar events will be added. No free time on Wednesday.",
+    }
+
+    def handler(method, url, kwargs):
+        if url.endswith("/agent/requests"):
+            return FakeResponse({**AGENT_RESPONSE, "pending_actions": [pending]})
+        if url.endswith("/agent/actions/action-2/approve"):
+            action = {
+                **pending,
+                "id": "action-2",
+                "status": "executed",
+                "arguments": {"plan_id": "plan-1", "bookings": []},
+                "result": {
+                    "plan_id": "plan-1",
+                    "calendar_status": "no_slots",
+                    "calendar_workouts": 0,
+                    "calendar_message": "No free time on Wednesday.",
+                    "calendar_result": None,
+                },
+            }
+            return FakeResponse({"action": action, "executed": True})
+        if method == "GET" and url.endswith("/plans"):
+            return FakeResponse([])
+        raise AssertionError(f"Unexpected API request: {method} {url}")
+
+    app, _calls = start(monkeypatch, handler)
+    app.text_area(key="agent-draft").set_value("Approve the plan")
+    next(b for b in app.button if b.label == "Send to the agents").click().run(
+        timeout=20
+    )
+    app.button(key="approve-msg1-action-2").click().run(timeout=20)
+
+    assert not app.exception
+    assert any("no calendar events were added" in item.value for item in app.warning)
+    assert (
+        app.session_state["decided_actions"]["action-2"]["result"]["calendar_status"]
+        == "no_slots"
     )
 
 

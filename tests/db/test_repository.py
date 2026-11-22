@@ -256,6 +256,22 @@ def test_initialize_rejects_legacy_database_without_migrating_it(tmp_path):
         ).fetchone() == ("alex", "hash")
 
 
+def test_initialize_adds_event_url_to_an_existing_calendar_events_table(tmp_path):
+    database_path = tmp_path / "repwise.sqlite3"
+    repository = StudentRepository(database_path)
+    repository.initialize()
+    with repository._connect() as connection:
+        connection.execute("ALTER TABLE calendar_events DROP COLUMN event_url")
+
+    repository.initialize()
+
+    with sqlite3.connect(database_path) as connection:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(calendar_events)")
+        }
+    assert "event_url" in columns
+
+
 def test_only_completed_results_can_be_saved(tmp_path):
     """Prevent incomplete generation results from entering plan history.
 

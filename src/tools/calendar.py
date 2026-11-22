@@ -70,6 +70,13 @@ class BusyPeriod(Model):
     end: datetime
 
 
+class CreatedCalendarEvent(Model):
+    """Calendar event identity and its provider-supplied link, when available."""
+
+    event_id: str
+    event_url: str | None = None
+
+
 class CalendarProvider(Protocol):
     """What the tools need from an external calendar."""
 
@@ -78,8 +85,8 @@ class CalendarProvider(Protocol):
 
     def create_event(
         self, key: str, title: str, description: str, start: datetime, end: datetime
-    ) -> str:
-        """Create an event and return its ID. The same ``key`` must not duplicate."""
+    ) -> CreatedCalendarEvent | str:
+        """Create one event; the same ``key`` must not duplicate it."""
 
 
 class FakeCalendar:
@@ -108,7 +115,7 @@ class FakeCalendar:
 
     def create_event(
         self, key: str, title: str, description: str, start: datetime, end: datetime
-    ) -> str:
+    ) -> CreatedCalendarEvent:
         """Create an event once per ``key`` and mark its time as busy.
 
         Args:
@@ -119,7 +126,7 @@ class FakeCalendar:
             end: Event end.
 
         Returns:
-            The event ID, equal to ``key``.
+            The event reference, with an ID equal to ``key``.
         """
         if key not in self.events:
             self.events[key] = {
@@ -129,7 +136,7 @@ class FakeCalendar:
                 "end": end,
             }
             self.busy.append(BusyPeriod(start=start, end=end))
-        return key
+        return CreatedCalendarEvent(event_id=key)
 
 
 class Slot(Model):
@@ -173,17 +180,44 @@ class SlotsResult(Model):
     """Output of ``propose_training_slots``. Nothing has been booked."""
 
     ok: Literal[True] = True
+    plan_id: str
     timezone: str
     week_start: date
     workouts: list[WorkoutSlots]
 
 
 class Booking(Model):
-    """Book one workout at a time the student approved."""
+    """One exact workout start time pinned into an approval action."""
 
     week_number: int = Field(ge=1)
     workout_index: int = Field(ge=0)
     start: datetime
+
+
+class CalendarSource(Model):
+    """A source link for one exercise; no transcript excerpt is copied."""
+
+    source_id: str
+    title: str
+    url: str
+
+
+class CalendarExercise(Model):
+    """Concise exercise prescription included in the booking result."""
+
+    name: str
+    sets: int
+    repetitions: str
+    rest_seconds: int
+    sources: list[CalendarSource] = Field(default_factory=list)
+
+
+class CalendarWorkout(Model):
+    """Workout details associated with a calendar event."""
+
+    focus: str
+    duration_minutes: int
+    exercises: list[CalendarExercise]
 
 
 class BookingOutcome(Model):
@@ -193,8 +227,10 @@ class BookingOutcome(Model):
     workout_index: int
     status: Literal["booked", "already_booked", "conflict", "failed"]
     event_id: str | None = None
+    event_url: str | None = None
     start: datetime | None = None
     end: datetime | None = None
+    workout: CalendarWorkout | None = None
     plan_day_differs: bool = False
     detail: str | None = None
 
@@ -204,6 +240,7 @@ class BookingResult(Model):
 
     ok: Literal[True] = True
     plan_id: str
+    timezone: str
     outcomes: list[BookingOutcome]
 
 
@@ -389,14 +426,14 @@ def propose_training_slots(
     week_start: date | None = None,
     earliest: time = TRAINING_DAY_START,
     latest: time = TRAINING_DAY_END,
+    plan_id: str | None = None,
 ) -> SlotsResult | ToolFailure:
     """Find free times for the current plan's unbooked, unlogged workouts.
 
-    A workout stays on its planned day when possible. Otherwise its options are
-    on another available day that no other workout uses that week. Options are
-    ordered near practical daytime targets, and the first option of each workout
-    is held while the next workout is placed so two workouts are never offered
-    the same time. Nothing is booked.
+    A workout stays on its planned day; RepWise never moves it automatically.
+    Options are ordered near practical daytime targets, and the first option of
+    each workout is held while the next workout is placed so preferred choices
+    never overlap. Nothing is booked.
 
     Args:
         context: Trusted tool context.
@@ -404,6 +441,7 @@ def propose_training_slots(
             this week (or next week if a planned day already passed).
         earliest: Requested earliest start time, never before 06:00 local.
         latest: Requested latest finish time, never after 22:00 local.
+        plan_id: Plan to schedule, or ``None`` for the active plan.
 
     Returns:
         Options per workout, or a failure (``calendar_not_connected``,
@@ -414,7 +452,7 @@ def propose_training_slots(
     profile = context.repository.get_profile(context.student_id)
     if profile is None:
         return failure(STUDENT_NOT_FOUND, "Save a profile before asking RepWise.")
-    record = resolve_plan(context, None)
+    record = resolve_plan(context, plan_id)
     if isinstance(record, ToolFailure):
         return record
     plan = TrainingPlan.model_validate(record["plan"])
@@ -433,7 +471,10 @@ def propose_training_slots(
         logger.warning("Calendar read failed: %s", error)
         return failure("calendar_unavailable", str(error))
 
-    done = {(f["week_number"], f["workout_index"]) for f in record["workout_feedback"]}
+    done = {
+        (f["week_number"], f["workout_index"])
+        for f in record.get("workout_feedback", [])
+    }
     done |= {
         (event["week_number"], event["workout_index"])
         for event in context.repository.list_calendar_events(
@@ -443,7 +484,6 @@ def propose_training_slots(
 
     results = []
     for week in plan.weeks:
-        days_taken = {workout.day.casefold() for workout in week.workouts}
         for index, workout in enumerate(week.workouts):
             if (week.number, index) in done:
                 continue
@@ -456,19 +496,6 @@ def propose_training_slots(
                 if planned_date
                 else []
             )
-            moved = False
-            if not starts:
-                for other_day in profile.available_days:
-                    other_date = date_of_workout(first_monday, week.number, other_day)
-                    if other_day.casefold() in days_taken or other_date is None:
-                        continue
-                    starts = free_start_times(
-                        other_date, minutes, busy, zone, local_now, earliest, latest
-                    )
-                    if starts:
-                        moved = True
-                        days_taken.add(other_day.casefold())
-                        break
             options = [
                 Slot(
                     start=start,
@@ -489,14 +516,18 @@ def propose_training_slots(
                     focus=workout.focus,
                     minutes=minutes,
                     options=options,
-                    moved_to_another_day=moved,
                     note=(
-                        None if options else "No free time that week fits this workout."
+                        None
+                        if options
+                        else "No free time that week fits this workout on its planned day."
                     ),
                 )
             )
     return SlotsResult(
-        timezone=context.timezone, week_start=first_monday, workouts=results
+        plan_id=record["id"],
+        timezone=context.timezone,
+        week_start=first_monday,
+        workouts=results,
     )
 
 
@@ -529,6 +560,32 @@ def add_workouts_to_calendar(
     if not bookings:
         return failure("invalid_request", "Give at least one booking.")
     plan = TrainingPlan.model_validate(record["plan"])
+    sources = {source["source_id"]: source for source in record.get("sources", [])}
+
+    def workout_details(workout: Workout) -> CalendarWorkout:
+        return CalendarWorkout(
+            focus=workout.focus,
+            duration_minutes=workout.estimated_minutes,
+            exercises=[
+                CalendarExercise(
+                    name=exercise.name,
+                    sets=exercise.sets,
+                    repetitions=exercise.repetitions,
+                    rest_seconds=exercise.rest_seconds,
+                    sources=[
+                        CalendarSource(
+                            source_id=source_id,
+                            title=sources[source_id]["title"],
+                            url=sources[source_id]["url"],
+                        )
+                        for source_id in exercise.source_ids
+                        if source_id in sources
+                    ],
+                )
+                for exercise in workout.exercises
+            ],
+        )
+
     existing = {
         (item["week_number"], item["workout_index"]): item
         for item in context.repository.list_calendar_events(
@@ -555,8 +612,10 @@ def add_workouts_to_calendar(
                 **position,
                 status="already_booked",
                 event_id=linked["event_id"],
+                event_url=linked.get("event_url"),
                 start=linked["start_at"],
                 end=linked["end_at"],
+                workout=workout_details(workout),
             )
         # A time without a zone is read in the student's zone, not UTC.
         start = (
@@ -577,6 +636,7 @@ def add_workouts_to_calendar(
                 status="failed",
                 start=start,
                 end=end,
+                workout=workout_details(workout),
                 detail=(
                     "Workouts must start and finish between 06:00 and 22:00 "
                     "local time."
@@ -584,7 +644,12 @@ def add_workouts_to_calendar(
             )
         if start <= now:
             return BookingOutcome(
-                **position, status="failed", detail="This time has passed."
+                **position,
+                status="failed",
+                start=start,
+                end=end,
+                workout=workout_details(workout),
+                detail="This time has passed.",
             )
         try:
             if context.calendar.busy_periods(start, end):
@@ -593,9 +658,10 @@ def add_workouts_to_calendar(
                     status="conflict",
                     start=start,
                     end=end,
+                    workout=workout_details(workout),
                     detail="The calendar is busy at this time.",
                 )
-            event_id = context.calendar.create_event(
+            created = context.calendar.create_event(
                 event_key(
                     context.student_id,
                     record["id"],
@@ -607,9 +673,20 @@ def add_workouts_to_calendar(
                 start,
                 end,
             )
+            if isinstance(created, CreatedCalendarEvent):
+                event_id, event_url = created.event_id, created.event_url
+            else:
+                event_id, event_url = created, None
         except CalendarError as error:
             logger.warning("Calendar write failed: %s", error)
-            return BookingOutcome(**position, status="failed", detail=str(error))
+            return BookingOutcome(
+                **position,
+                status="failed",
+                start=start,
+                end=end,
+                workout=workout_details(workout),
+                detail=str(error),
+            )
         context.repository.save_calendar_event(
             context.student_id,
             record["id"],
@@ -618,16 +695,23 @@ def add_workouts_to_calendar(
             event_id,
             start.isoformat(),
             end.isoformat(),
+            event_url,
         )
         return BookingOutcome(
             **position,
             status="booked",
             event_id=event_id,
+            event_url=event_url,
             start=start,
             end=end,
+            workout=workout_details(workout),
             plan_day_differs=start.astimezone(zone).weekday()
             != weekday_number(workout.day),
         )
 
     parsed = [Booking.model_validate(item) for item in bookings]
-    return BookingResult(plan_id=record["id"], outcomes=[book(item) for item in parsed])
+    return BookingResult(
+        plan_id=record["id"],
+        timezone=context.timezone,
+        outcomes=[book(item) for item in parsed],
+    )

@@ -78,6 +78,10 @@ Planning rules:
   "I missed two workouts, organise the rest of my week" -> 1. performance: record the missed workouts; 2. schedule: reorganise the remaining workouts of the week.
   "what do the documents say about rest, then build me a plan" -> 1. knowledge: find the evidence; 2. planning: create the plan.
 - Never give one specialist another's job: moving or reorganising days is schedule's job; recording how workouts went is performance's job.
+- For questions about the current plan's free times or adding its workouts to a calendar, use the schedule specialist only. Do not generate a replacement plan unless the student explicitly asks for a new or revised plan.
+- Use the location specialist only when the student explicitly asks about a gym, venue, or place. A shared current location alone is not a request to search nearby places.
+- A new workout programme is one week by default. Keep a requested per-session maximum in planning; do not turn it into a weekly total or exceed the saved profile's session limit.
+- Use the shortest sufficient plan. Do not add a location, knowledge, or planning step just because its context is available.
 - Any question about training knowledge (rest times, exercises, technique, what the documents or research say) needs a knowledge step, even if you think you know the answer. A preference in the profile (such as "prefers short rests") is not evidence and never answers such a question.
 - Use zero steps only when the request is about the student's own saved data shown in the context below (for example "what is my goal?"), or is a greeting.
 - If a step is about one specific workout from the timetable, set its workout to that week_number and workout_index.
@@ -99,6 +103,8 @@ Combine the specialists' reports below into one coherent answer, in the language
 - The "Key facts" lines were computed by code from the saved data and are always right: never contradict them, and use them for any day, weekday or count you mention.
 - Available days are when the student could train; only the timetable says which days have workouts.
 - Places and free training times are listed by code right after your answer, nearest or earliest first. Do not repeat that list or reorder it; you may name the nearest place or refer to "the list below".
+- For calendar booking, distinguish a pending approval from a completed event. Include only exact times and links confirmed by tool results; never claim an event was added before approval.
+- Keep the answer focused on the request. Do not include gyms, profile details, or extra plan summaries unless asked.
 - If an action waits for approval, say what it will do and that nothing changed yet.
 - If a step failed, say plainly what could not be done.
 - Keep source titles and links from the Fitness Knowledge Agent.
@@ -108,6 +114,8 @@ Combine the specialists' reports below into one coherent answer, in the language
 SPECIALIST_CHOICE_PROMPT = """Choose the one RepWise specialist that should handle the student's request.
 {specialists}
 - none: the request is only about the student's own profile or plan (goal, days, equipment, current workouts), or is a greeting.
+Current-plan availability and booking requests go to schedule, without planning or location.
+Use location only for an explicit gym, venue, or place request. Use planning only for an explicit request to create or revise a workout programme.
 Training-knowledge questions (rest, exercises, technique, what the documents say) go to knowledge.
 {context}"""
 MISSING_STEPS_NOTE = (
@@ -456,6 +464,119 @@ def _history_text(history: list[dict[str, str]]) -> str:
     return "Earlier in this conversation:\n" + "\n".join(lines)
 
 
+def _result_digest(name: str, data: dict[str, Any]) -> dict[str, Any]:
+    """Keep useful facts while removing repeated evidence and verbose payloads."""
+    if name == "generate_workout_plan":
+        plan = data.get("plan")
+        if not isinstance(plan, dict):
+            return {key: data.get(key) for key in ("status", "message", "plan_id")}
+        return {
+            "status": data.get("status"),
+            "message": data.get("message"),
+            "plan_id": data.get("plan_id"),
+            "plan_status": data.get("plan_status"),
+            "plan": {
+                "title": plan.get("title"),
+                "summary": plan.get("summary"),
+                "weeks": [
+                    {
+                        "number": week.get("number"),
+                        "objective": week.get("objective"),
+                        "workouts": [
+                            {
+                                "day": workout.get("day"),
+                                "focus": workout.get("focus"),
+                                "estimated_minutes": workout.get("estimated_minutes"),
+                                "exercises": [
+                                    {
+                                        key: exercise.get(key)
+                                        for key in (
+                                            "name",
+                                            "sets",
+                                            "repetitions",
+                                            "rest_seconds",
+                                            "source_ids",
+                                        )
+                                        if key in exercise
+                                    }
+                                    for exercise in workout.get("exercises", [])
+                                ],
+                            }
+                            for workout in week.get("workouts", [])
+                        ],
+                    }
+                    for week in plan.get("weeks", [])
+                ],
+            },
+            "sources": [
+                {
+                    key: source.get(key)
+                    for key in ("source_id", "title", "url", "start_url")
+                    if source.get(key) is not None
+                }
+                for source in data.get("sources", [])
+            ],
+        }
+    if name == "search_documents":
+        return {
+            "ok": data.get("ok"),
+            "query": data.get("query"),
+            "evidence_found": data.get("evidence_found"),
+            "note": data.get("note"),
+            "documents": [
+                {
+                    "source_id": document.get("source_id"),
+                    "title": document.get("title"),
+                    "url": document.get("url"),
+                    "excerpt": (document.get("excerpt") or "")[:240],
+                }
+                for document in data.get("documents", [])
+            ],
+        }
+    if name == "search_nearby_places":
+        return {
+            "ok": data.get("ok"),
+            "category": data.get("category"),
+            "radius_km": data.get("radius_km"),
+            "data_source": data.get("data_source"),
+            "places": [
+                {
+                    key: place.get(key)
+                    for key in (
+                        "name",
+                        "category",
+                        "distance_km",
+                        "address",
+                        "map_url",
+                    )
+                }
+                for place in data.get("places", [])[:3]
+            ],
+        }
+    if name == "propose_training_slots":
+        return {
+            "ok": data.get("ok"),
+            "plan_id": data.get("plan_id"),
+            "timezone": data.get("timezone"),
+            "week_start": data.get("week_start"),
+            "workouts": [
+                {
+                    "week_number": workout.get("week_number"),
+                    "workout_index": workout.get("workout_index"),
+                    "planned_day": workout.get("planned_day"),
+                    "focus": workout.get("focus"),
+                    "minutes": workout.get("minutes"),
+                    "note": workout.get("note"),
+                    "options": [
+                        slot.get("label") for slot in workout.get("options", [])
+                    ],
+                }
+                for workout in data.get("workouts", [])
+            ],
+        }
+    return data
+
+
 def _report_digest(report: dict[str, Any]) -> dict[str, Any]:
     """Keep what later steps and the final answer need from a report.
 
@@ -471,7 +592,9 @@ def _report_digest(report: dict[str, Any]) -> dict[str, Any]:
         "status": report["status"],
         "summary": report["summary"],
         "error": report.get("error"),
-        "results": report["results"],
+        "results": {
+            name: _result_digest(name, data) for name, data in report["results"].items()
+        },
         "pending_actions": [
             {"tool": item["tool_name"], "reason": item["reason"]}
             for item in report["pending_actions"]

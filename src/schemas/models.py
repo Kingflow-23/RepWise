@@ -76,6 +76,15 @@ class PlanOptions(Model):
 
     focus: str = Field(min_length=3, max_length=300)
     workouts_per_week: int | None = Field(default=None, ge=1, le=7)
+    max_session_minutes: int | None = Field(
+        default=None,
+        ge=15,
+        le=180,
+        description=(
+            "Optional per-workout duration cap. The saved profile's session limit "
+            "still applies when it is lower."
+        ),
+    )
     extra_constraints: list[str] = Field(default_factory=list, max_length=10)
     refinement_instructions: str | None = Field(default=None, max_length=500)
 

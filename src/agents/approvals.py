@@ -45,11 +45,6 @@ from src.tools.results import ToolFailure, failure
 
 logger = logging.getLogger(__name__)
 
-ACTIVATION_REASON = (
-    "The new plan was saved as a draft. Approve to make it your active plan; "
-    "your current plan will be archived, not deleted."
-)
-
 
 class PendingAction(Model):
     """A consequential action and what happened to it."""
@@ -240,12 +235,31 @@ def run_tool_with_approval(
         and result.status == "completed"
         and result.plan_status == "draft"
     ):
+        activation = validate_arguments("activate_plan", {"plan_id": result.plan_id})
+        prepared_activation = prepare_arguments(context, "activate_plan", activation)
+        if isinstance(prepared_activation, ToolFailure):
+            logger.error(
+                "Could not prepare plan activation plan_id=%s error=%s",
+                result.plan_id,
+                prepared_activation.error,
+            )
+            run.result = prepared_activation
+            return run
+        reason = approval_reason(context, "activate_plan", prepared_activation)
+        if reason is None:
+            logger.error(
+                "Plan activation has no approval reason plan_id=%s", result.plan_id
+            )
+            run.result = failure(
+                "invalid_request", "Plan activation could not be prepared for approval."
+            )
+            return run
         run.pending.append(
             propose(
                 context,
                 "activate_plan",
-                {"plan_id": result.plan_id},
-                ACTIVATION_REASON,
+                prepared_activation.model_dump(mode="json"),
+                reason,
                 proposed_by,
             )
         )

@@ -9,6 +9,7 @@ from src.agents.orchestrator import (
     NO_MODEL_ANSWER,
     Delegation,
     OrchestratorPlan,
+    _report_digest,
     build_orchestrator,
     key_facts,
     places_notice,
@@ -89,6 +90,126 @@ def test_a_plan_that_needs_specialists_but_has_no_steps_is_asked_again(demo):
     response = ask(agent_context(demo), model, "Where is the nearest gym?")
 
     assert [step.agent for step in response.steps] == ["location"]
+
+
+def test_report_digest_keeps_plan_details_and_links_without_source_text():
+    report = {
+        "agent": "planning",
+        "task": "Prepare a one-week plan.",
+        "status": "completed",
+        "summary": "A one-week plan was prepared.",
+        "pending_actions": [],
+        "results": {
+            "generate_workout_plan": {
+                "status": "completed",
+                "message": "Draft saved.",
+                "plan_id": "plan-1",
+                "plan_status": "draft",
+                "plan": {
+                    "title": "Strength",
+                    "summary": "Build strength.",
+                    "weeks": [
+                        {
+                            "number": 1,
+                            "objective": "Learn the movement.",
+                            "workouts": [
+                                {
+                                    "day": "Monday",
+                                    "focus": "Full body",
+                                    "estimated_minutes": 40,
+                                    "exercises": [
+                                        {
+                                            "name": "Squat",
+                                            "sets": 3,
+                                            "repetitions": "8-10",
+                                            "rest_seconds": 60,
+                                            "coaching_note": "Use controlled form.",
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "sources": [
+                    {
+                        "source_id": "source-1",
+                        "title": "Exercise guide",
+                        "url": "https://example.test/guide",
+                        "text": "A long source excerpt that should not be sent onward.",
+                    }
+                ],
+            }
+        },
+    }
+
+    result = _report_digest(report)["results"]["generate_workout_plan"]
+
+    assert result["plan"]["weeks"][0]["workouts"][0]["exercises"] == [
+        {
+            "name": "Squat",
+            "sets": 3,
+            "repetitions": "8-10",
+            "rest_seconds": 60,
+        }
+    ]
+    assert result["sources"] == [
+        {
+            "source_id": "source-1",
+            "title": "Exercise guide",
+            "url": "https://example.test/guide",
+        }
+    ]
+
+
+def test_report_digest_bounds_search_evidence_and_nearby_places():
+    report = {
+        "agent": "knowledge",
+        "task": "Search.",
+        "status": "completed",
+        "summary": "Found evidence.",
+        "pending_actions": [],
+        "results": {
+            "search_documents": {
+                "ok": True,
+                "query": "training",
+                "evidence_found": True,
+                "note": "Search result.",
+                "documents": [
+                    {
+                        "source_id": "doc-1",
+                        "title": "Guide",
+                        "url": "https://example.test/guide",
+                        "excerpt": "x" * 600,
+                    }
+                ],
+            },
+            "search_nearby_places": {
+                "ok": True,
+                "category": "gym",
+                "radius_km": 10,
+                "data_source": "Photon",
+                "places": [
+                    {
+                        "name": f"Gym {index}",
+                        "category": "gym",
+                        "distance_km": index,
+                        "latitude": 48.0,
+                        "longitude": 2.0,
+                        "address": "Paris",
+                        "map_url": "https://example.test/map",
+                    }
+                    for index in range(8)
+                ],
+            },
+        },
+    }
+
+    results = _report_digest(report)["results"]
+
+    assert len(results["search_documents"]["documents"][0]["excerpt"]) == 240
+    assert len(results["search_nearby_places"]["places"]) == 3
+    assert "latitude" not in results["search_nearby_places"]["places"][0]
 
 
 def ask(context, model, request, conversation="c1"):

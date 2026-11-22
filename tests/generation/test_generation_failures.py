@@ -47,7 +47,9 @@ def test_connection_refused_is_provider_unavailable():
 
 
 def test_missing_model_is_model_not_found_and_names_the_model():
-    failure = classify(ResponseError(f'{{"error":"model \\"{MODEL}\\" not found"}}', 404))
+    failure = classify(
+        ResponseError(f'{{"error":"model \\"{MODEL}\\" not found"}}', 404)
+    )
 
     assert isinstance(failure, ModelNotFound)
     assert failure.retryable is False
@@ -114,8 +116,14 @@ class RaisingGenerator:
     ("failure", "status"),
     [
         (ProviderUnavailable("Ollama is not reachable."), "provider_unavailable"),
-        (ModelNotFound(f"The configured model {MODEL} is not installed."), "model_not_found"),
-        (GenerationTimeout("The model did not finish within 300 s."), "generation_timeout"),
+        (
+            ModelNotFound(f"The configured model {MODEL} is not installed."),
+            "model_not_found",
+        ),
+        (
+            GenerationTimeout("The model did not finish within 300 s."),
+            "generation_timeout",
+        ),
     ],
 )
 def test_service_failures_stop_without_retry(failure, status):
@@ -131,7 +139,9 @@ def test_service_failures_stop_without_retry(failure, status):
 
 def test_unreadable_answers_are_retried_then_reported():
     generator = RaisingGenerator(
-        InvalidModelOutput("The model did not return a readable plan.", detail="bad json")
+        InvalidModelOutput(
+            "The model did not return a readable plan.", detail="bad json"
+        )
     )
 
     result = PlanPipeline(FakeRetriever(), generator).create_plan(request())
@@ -205,7 +215,9 @@ def api(tmp_path, monkeypatch):
         def analyze(self, query):
             return QueryAnalysis("in_scope", query, "")
 
-    monkeypatch.setattr(api_module, "OllamaQueryExpander", lambda *_a: InScopeAnalyzer())
+    monkeypatch.setattr(
+        api_module, "OllamaQueryExpander", lambda *_a: InScopeAnalyzer()
+    )
     monkeypatch.setattr(api_module, "read_access_token", lambda token, secret: token)
 
     def build(generator):
@@ -241,7 +253,11 @@ def api(tmp_path, monkeypatch):
     ("failure", "http_status", "status"),
     [
         (ProviderUnavailable("Ollama is not reachable."), 503, "provider_unavailable"),
-        (ModelNotFound("The configured model is not installed."), 503, "model_not_found"),
+        (
+            ModelNotFound("The configured model is not installed."),
+            503,
+            "model_not_found",
+        ),
         (GenerationTimeout("Too slow."), 504, "generation_timeout"),
         (InvalidModelOutput("Unreadable."), 502, "generation_error"),
     ],

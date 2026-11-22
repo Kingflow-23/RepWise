@@ -1,12 +1,13 @@
 """The approval gate: what runs, what waits, and who can approve it."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
 
 from src.agents import approvals
 from src.schemas.models import PlanResult, TrainingPlan
+from src.tools import calendar as calendar_tools
 from tests.conftest import NOW, make_context
 
 MOVE = {"moves": [{"week_number": 1, "workout_index": 0, "new_day": "Saturday"}]}
@@ -55,6 +56,21 @@ def test_a_consequential_write_is_held_and_changes_nothing(demo, saturday):
     assert stored["arguments"]["moves"][0]["new_day"] == "Saturday"
 
 
+def test_a_move_onto_an_occupied_day_is_rejected_before_approval(demo):
+    plan = demo.repository.get_plan(demo.student_id, demo.plan_id)["plan"]
+    occupied_day = plan["weeks"][0]["workouts"][2]["day"]
+
+    run = approvals.run_tool_with_approval(
+        demo.context,
+        "organize_schedule",
+        {"moves": [{"week_number": 1, "workout_index": 1, "new_day": occupied_day}]},
+        "schedule",
+    )
+
+    assert run.result.code == "day_conflict"
+    assert demo.repository.list_pending_actions(demo.student_id) == []
+
+
 def test_a_catch_up_is_held_as_the_exact_moves_code_chose(demo, saturday):
     # Monday is logged as missed, then a catch-up is asked.
     approvals.run_tool_with_approval(
@@ -96,6 +112,53 @@ def test_approval_runs_exactly_the_stored_action_once(demo, saturday):
     with pytest.raises(approvals.ApprovalError) as error:
         approvals.approve(demo.context, held.action_id)
     assert error.value.code == "already_decided"
+
+
+def test_empty_booking_request_prepares_all_times_for_one_approval(demo):
+    calendar = calendar_tools.FakeCalendar()
+    context = make_context(demo.repository, demo.student_id, calendar=calendar)
+    run = approvals.run_tool_with_approval(
+        context, "add_workouts_to_calendar", {}, "schedule"
+    )
+
+    assert run.result.status == "pending_approval"
+    assert calendar.events == {}
+    pending = demo.repository.get_pending_action(demo.student_id, run.result.action_id)
+    assert pending["status"] == "pending"
+    bookings = pending["arguments"]["bookings"]
+    assert len(bookings) == len(
+        demo.repository.get_current_plan(demo.student_id)["plan"]["weeks"][0][
+            "workouts"
+        ]
+    )
+    starts = [item["start"] for item in bookings]
+    assert len(starts) == len(set(starts))
+    assert "Week 1:" in pending["reason"]
+
+    booked = approvals.approve(context, run.result.action_id)
+
+    assert booked.executed
+    assert booked.action.result["outcomes"]
+    assert all(item["status"] == "booked" for item in booked.action.result["outcomes"])
+    assert len(calendar.events) == len(booked.action.result["outcomes"])
+    assert all(
+        item["workout"]["exercises"] for item in booked.action.result["outcomes"]
+    )
+
+
+def test_empty_booking_request_is_rejected_if_any_workout_has_no_slot(demo):
+    class FullCalendar(calendar_tools.FakeCalendar):
+        def busy_periods(self, start, end):
+            return [calendar_tools.BusyPeriod(start=start, end=end)]
+
+    context = make_context(demo.repository, demo.student_id, calendar=FullCalendar())
+
+    run = approvals.run_tool_with_approval(
+        context, "add_workouts_to_calendar", {}, "schedule"
+    )
+
+    assert run.result.code == "no_free_slots"
+    assert demo.repository.list_pending_actions(demo.student_id) == []
 
 
 def test_another_student_cannot_approve_or_see_the_action(
@@ -159,13 +222,22 @@ def test_a_declined_action_never_runs(demo, saturday):
     assert first_day(demo) == "Monday"
 
 
-def test_a_failed_approved_action_is_recorded_as_failed(demo):
-    # Sunday is not an available day, so the approved move fails validation.
-    sunday = {"moves": [{"week_number": 1, "workout_index": 0, "new_day": "Sunday"}]}
+def test_schedule_is_revalidated_when_approval_is_applied(demo, saturday):
     held = approvals.run_tool_with_approval(
-        demo.context, "organize_schedule", sunday, "schedule"
+        demo.context, "organize_schedule", MOVE, "schedule"
     ).result
 
+    profile = demo.repository.get_profile(demo.student_id)
+    demo.repository.save_profile(
+        demo.student_id,
+        profile.model_copy(
+            update={
+                "available_days": [
+                    day for day in profile.available_days if day != "Saturday"
+                ]
+            }
+        ),
+    )
     decision = approvals.approve(demo.context, held.action_id)
 
     assert decision.action.status == "failed"
@@ -230,6 +302,134 @@ def test_a_draft_plan_gets_an_activation_waiting_for_approval(demo):
 
     approvals.approve(context, run.pending[0].action_id)
     assert demo.repository.get_current_plan(demo.student_id)["id"] == run.result.plan_id
+
+
+def test_approving_a_draft_plan_schedules_it_in_the_connected_calendar(demo):
+    record = demo.repository.get_plan(demo.student_id, demo.plan_id)
+
+    class Pipeline:
+        retriever = generator = None
+
+        def create_plan(self, request, previous_plan=None):
+            return PlanResult(
+                status="completed",
+                message="ok",
+                plan=TrainingPlan.model_validate(record["plan"]),
+            )
+
+    calendar = calendar_tools.FakeCalendar()
+    context = make_context(
+        demo.repository,
+        demo.student_id,
+        calendar=calendar,
+        pipeline_factory=Pipeline,
+    )
+    run = approvals.run_tool_with_approval(
+        context, "generate_workout_plan", {"focus": "Legs"}, "planning"
+    )
+    pending = demo.repository.get_pending_action(
+        demo.student_id, run.pending[0].action_id
+    )
+    prepared = pending["arguments"]["bookings"]
+    assert prepared
+    assert "Calendar booking:" in pending["reason"]
+    assert "Europe/Paris" in pending["reason"]
+
+    decision = approvals.approve(context, run.pending[0].action_id)
+
+    assert decision.executed
+    assert decision.action.result["calendar_status"] == "scheduled"
+    assert decision.action.result["calendar_workouts"] == len(prepared)
+    assert len(calendar.events) == decision.action.result["calendar_workouts"]
+
+
+def test_activation_uses_approved_times_and_does_not_silently_reschedule(demo):
+    record = demo.repository.get_plan(demo.student_id, demo.plan_id)
+
+    class Pipeline:
+        retriever = generator = None
+
+        def create_plan(self, request, previous_plan=None):
+            return PlanResult(
+                status="completed",
+                message="ok",
+                plan=TrainingPlan.model_validate(record["plan"]),
+            )
+
+    calendar = calendar_tools.FakeCalendar()
+    context = make_context(
+        demo.repository,
+        demo.student_id,
+        calendar=calendar,
+        pipeline_factory=Pipeline,
+    )
+    run = approvals.run_tool_with_approval(
+        context, "generate_workout_plan", {"focus": "Legs"}, "planning"
+    )
+    action_id = run.pending[0].action_id
+    pending = demo.repository.get_pending_action(demo.student_id, action_id)
+    approved_start = datetime.fromisoformat(
+        pending["arguments"]["bookings"][0]["start"]
+    )
+    calendar.busy.append(
+        calendar_tools.BusyPeriod(
+            start=approved_start, end=approved_start + timedelta(hours=2)
+        )
+    )
+
+    decision = approvals.approve(context, action_id)
+
+    assert decision.action.result["calendar_status"] == "partial"
+    assert decision.action.result["calendar_workouts"] == (
+        len(pending["arguments"]["bookings"]) - 1
+    )
+    assert len(calendar.events) == decision.action.result["calendar_workouts"]
+    assert any(
+        outcome["status"] == "conflict"
+        for outcome in decision.action.result["calendar_result"]["outcomes"]
+    )
+
+
+def test_activation_with_any_missing_slot_approves_without_partial_booking(demo):
+    record = demo.repository.get_plan(demo.student_id, demo.plan_id)
+
+    class Pipeline:
+        retriever = generator = None
+
+        def create_plan(self, request, previous_plan=None):
+            return PlanResult(
+                status="completed",
+                message="ok",
+                plan=TrainingPlan.model_validate(record["plan"]),
+            )
+
+    class FullCalendar(calendar_tools.FakeCalendar):
+        def busy_periods(self, start, end):
+            return [calendar_tools.BusyPeriod(start=start, end=end)]
+
+    calendar = FullCalendar()
+    context = make_context(
+        demo.repository,
+        demo.student_id,
+        calendar=calendar,
+        pipeline_factory=Pipeline,
+    )
+    run = approvals.run_tool_with_approval(
+        context, "generate_workout_plan", {"focus": "Legs"}, "planning"
+    )
+    pending = demo.repository.get_pending_action(
+        demo.student_id, run.pending[0].action_id
+    )
+
+    assert pending["arguments"]["bookings"] == []
+    assert "No calendar events will be added" in pending["reason"]
+    assert "no free time" in pending["reason"].lower()
+
+    decision = approvals.approve(context, run.pending[0].action_id)
+
+    assert decision.action.result["calendar_status"] == "no_slots"
+    assert decision.action.result["calendar_workouts"] == 0
+    assert calendar.events == {}
 
 
 def test_an_unknown_tool_is_a_structured_failure(demo):

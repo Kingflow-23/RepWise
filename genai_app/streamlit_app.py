@@ -107,8 +107,102 @@ SESSION_KEYS_PER_ACCOUNT = (
     "agent_conversation_id",
     "agent_actions",
     "action_notice",
+    "agent-recording",
+    "agent_voice_notice",
+    "agent_voice_error",
+    "agent-share-location",
+    "agent-location-label",
+    "agent-latitude",
+    "agent-longitude",
+    "agent-current-location",
+    "agent-use-fallback-location",
     "saved_location",
     "request_log",
+)
+
+_CURRENT_LOCATION_COMPONENT = st.components.v2.component(
+    "repwise_current_location",
+    html="""
+<style>
+  .location-picker {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--text-color);
+  }
+  button {
+    border: 1px solid var(--secondary-color);
+    border-radius: 0.5rem;
+    background: var(--secondary-background-color);
+    color: var(--text-color);
+    padding: 0.45rem 0.75rem;
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: wait;
+    opacity: 0.65;
+  }
+</style>
+<div class="location-picker">
+  <button id="use-current-location" type="button">Use my current location</button>
+  <span id="location-status" aria-live="polite">Location permission not requested</span>
+</div>
+""",
+    js="""
+export default function (component) {
+  const { parentElement, setStateValue } = component
+  const button = parentElement.querySelector("#use-current-location")
+  const status = parentElement.querySelector("#location-status")
+  let didRequest = false
+
+  function requestLocation() {
+    if (didRequest) return
+    didRequest = true
+    button.disabled = true
+    status.textContent = "Getting your location..."
+    setStateValue("status", "loading")
+
+    if (!navigator.geolocation) {
+      didRequest = false
+      button.disabled = false
+      status.textContent = "Geolocation is not supported by this browser"
+      setStateValue("status", "unsupported")
+      setStateValue("error", "Geolocation is not supported by this browser")
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const latitude = position.coords.latitude
+        const longitude = position.coords.longitude
+        button.disabled = false
+        status.textContent = "Current location detected"
+        setStateValue("latitude", latitude)
+        setStateValue("longitude", longitude)
+        setStateValue("status", "ready")
+        setStateValue("error", "")
+      },
+      (error) => {
+        didRequest = false
+        button.disabled = false
+        const message =
+          error.code === error.PERMISSION_DENIED
+            ? "Location permission was denied"
+            : "Could not get your current location"
+        status.textContent = message
+        setStateValue("status", "error")
+        setStateValue("error", message)
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+    )
+  }
+
+  button.onclick = requestLocation
+  if (component.data?.auto_request !== false) {
+    requestLocation()
+  }
+}
+""",
 )
 
 
@@ -679,11 +773,61 @@ def decide_action(action_id: str, decision: str) -> None:
     action = result["action"]
     st.session_state.setdefault("decided_actions", {})[action_id] = action
     if decision == "approve" and action["status"] == "executed":
+        notice_kind = "success"
         message = f"Done: {action['tool_name']} ran after your approval."
+        if action["tool_name"] == "add_workouts_to_calendar":
+            outcomes = (action.get("result") or {}).get("outcomes", [])
+            booked = sum(
+                item.get("status") in {"booked", "already_booked"} for item in outcomes
+            )
+            if booked == len(outcomes):
+                message = f"Added {booked} workout(s) to your calendar."
+            elif booked:
+                notice_kind = "warning"
+                message = (
+                    f"Added {booked} of {len(outcomes)} workout(s). "
+                    "See the event details for conflicts or failures."
+                )
+            else:
+                notice_kind = "warning"
+                message = "No workouts were added. See the event details for why."
+        elif action["tool_name"] == "activate_plan":
+            result = action.get("result") or {}
+            calendar_status = result.get("calendar_status")
+            booked = result.get("calendar_workouts", 0)
+            if calendar_status == "scheduled":
+                message = (
+                    f"Plan activated and {booked} workout(s) added to your calendar."
+                )
+            elif calendar_status == "partial":
+                notice_kind = "warning"
+                message = (
+                    f"Plan activated; {booked} workout(s) added. "
+                    "See the event details for conflicts or failures."
+                )
+            elif calendar_status == "no_slots":
+                notice_kind = "warning"
+                message = (
+                    "Plan activated, but no calendar events were added because "
+                    "at least one workout has no free time on its planned day. "
+                    f"{result.get('calendar_message', '')}"
+                )
+            elif calendar_status == "not_connected":
+                notice_kind = "warning"
+                message = (
+                    "Plan activated, but no calendar events were added because "
+                    f"{result.get('calendar_message') or 'your calendar is not connected.'}"
+                )
+            else:
+                notice_kind = "warning"
+                message = (
+                    "Plan activated, but calendar booking did not complete. "
+                    f"{result.get('calendar_message') or 'See the event details for more information.'}"
+                )
         # Plans may have changed (activation, schedule, adaptation): reload them.
         st.session_state.pop("plan_history", None)
         st.session_state.pop("latest_plan", None)
-        st.session_state.action_notice = ("success", message)
+        st.session_state.action_notice = (notice_kind, message)
     elif decision == "approve":
         error = (action.get("result") or {}).get("error", "the tool failed")
         st.session_state.action_notice = (
@@ -695,11 +839,12 @@ def decide_action(action_id: str, decision: str) -> None:
             "info",
             f"Declined: {action['tool_name']} did not run.",
         )
-    st.session_state.agent_actions = [
+    actions = [
         item
         for item in st.session_state.get("agent_actions", [])
         if item.get("id") != action_id
     ]
+    st.session_state.agent_actions = actions
 
 
 def show_action(action: dict[str, Any], key_prefix: str) -> None:
@@ -724,6 +869,11 @@ def show_action(action: dict[str, Any], key_prefix: str) -> None:
             f"Action `{action_id}` · expires {str(action.get('expires_at', ''))[:19]}"
         )
         if decided:
+            if decided.get("result") and action.get("tool_name") in {
+                "add_workouts_to_calendar",
+                "activate_plan",
+            }:
+                st.json(decided["result"], expanded=False)
             return
         approve, decline = st.columns(2)
         approve.button(
@@ -939,11 +1089,21 @@ def send_agent_message(message: str) -> None:
         "conversation_id": st.session_state.get("agent_conversation_id"),
     }
     if st.session_state.get("agent-share-location"):
-        payload["location"] = {
-            "label": st.session_state.get("agent-location-label") or "Current location",
-            "latitude": st.session_state.get("agent-latitude"),
-            "longitude": st.session_state.get("agent-longitude"),
-        }
+        current_location = st.session_state.get("agent-current-location", {})
+        latitude = current_location.get("latitude")
+        longitude = current_location.get("longitude")
+        if (latitude is None or longitude is None) and st.session_state.get(
+            "agent-use-fallback-location"
+        ):
+            latitude = st.session_state.get("agent-latitude")
+            longitude = st.session_state.get("agent-longitude")
+        if latitude is not None and longitude is not None:
+            payload["location"] = {
+                "label": st.session_state.get("agent-location-label")
+                or "Current location",
+                "latitude": latitude,
+                "longitude": longitude,
+            }
     messages = st.session_state.setdefault("agent_messages", [])
     messages.append({"role": "user", "content": message})
     started = perf_counter()
@@ -973,6 +1133,42 @@ def use_example(text: str) -> None:
         text: Example request.
     """
     st.session_state["agent-draft"] = text
+
+
+def use_agent_recording() -> None:
+    """Fill the editable agent draft from an audio recording."""
+    st.session_state.pop("agent_voice_error", None)
+    st.session_state.pop("agent_voice_notice", None)
+    recording = st.session_state.get("agent-recording")
+    if recording is None:
+        st.session_state.agent_voice_error = "Record your message first."
+        return
+    try:
+        with st.spinner("Transcribing your recording…"):
+            result = api_request(
+                "POST",
+                "/api/v1/speech/transcribe",
+                data=recording.getvalue(),
+                headers={"Content-Type": "audio/wav"},
+            )
+        text = result.get("text") if isinstance(result, dict) else None
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError(
+                "No speech was detected. Please record your message again."
+            )
+        transcript = text.strip()
+        if len(transcript) > 1000:
+            st.session_state.agent_voice_error = (
+                "The transcription is longer than 1000 characters. "
+                "Record a shorter message."
+            )
+            return
+        st.session_state["agent-draft"] = transcript
+        st.session_state.agent_voice_notice = (
+            "Recording transcribed. Review and edit your message before sending."
+        )
+    except (ApiError, ValueError) as error:
+        st.session_state.agent_voice_error = str(error)
 
 
 def take_agent_draft() -> None:
@@ -1017,7 +1213,9 @@ def show_action_notice() -> None:
     notice = st.session_state.pop("action_notice", None)
     if notice:
         kind, text = notice
-        {"success": st.success, "error": st.error}.get(kind, st.info)(text)
+        {"success": st.success, "warning": st.warning, "error": st.error}.get(
+            kind, st.info
+        )(text)
 
 
 def load_tool_catalog() -> list[dict[str, Any]]:
@@ -1134,7 +1332,9 @@ with st.sidebar:
         )
         if health.get("status") == "degraded":
             # The API answers, but a service it depends on is not available.
-            st.warning("\n\n".join(health.get("problems") or ["A service is unavailable."]))
+            st.warning(
+                "\n\n".join(health.get("problems") or ["A service is unavailable."])
+            )
     elif st.session_state.get("health_error"):
         st.error(st.session_state.health_error)
     st.divider()
@@ -1497,19 +1697,51 @@ with agent_tab:
             st.toggle(
                 "Share a location for this request",
                 key="agent-share-location",
-                help="Sent with this request only and never stored. Use the Location tab to save one.",
+                value=True,
+                help="Uses your current browser location for this request only. Use the Location tab to save a location.",
             )
             if st.session_state.get("agent-share-location"):
                 st.text_input(
                     "Place label", value="Current location", key="agent-location-label"
                 )
-                lat, lon = st.columns(2)
-                lat.number_input(
-                    "Latitude", value=48.7908, format="%.4f", key="agent-latitude"
+                _CURRENT_LOCATION_COMPONENT(
+                    key="agent-current-location",
+                    data={"auto_request": True},
+                    on_latitude_change=lambda: None,
+                    on_longitude_change=lambda: None,
+                    on_status_change=lambda: None,
+                    on_error_change=lambda: None,
                 )
-                lon.number_input(
-                    "Longitude", value=2.3317, format="%.4f", key="agent-longitude"
-                )
+                location_state = st.session_state.get("agent-current-location", {})
+                if location_state.get("status") == "ready":
+                    st.caption(
+                        f"Detected: {location_state['latitude']:.4f}, "
+                        f"{location_state['longitude']:.4f}"
+                    )
+                elif location_state.get("status") == "error":
+                    st.warning(
+                        location_state.get("error") or "Current location unavailable."
+                    )
+                elif location_state.get("status") == "unsupported":
+                    st.warning("Geolocation is not supported in this browser.")
+                if st.toggle(
+                    "Enter fallback coordinates",
+                    key="agent-use-fallback-location",
+                    help="Use only if browser geolocation is unavailable.",
+                ):
+                    lat, lon = st.columns(2)
+                    lat.number_input(
+                        "Fallback latitude",
+                        value=48.7908,
+                        format="%.4f",
+                        key="agent-latitude",
+                    )
+                    lon.number_input(
+                        "Fallback longitude",
+                        value=2.3317,
+                        format="%.4f",
+                        key="agent-longitude",
+                    )
         with examples.expander(
             "Example requests (agent sheet and multi-agent)", expanded=False
         ):
@@ -1540,6 +1772,25 @@ with agent_tab:
                 max_chars=1000,
                 placeholder="For example: Find a gym near me and create a training programme.",
             )
+            recording = st.audio_input(
+                "Record a message (optional)",
+                sample_rate=16000,
+                key="agent-recording",
+                help="Record up to two minutes, then transcribe it into the editable message above.",
+                disabled=not bool(st.session_state.get("access_token")),
+            )
+            st.button(
+                "Use recording",
+                key="use-agent-recording",
+                on_click=use_agent_recording,
+                disabled=recording is None
+                or not bool(st.session_state.get("access_token")),
+                help="Fills the message text above; it does not send it to the agents.",
+            )
+            if st.session_state.get("agent_voice_notice"):
+                st.success(st.session_state.pop("agent_voice_notice"))
+            if st.session_state.get("agent_voice_error"):
+                st.error(st.session_state.pop("agent_voice_error"))
             ask, reset = st.columns([3, 1])
             ask.button(
                 "Send to the agents",

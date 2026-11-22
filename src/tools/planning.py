@@ -22,6 +22,7 @@ from pydantic import ValidationError, model_validator
 from src.db.repository import StudentRepository
 from src.generation.pipeline import PlanPipeline
 from src.schemas.models import Model, PlanOptions, PlanRequest, PlanResult, PlanStatus
+from src.tools import calendar as calendar_tools
 from src.tools.context import ToolContext
 from src.tools.results import (
     PLAN_NOT_FOUND,
@@ -67,6 +68,12 @@ class ActivatePlanResult(Model):
     ok: Literal[True] = True
     plan_id: str
     plan_status: Literal["active"] = "active"
+    calendar_status: Literal[
+        "scheduled", "partial", "no_slots", "not_connected", "unavailable", "failed"
+    ] = "not_connected"
+    calendar_workouts: int = 0
+    calendar_message: str | None = None
+    calendar_result: calendar_tools.BookingResult | None = None
 
 
 def generate_workout_plan(
@@ -103,6 +110,14 @@ def generate_workout_plan(
         return GenerateWorkoutPlanResult(
             status="missing_profile",
             message="Save the student profile before creating a plan",
+        )
+    if options.max_session_minutes is not None:
+        profile = profile.model_copy(
+            update={
+                "session_minutes": min(
+                    profile.session_minutes, options.max_session_minutes
+                )
+            }
         )
     try:
         request = PlanRequest(profile=profile, **options.model_dump())
@@ -161,19 +176,68 @@ def generate_plan_for_agent(
 
 @report_storage_errors
 def activate_plan(
-    context: ToolContext, plan_id: str
+    context: ToolContext,
+    plan_id: str,
+    bookings: list[calendar_tools.Booking] | None = None,
+    calendar_status: Literal[
+        "scheduled", "no_slots", "not_connected", "unavailable"
+    ] = "not_connected",
+    calendar_message: str | None = None,
 ) -> ActivatePlanResult | ToolFailure:
     """Make a draft plan the student's active plan, archiving the previous one.
 
-    This tool always requires the student's approval (see ``config/tools.json``).
+    This tool always requires the student's approval. Prepared calendar
+    bookings are pinned into the approved arguments, then rechecked at execution.
 
     Args:
         context: Trusted tool context.
         plan_id: The draft plan to activate.
+        bookings: Exact times stored in the activation approval.
+        calendar_status: Availability outcome prepared before approval.
+        calendar_message: Why calendar events cannot be added, if applicable.
 
     Returns:
-        The activated plan ID, or ``plan_not_found``.
+        The activated plan and calendar outcome, or a structured failure.
     """
     if not context.repository.activate_plan(context.student_id, plan_id):
         return failure(PLAN_NOT_FOUND, "Saved plan not found.")
-    return ActivatePlanResult(plan_id=plan_id)
+
+    calendar_workouts = 0
+    calendar_result = None
+    if calendar_status == "scheduled":
+        if context.calendar is None:
+            calendar_status = "not_connected"
+            calendar_message = "No calendar is connected."
+        elif not bookings:
+            return failure(
+                "invalid_request",
+                "The approved activation action has no prepared calendar bookings.",
+            )
+        else:
+            result = calendar_tools.add_workouts_to_calendar(context, bookings, plan_id)
+            if isinstance(result, ToolFailure):
+                calendar_status = "failed"
+                calendar_message = result.error
+            else:
+                calendar_result = result
+                calendar_workouts = sum(
+                    outcome.status in {"booked", "already_booked"}
+                    for outcome in result.outcomes
+                )
+                calendar_status = (
+                    "scheduled"
+                    if calendar_workouts == len(result.outcomes)
+                    else "partial"
+                )
+                if calendar_status == "partial":
+                    calendar_message = (
+                        "Some events could not be added; see each booking outcome."
+                    )
+
+    return ActivatePlanResult(
+        plan_id=plan_id,
+        calendar_status=calendar_status,
+        calendar_workouts=calendar_workouts,
+        calendar_message=calendar_message,
+        calendar_result=calendar_result,
+    )

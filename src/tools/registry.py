@@ -16,12 +16,20 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, time
+from datetime import date, time, timedelta
+from typing import Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import Field, ValidationError, model_validator
 
 from src.agents import memory
-from src.schemas.models import CompletionStatus, Model, PlanOptions, WorkoutDifficulty
+from src.schemas.models import (
+    CompletionStatus,
+    Model,
+    PlanOptions,
+    TrainingPlan,
+    WorkoutDifficulty,
+)
 from src.tools import calendar, knowledge, places, planning, profile, training
 from src.tools.catalog import ToolSpec, generated_parts, get_tool_spec, load_catalog
 from src.tools.context import ToolContext
@@ -83,13 +91,28 @@ class PlanArguments(PlanOptions):
 
 
 class ActivatePlanArguments(Model):
-    """The draft plan to activate."""
+    """The draft plan to activate and its prepared calendar booking."""
 
     plan_id: str = Field(min_length=1, description="The draft plan's plan_id.")
+    bookings: list[calendar.Booking] = Field(
+        default_factory=list,
+        max_length=21,
+        description="Internal: leave empty; code selects exact times before approval.",
+    )
+    calendar_status: Literal[
+        "scheduled", "no_slots", "not_connected", "unavailable"
+    ] = Field(
+        default="not_connected",
+        description="Internal: code sets the calendar outcome before approval.",
+    )
+    calendar_message: str | None = Field(
+        default=None,
+        description="Internal: code sets any calendar limitation before approval.",
+    )
 
 
 class ScheduleArguments(Model):
-    """Workouts to move to other days: explicit moves, or a catch-up week."""
+    """Workouts to move to other available days: explicit moves or a catch-up week."""
 
     moves: list[training.WorkoutMove] = Field(
         default_factory=list,
@@ -132,10 +155,11 @@ class ScheduleArguments(Model):
 def prepare_schedule(
     context: ToolContext, arguments: ScheduleArguments
 ) -> ScheduleArguments | ToolFailure:
-    """Turn a catch-up request into the exact moves, before any approval.
+    """Turn a catch-up request into validated exact moves, before any approval.
 
     The student then approves concrete moves, and the stored action (and its
-    hash) holds exactly what will run.
+    hash) holds exactly what will run. Impossible changes are rejected before
+    they can become pending actions.
 
     Args:
         context: Trusted tool context.
@@ -145,14 +169,21 @@ def prepare_schedule(
         Arguments with explicit moves, or a :func:`training.catch_up_moves`
         failure.
     """
-    if arguments.catch_up_week is None:
-        return arguments
-    moves = training.catch_up_moves(
-        context, arguments.catch_up_week, arguments.from_day, arguments.plan_id
+    moves = arguments.moves
+    if arguments.catch_up_week is not None:
+        computed = training.catch_up_moves(
+            context, arguments.catch_up_week, arguments.from_day, arguments.plan_id
+        )
+        if isinstance(computed, ToolFailure):
+            return computed
+        moves = computed
+    prepared = training.prepare_schedule_change(context, moves, arguments.plan_id)
+    if isinstance(prepared, ToolFailure):
+        return prepared
+    return ScheduleArguments(
+        moves=prepared.moves,
+        plan_id=arguments.plan_id,
     )
-    if isinstance(moves, ToolFailure):
-        return moves
-    return ScheduleArguments(moves=moves, plan_id=arguments.plan_id)
 
 
 def describe_schedule(context: ToolContext, arguments: ScheduleArguments) -> str:
@@ -215,10 +246,158 @@ class SlotArguments(Model):
 
 
 class BookingArguments(Model):
-    """Approved times to add to the calendar."""
+    """Workouts and times to add, or empty bookings to choose times automatically."""
 
-    bookings: list[calendar.Booking] = Field(min_length=1, max_length=21)
+    bookings: list[calendar.Booking] = Field(
+        default_factory=list,
+        max_length=21,
+        description=(
+            "Exact choices from the student, or leave empty so code chooses one "
+            "preferred free daytime slot per unbooked workout."
+        ),
+    )
     plan_id: str | None = Field(default=None, description="Omit for the current plan.")
+
+
+def preferred_bookings(slots: calendar.SlotsResult) -> list[calendar.Booking]:
+    """Choose the first non-overlapping daytime option for each workout."""
+    return [
+        calendar.Booking(
+            week_number=workout.week_number,
+            workout_index=workout.workout_index,
+            start=workout.options[0].start,
+        )
+        for workout in slots.workouts
+    ]
+
+
+def prepare_bookings(
+    context: ToolContext, arguments: BookingArguments
+) -> BookingArguments | ToolFailure:
+    """Resolve empty booking requests to exact, sequentially conflict-free slots."""
+    if arguments.bookings:
+        return arguments
+    slots = calendar.propose_training_slots(context, plan_id=arguments.plan_id)
+    if isinstance(slots, ToolFailure):
+        return slots
+    if not slots.workouts:
+        return failure("no_workouts_to_book", "There are no unbooked workouts.")
+    unavailable = [workout for workout in slots.workouts if not workout.options]
+    if unavailable:
+        descriptions = "; ".join(
+            f"{workout.focus} ({workout.planned_day})" for workout in unavailable
+        )
+        return failure(
+            "no_free_slots",
+            "No calendar booking was created because no free slot was found for: "
+            f"{descriptions}. Choose another day or week first.",
+        )
+    bookings = preferred_bookings(slots)
+    return BookingArguments(bookings=bookings, plan_id=slots.plan_id)
+
+
+def describe_bookings(context: ToolContext, arguments: BookingArguments) -> str:
+    """Show the exact event date, local time and workout in its approval reason."""
+    record = profile.resolve_plan(context, arguments.plan_id)
+    if isinstance(record, ToolFailure):
+        return "The plan could not be resolved to show exact booking times."
+    plan = TrainingPlan.model_validate(record["plan"])
+    zone = ZoneInfo(context.timezone)
+    lines = []
+    for booking in arguments.bookings:
+        workout = profile.find_workout(plan, booking.week_number, booking.workout_index)
+        if workout is None:
+            continue
+        start = booking.start
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=zone)
+        end = start + timedelta(minutes=workout.estimated_minutes)
+        lines.append(
+            f"Week {booking.week_number}: {workout.focus} "
+            f"({workout.estimated_minutes} min), "
+            f"{start.astimezone(zone):%A %Y-%m-%d %H:%M}–"
+            f"{end.astimezone(zone):%H:%M} {context.timezone}"
+        )
+    return " ".join(lines)
+
+
+def prepare_activation(
+    context: ToolContext, arguments: ActivatePlanArguments
+) -> ActivatePlanArguments | ToolFailure:
+    """Pin exact calendar times into the activation action before approval."""
+    if context.calendar is None:
+        return arguments.model_copy(
+            update={
+                "bookings": [],
+                "calendar_status": "not_connected",
+                "calendar_message": "No calendar is connected.",
+            }
+        )
+    slots = calendar.propose_training_slots(context, plan_id=arguments.plan_id)
+    if isinstance(slots, ToolFailure):
+        if slots.code == "calendar_unavailable":
+            return arguments.model_copy(
+                update={
+                    "bookings": [],
+                    "calendar_status": "unavailable",
+                    "calendar_message": slots.error,
+                }
+            )
+        if slots.code == "calendar_not_connected":
+            return arguments.model_copy(
+                update={
+                    "bookings": [],
+                    "calendar_status": "not_connected",
+                    "calendar_message": slots.error,
+                }
+            )
+        return slots
+    unavailable = [workout for workout in slots.workouts if not workout.options]
+    if not slots.workouts or unavailable:
+        missing = "; ".join(
+            f"{workout.focus} ({workout.planned_day})" for workout in unavailable
+        )
+        message = (
+            f"No free time on the planned day for: {missing}."
+            if missing
+            else "There are no unbooked workouts to add."
+        )
+        return arguments.model_copy(
+            update={
+                "bookings": [],
+                "calendar_status": "no_slots",
+                "calendar_message": message,
+            }
+        )
+    bookings = preferred_bookings(slots)
+    return arguments.model_copy(
+        update={
+            "bookings": bookings,
+            "calendar_status": "scheduled",
+            "calendar_message": None,
+        }
+    )
+
+
+def describe_activation(context: ToolContext, arguments: ActivatePlanArguments) -> str:
+    """Describe the exact effect of approving plan activation."""
+    if arguments.calendar_status == "scheduled":
+        detail = describe_bookings(
+            context,
+            BookingArguments(bookings=arguments.bookings, plan_id=arguments.plan_id),
+        )
+        return f"Calendar booking: {detail}"
+    if arguments.calendar_status == "no_slots":
+        return (
+            "No calendar events will be added. "
+            f"{arguments.calendar_message or 'No free slots are available.'}"
+        )
+    if arguments.calendar_status == "unavailable":
+        return (
+            "Calendar availability could not be checked, so no events will be added. "
+            f"{arguments.calendar_message or 'The calendar is unavailable.'}"
+        )
+    return "No calendar events will be added because no calendar is connected."
 
 
 class LocationArguments(Model):
@@ -324,7 +503,11 @@ IMPLEMENTATIONS: dict[str, ToolImplementation] = {
         (planning.GenerateWorkoutPlanResult,),
     ),
     "activate_plan": ToolImplementation(
-        ActivatePlanArguments, planning.activate_plan, (planning.ActivatePlanResult,)
+        ActivatePlanArguments,
+        planning.activate_plan,
+        (planning.ActivatePlanResult,),
+        prepare=prepare_activation,
+        describe=describe_activation,
     ),
     "save_recommendation": ToolImplementation(
         RecommendationArguments,
@@ -361,7 +544,11 @@ IMPLEMENTATIONS: dict[str, ToolImplementation] = {
         describe=describe_schedule,
     ),
     "add_workouts_to_calendar": ToolImplementation(
-        BookingArguments, calendar.add_workouts_to_calendar, (calendar.BookingResult,)
+        BookingArguments,
+        calendar.add_workouts_to_calendar,
+        (calendar.BookingResult,),
+        prepare=prepare_bookings,
+        describe=describe_bookings,
     ),
     "get_location": ToolImplementation(
         LocationArguments, places.get_location, (places.LocationResult,)
