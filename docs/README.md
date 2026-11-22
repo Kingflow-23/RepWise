@@ -2,6 +2,9 @@
 
 Each topic has one home. Start with the question you have:
 
+For the verified development state and next-agent context, read the
+[handoff of 21 November 2026](HANDOFF_2026-11-21.md).
+
 | I want to... | Read |
 |---|---|
 | Install and run RepWise, or look up a setting | [Setup and configuration](setup.md) |

@@ -1117,6 +1117,9 @@ with st.sidebar:
             f"Strategy: {health.get('retriever', 'unknown')} · "
             f"Model: {health.get('model', 'unknown')}"
         )
+        if health.get("status") == "degraded":
+            # The API answers, but a service it depends on is not available.
+            st.warning("\n\n".join(health.get("problems") or ["A service is unavailable."]))
     elif st.session_state.get("health_error"):
         st.error(st.session_state.health_error)
     st.divider()

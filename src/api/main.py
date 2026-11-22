@@ -72,6 +72,7 @@ from ..tools.calendar import CalendarProvider
 from ..tools.context import Location, ToolContext
 from ..tools.planning import generate_workout_plan
 from .agent_routes import build_agent_router
+from .diagnostics import health_report, list_ollama_models
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,7 @@ def create_app(
     agent_llm: object | None = None,
     places_client: PhotonClient | None = None,
     calendar_loader: Callable[[str], CalendarProvider | None] | None = None,
+    ollama_models: Callable[[], list[str]] | None = None,
 ) -> FastAPI:
     """Build the API, persistence layer, retriever, generator, and routes.
 
@@ -112,6 +114,8 @@ def create_app(
         places_client: Map service for location tools; defaults to Photon.
         calendar_loader: Returns an account's connected calendar, or ``None``;
             defaults to the saved Google Calendar token.
+        ollama_models: Lists the models installed in Ollama for ``/health``;
+            defaults to a short ``GET /api/tags`` that never runs a model.
 
     Returns:
         A configured FastAPI application. If default retriever initialization
@@ -189,6 +193,12 @@ def create_app(
         def calendar_loader(student_id: str) -> CalendarProvider | None:
             """Return the account's Google Calendar when it is connected."""
             return load_google_calendar(config, student_id)
+
+    if ollama_models is None:
+
+        def ollama_models() -> list[str]:
+            """List installed Ollama models with a short timeout."""
+            return list_ollama_models(config.ollama_url)
 
     agent_models: list[object] = [agent_llm] if agent_llm is not None else []
 
@@ -438,32 +448,31 @@ def create_app(
 
     @app.get("/api/v1/health")
     def health() -> dict[str, object]:
-        """Report database, retrieval, and model configuration without generation.
+        """Report configuration and real availability, without any generation.
+
+        The retrieval state comes from the retriever's actual initialization
+        (looking through the query-expansion wrapper). Ollama is asked only for
+        its list of installed models, with a short timeout.
 
         Returns:
-            A status mapping describing the configured retrieval strategy and
-            model, including the setup error when retrieval is unavailable.
+            A status mapping: ``status`` is ``ok`` or ``degraded``, with
+            ``configuration`` (what the settings ask for), ``ollama`` and
+            ``models`` (what is really available), and ``problems``.
         """
-        result = {
-            "status": "ok",
-            "database": "ready",
-            "retrieval": (
-                "ready"
-                if not isinstance(retriever, MissingRetriever)
-                else "not connected"
-            ),
-            "retrieval_error": (
-                retriever.message if isinstance(retriever, MissingRetriever) else None
-            ),
-            "retriever": config.retrieval_strategy,
-            "model": config.ollama_model,
-        }
-        logger.info(
-            "Health checked database=%s retrieval=%s strategy=%s model=%s",
-            result["database"],
+        result = health_report(config, retriever, ollama_models)
+        log = logger.info if result["status"] == "ok" else logger.warning
+        log(
+            "Health checked status=%s retrieval=%s strategy=%s ollama=%s "
+            "missing_models=%s",
+            result["status"],
             result["retrieval"],
             result["retriever"],
-            result["model"],
+            result["ollama"]["status"],
+            [
+                details["name"]
+                for details in result["models"].values()
+                if details["installed"] is False
+            ],
         )
         return result
 
