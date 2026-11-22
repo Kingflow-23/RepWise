@@ -1,0 +1,31 @@
+.assistant-panel { margin-top: 32px; padding: 30px; border: 1px solid #d69b6b30; border-radius: 16px; background: linear-gradient(125deg, #23261f, #1b1d17); scroll-margin-top: 24px; }
+.assistant-log { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 14px; }
+.assistant-log:empty { display: none; }
+.assistant-turn { padding: 14px 16px; border-radius: 10px; font-size: 13px; line-height: 1.7; color: #e6e6da; overflow-wrap: anywhere; }
+.assistant-turn p + p { margin-top: 10px; }
+.assistant-turn.student { background: #ffffff0a; justify-self: end; max-width: min(100%, 560px); }
+.assistant-turn.repwise { background: #11140f80; border: 1px solid #b9c3aa1c; }
+.assistant-turn.notice { color: #d3c4a5; font-size: 12px; border: 1px dashed #d3c4a540; }
+.assistant-author { display: block; margin-bottom: 6px; color: #9aa58a; font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; }
+.assistant-steps { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.assistant-step { padding: 3px 10px; border-radius: 999px; font-size: 11px; border: 1px solid #b9c3aa30; color: #b3bea0; }
+.assistant-step.ok { border-color: #8fbf7a55; color: #b9dca6; }
+.assistant-step.failed { border-color: #e39a7a66; color: #f0b9a0; }
+.assistant-pending { margin-top: 14px; padding: 12px 14px; border-radius: 8px; border: 1px solid #e9b28d44; background: #e9b28d0d; }
+.assistant-pending strong { color: #e9b28d; font-size: 12px; font-weight: 500; }
+.assistant-pending p { color: #b3a690; font-size: 11px; margin-top: 4px; }
+.assistant-pending ul { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
+#assistant-form { margin-top: 22px; }
+#assistant-form textarea { width: 100%; padding: 13px; border: 1px solid #b9c3aa26; border-radius: 8px; color: #eeeee4; background: #11140f60; font: inherit; font-size: 13px; line-height: 1.7; resize: vertical; }
+#assistant-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#assistant-form textarea::placeholder { color: #7e8872; }
+#assistant-form textarea:disabled { opacity: .6; }
+.assistant-actions { display: flex; justify-content: flex-end; align-items: center; gap: 18px; margin-top: 18px; }
+.assistant-actions .text-button { font-size: 12px; color: #e9b28d; padding: 6px 0; }
+.assistant-actions .primary-button { width: min(100%, 220px); flex-shrink: 0; }
+@media(max-width:760px) {
+  .assistant-panel { padding: 24px 20px; margin-top: 24px; }
+  #assistant-form textarea { font-size: 16px; }
+  .assistant-actions { flex-direction: column-reverse; align-items: stretch; gap: 10px; }
+  .assistant-actions .primary-button { width: 100%; }
+}

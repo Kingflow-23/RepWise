@@ -103,6 +103,20 @@
             <div class="generation-submit"><p>One week of workouts, saved to your account.</p><button class="primary-button" id="generate-plan" type="submit" disabled><span>Generate my plan</span><span data-icon="arrow-right"></span></button></div>
           </form>
         </section>
+        <section class="assistant-panel" id="assistant-panel" aria-labelledby="assistant-title" hidden>
+          <div class="generation-heading"><div><p class="eyebrow">ASK REPWISE</p><h2 id="assistant-title">Your training assistant.</h2><p>Ask about your plan, your week or a nearby gym. RepWise asks before changing anything you follow.</p></div><span data-icon="chat" aria-hidden="true"></span></div>
+          <ol class="assistant-log" id="assistant-log" aria-live="polite" aria-label="Conversation"></ol>
+          <form id="assistant-form" method="post" action="/api/v1/students/me/agent/requests">
+            <div class="auth-field"><label for="assistant-message">Your message</label><textarea id="assistant-message" name="message" maxlength="1000" rows="3" required placeholder="I missed Monday’s workout. Can you reorganise the rest of my week?" aria-describedby="assistant-message-hint"></textarea><span class="field-hint" id="assistant-message-hint">Up to 1000 characters. Answers can take one to two minutes.</span></div>
+            <p class="auth-error" id="assistant-error" role="alert" tabindex="-1" hidden></p>
+            <p class="generation-status" id="assistant-status" role="status" hidden></p>
+            <div class="assistant-actions">
+              <button class="text-button" id="assistant-new" type="button" hidden>New conversation</button>
+              <button class="text-button" id="assistant-stop" type="button" hidden>Stop waiting</button>
+              <button class="primary-button" id="assistant-send" type="submit"><span>Send</span><span data-icon="arrow-right"></span></button>
+            </div>
+          </form>
+        </section>
         <section class="draft-plans" id="draft-plans" aria-labelledby="draft-plans-title" hidden>
           <p class="eyebrow">PROPOSALS TO REVIEW</p><h2 id="draft-plans-title">Recent draft plans</h2>
           <p id="draft-plan-status" role="status"></p><div id="draft-plan-list"></div>

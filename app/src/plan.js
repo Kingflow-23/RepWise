@@ -183,6 +183,8 @@ export function initializePlan() {
     if (session) load();
   });
   return {
+    /** Reload the active program and drafts, for example after an assistant answer. */
+    refresh() { return load(); },
     showSavedPlan(record) {
       if (!account) return;
       const validated = activePlan(record);
