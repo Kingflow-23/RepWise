@@ -192,6 +192,7 @@ class StudentRepository:
                     workout_index INTEGER NOT NULL CHECK(workout_index >= 0),
                     start_at TEXT NOT NULL,
                     end_at TEXT NOT NULL,
+                    event_url TEXT,
                     created_at TEXT NOT NULL,
                     UNIQUE(plan_id, week_number, workout_index),
                     FOREIGN KEY(plan_id, student_id)
@@ -240,6 +241,7 @@ class StudentRepository:
             self._add_missing_column(
                 connection, "workout_feedback", "health_concern", "INTEGER"
             )
+            self._add_missing_column(connection, "calendar_events", "event_url", "TEXT")
         logger.info("SQLite repository initialized")
 
     @staticmethod
@@ -1251,6 +1253,7 @@ class StudentRepository:
         event_id: str,
         start_at: str,
         end_at: str,
+        event_url: str | None = None,
     ) -> None:
         """Link a workout to its calendar event; a workout has at most one."""
         with self._connect() as connection:
@@ -1258,8 +1261,8 @@ class StudentRepository:
                 """
                 INSERT INTO calendar_events (
                     event_id, student_id, plan_id, week_number, workout_index,
-                    start_at, end_at, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    start_at, end_at, event_url, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event_id,
@@ -1269,6 +1272,7 @@ class StudentRepository:
                     workout_index,
                     start_at,
                     end_at,
+                    event_url,
                     now(),
                 ),
             )
@@ -1280,14 +1284,21 @@ class StudentRepository:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT event_id, week_number, workout_index, start_at, end_at
+                SELECT event_id, week_number, workout_index, start_at, end_at, event_url
                 FROM calendar_events
                 WHERE student_id=? AND plan_id=?
                 ORDER BY start_at
                 """,
                 (student_id, plan_id),
             ).fetchall()
-        keys = ("event_id", "week_number", "workout_index", "start_at", "end_at")
+        keys = (
+            "event_id",
+            "week_number",
+            "workout_index",
+            "start_at",
+            "end_at",
+            "event_url",
+        )
         return [dict(zip(keys, row, strict=True)) for row in rows]
 
     def delete_plan(self, student_id: str, plan_id: str) -> bool:

@@ -7,8 +7,10 @@ import httpx
 import pytest
 
 from src.integrations.google_calendar import GoogleCalendar
+from src.schemas.models import PlanRequest, PlanResult, Source, TrainingPlan
 from src.tools import calendar as cal
 from src.tools import training
+from src.tools.profile import TimetableResult, get_timetable
 from tests.conftest import NEXT_MONDAY, NOW, PARIS, make_context
 
 
@@ -158,20 +160,14 @@ def test_two_workouts_are_never_offered_the_same_time(demo):
     assert len(firsts) == len(set(firsts))
 
 
-def test_a_full_day_moves_to_a_spare_available_day(demo):
-    profile = demo.repository.get_profile(demo.student_id)
-    demo.repository.save_profile(
-        demo.student_id,
-        profile.model_copy(
-            update={"available_days": [*profile.available_days, "Saturday"]}
-        ),
-    )
+def test_a_full_day_does_not_move_a_workout_without_approval(demo):
     context = with_calendar(demo, cal.FakeCalendar([busy_on(NEXT_MONDAY, 0, 23)]))
 
     workout = cal.propose_training_slots(context).workouts[0]
 
-    assert workout.moved_to_another_day
-    assert {slot.day for slot in workout.options} == {"Saturday"}
+    assert workout.options == []
+    assert not workout.moved_to_another_day
+    assert "planned day" in workout.note
 
 
 def test_no_free_time_is_said_plainly(demo):
@@ -210,6 +206,70 @@ def test_booking_creates_one_event_and_a_retry_does_not_duplicate(demo):
     )
     assert len(calendar.events) == 1
     assert "Goblet squat" in next(iter(calendar.events.values()))["description"]
+
+
+def test_booking_result_has_structured_times_and_links_without_source_excerpts(demo):
+    record = demo.repository.get_plan(demo.student_id, demo.plan_id)
+    plan = TrainingPlan.model_validate(record["plan"])
+    weeks = list(plan.weeks)
+    workouts = list(weeks[0].workouts)
+    exercises = list(workouts[0].exercises)
+    exercises[0] = exercises[0].model_copy(update={"source_ids": ["source-1"]})
+    workouts[0] = workouts[0].model_copy(update={"exercises": exercises})
+    weeks[0] = weeks[0].model_copy(update={"workouts": workouts})
+    plan = plan.model_copy(update={"weeks": weeks})
+    plan_id = demo.repository.save_plan(
+        demo.student_id,
+        PlanRequest.model_validate(record["request"]),
+        PlanResult(
+            status="completed",
+            message="Plan with a source.",
+            plan=plan,
+            sources=[
+                Source(
+                    source_id="source-1",
+                    title="Squat guide",
+                    url="https://example.test/squats",
+                    excerpt="A source excerpt that must not be copied to the event.",
+                )
+            ],
+        ),
+    )
+
+    class LinkedCalendar(cal.FakeCalendar):
+        def create_event(self, key, title, description, _start, _end):
+            event = super().create_event(key, title, description, _start, _end)
+            return event.model_copy(
+                update={"event_url": "https://calendar.test/events/abc"}
+            )
+
+    context = with_calendar(demo, LinkedCalendar())
+
+    result = cal.add_workouts_to_calendar(
+        context, [booking()], plan_id=plan_id
+    ).model_dump(mode="json")
+    saved = demo.repository.list_calendar_events(demo.student_id, plan_id)
+    timetable = get_timetable(context)
+
+    assert result["timezone"] == "Europe/Paris"
+    outcome = result["outcomes"][0]
+    assert outcome["event_url"] == "https://calendar.test/events/abc"
+    assert outcome["start"].endswith("+01:00")
+    assert outcome["end"].endswith("+01:00")
+    assert outcome["workout"]["exercises"][0]["sources"] == [
+        {
+            "source_id": "source-1",
+            "title": "Squat guide",
+            "url": "https://example.test/squats",
+        }
+    ]
+    assert saved[0]["event_url"] == "https://calendar.test/events/abc"
+    assert isinstance(timetable, TimetableResult)
+    scheduled = next(
+        item for item in timetable.planned_workouts if item.plan_id == plan_id
+    )
+    assert scheduled.booking is not None
+    assert scheduled.booking.event_url == "https://calendar.test/events/abc"
 
 
 def test_a_conflict_blocks_only_that_booking(demo):
@@ -368,13 +428,21 @@ def test_google_event_uses_the_stable_key_and_a_duplicate_counts_as_created():
 
     def handler(request):
         seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"id": seen["body"]["id"]})
+        return httpx.Response(
+            200,
+            json={
+                "id": seen["body"]["id"],
+                "htmlLink": "https://calendar.google.com/event/abc",
+            },
+        )
 
-    assert google(handler).create_event("abc123", "t", "d", START, END) == "abc123"
+    created = google(handler).create_event("abc123", "t", "d", START, END)
+    assert created.event_id == "abc123"
+    assert created.event_url == "https://calendar.google.com/event/abc"
     assert seen["body"]["start"]["dateTime"] == START.isoformat()
     assert (
-        google(lambda _request: httpx.Response(409)).create_event(
-            "abc123", "t", "d", START, END
-        )
+        google(lambda _request: httpx.Response(409))
+        .create_event("abc123", "t", "d", START, END)
+        .event_id
         == "abc123"
     )

@@ -82,7 +82,9 @@ def make_config(tmp_path, **overrides) -> AppConfig:
 def get_health(config, *, retriever=None, installed=None, listing=None) -> dict:
     """Create the app and return the JSON of ``GET /api/v1/health``."""
     if listing is None:
-        models = list(installed if installed is not None else (GENERATION_MODEL, SMALL_MODEL))
+        models = list(
+            installed if installed is not None else (GENERATION_MODEL, SMALL_MODEL)
+        )
 
         def listing():
             return models
@@ -180,7 +182,12 @@ def test_retrieval_setup_error_looks_through_wrappers():
     wrapped = QueryExpansionRetriever(missing, InScopeAnalyzer())
 
     assert retrieval_setup_error(wrapped) == "No index."
-    assert retrieval_setup_error(QueryExpansionRetriever(WorkingRetriever(), InScopeAnalyzer())) is None
+    assert (
+        retrieval_setup_error(
+            QueryExpansionRetriever(WorkingRetriever(), InScopeAnalyzer())
+        )
+        is None
+    )
 
 
 def test_missing_index_marks_retrieval_not_connected(tmp_path):
@@ -225,7 +232,9 @@ def test_unreachable_ollama_is_reported_without_guessing_models(tmp_path):
     def listing():
         raise OllamaUnavailable("Ollama refused or dropped the connection.")
 
-    health = get_health(make_config(tmp_path), retriever=WorkingRetriever(), listing=listing)
+    health = get_health(
+        make_config(tmp_path), retriever=WorkingRetriever(), listing=listing
+    )
 
     assert health["status"] == "degraded"
     assert health["retrieval"] == "ready"
@@ -245,7 +254,10 @@ def test_missing_model_is_reported_and_not_replaced(tmp_path):
 
     assert health["status"] == "degraded"
     assert health["ollama"]["status"] == "reachable"
-    assert health["models"]["generation"] == {"name": GENERATION_MODEL, "installed": False}
+    assert health["models"]["generation"] == {
+        "name": GENERATION_MODEL,
+        "installed": False,
+    }
     assert health["models"]["agents"] == {"name": GENERATION_MODEL, "installed": False}
     assert health["models"]["query_analysis"]["installed"] is True
     # One problem for the model, naming both roles that use it.

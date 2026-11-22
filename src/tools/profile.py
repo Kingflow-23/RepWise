@@ -61,6 +61,7 @@ class CalendarBooking(Model):
     event_id: str
     start: str
     end: str
+    event_url: str | None = None
 
 
 class PlannedWorkout(Workout):
@@ -159,7 +160,10 @@ def planned_workouts(context: ToolContext, record: dict) -> list[PlannedWorkout]
     }
     bookings = {
         (item["week_number"], item["workout_index"]): CalendarBooking(
-            event_id=item["event_id"], start=item["start_at"], end=item["end_at"]
+            event_id=item["event_id"],
+            start=item["start_at"],
+            end=item["end_at"],
+            event_url=item.get("event_url"),
         )
         for item in context.repository.list_calendar_events(context.student_id, plan_id)
     }

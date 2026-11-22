@@ -53,7 +53,14 @@ def test_a_specialist_is_only_offered_and_allowed_its_own_tools(demo):
 
 
 def test_a_write_needing_approval_comes_back_pending(demo):
-    move = {"week_number": 1, "workout_index": 0, "new_day": "Friday"}
+    profile = demo.repository.get_profile(demo.student_id)
+    demo.repository.save_profile(
+        demo.student_id,
+        profile.model_copy(
+            update={"available_days": [*profile.available_days, "Saturday"]}
+        ),
+    )
+    move = {"week_number": 1, "workout_index": 0, "new_day": "Saturday"}
     model = ScriptedModel(
         [
             tool_call("organize_schedule", moves=[move]),

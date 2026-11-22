@@ -250,6 +250,21 @@
             "default": null,
             "title": "Workouts Per Week"
           },
+          "max_session_minutes": {
+            "anyOf": [
+              {
+                "maximum": 180,
+                "minimum": 15,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional per-workout duration cap. The saved profile's session limit still applies when it is lower.",
+            "title": "Max Session Minutes"
+          },
           "extra_constraints": {
             "items": {
               "type": "string"
@@ -285,26 +300,92 @@
     },
     {
       "name": "activate_plan",
-      "description": "Make a draft plan the student's active plan. The previous active plan is archived, not deleted.",
+      "description": "Make a draft plan the student's active plan. Before approval, code prepares exact free times on each planned workout day and lists them in the approval. The same approval archives the previous plan and books those events; if any workout has no slot, it explains why and books none. Never changes workout days.",
       "agents": [
         "planning"
       ],
       "access": "write",
       "approval": "always",
-      "approval_reason": "This replaces your current training plan with the new one.",
+      "approval_reason": "The new plan was saved as a draft. Approve to activate it and archive your current plan.",
       "failure_codes": [
         "plan_not_found",
+        "student_not_found",
+        "invalid_request",
         "storage_error"
       ],
       "input_schema": {
+        "$defs": {
+          "Booking": {
+            "additionalProperties": false,
+            "description": "One exact workout start time pinned into an approval action.",
+            "properties": {
+              "week_number": {
+                "minimum": 1,
+                "title": "Week Number",
+                "type": "integer"
+              },
+              "workout_index": {
+                "minimum": 0,
+                "title": "Workout Index",
+                "type": "integer"
+              },
+              "start": {
+                "format": "date-time",
+                "title": "Start",
+                "type": "string"
+              }
+            },
+            "required": [
+              "week_number",
+              "workout_index",
+              "start"
+            ],
+            "title": "Booking",
+            "type": "object"
+          }
+        },
         "additionalProperties": false,
-        "description": "The draft plan to activate.",
+        "description": "The draft plan to activate and its prepared calendar booking.",
         "properties": {
           "plan_id": {
             "description": "The draft plan's plan_id.",
             "minLength": 1,
             "title": "Plan Id",
             "type": "string"
+          },
+          "bookings": {
+            "description": "Internal: leave empty; code selects exact times before approval.",
+            "items": {
+              "$ref": "#/$defs/Booking"
+            },
+            "maxItems": 21,
+            "title": "Bookings",
+            "type": "array"
+          },
+          "calendar_status": {
+            "default": "not_connected",
+            "description": "Internal: code sets the calendar outcome before approval.",
+            "enum": [
+              "scheduled",
+              "no_slots",
+              "not_connected",
+              "unavailable"
+            ],
+            "title": "Calendar Status",
+            "type": "string"
+          },
+          "calendar_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Internal: code sets any calendar limitation before approval.",
+            "title": "Calendar Message"
           }
         },
         "required": [
@@ -715,7 +796,7 @@
     },
     {
       "name": "propose_training_slots",
-      "description": "Find free daytime times in the connected calendar for the current plan's workouts that are not booked or logged yet. Times are restricted to 06:00–22:00 in the student's time zone, leaving an eight-hour overnight window for sleep. When available, options favor 09:00–19:00 and are ordered around 10:00, 14:00, then 17:00. Books nothing.",
+      "description": "Find free daytime times in the connected calendar for unbooked, unlogged workouts on their planned days only. Never moves a workout. Times are restricted to 06:00–22:00 in the student's time zone, leaving an eight-hour overnight window for sleep. When available, options favor 09:00–19:00 and are ordered around 10:00, 14:00, then 17:00. Books nothing.",
       "agents": [
         "schedule"
       ],
@@ -826,7 +907,7 @@
           }
         },
         "additionalProperties": false,
-        "description": "Workouts to move to other days: explicit moves, or a catch-up week.",
+        "description": "Workouts to move to other available days: explicit moves or a catch-up week.",
         "properties": {
           "moves": {
             "description": "Explicit moves. Leave empty when catch_up_week is given.",
@@ -889,7 +970,7 @@
     },
     {
       "name": "add_workouts_to_calendar",
-      "description": "Add workouts to the student's connected calendar at the exact start times that propose_training_slots offered. Each booking is rechecked for conflicts first.",
+      "description": "Add workouts to the student's connected calendar. When no exact bookings are supplied, code chooses one preferred daytime slot per unbooked workout sequentially, avoiding overlap, and includes the complete schedule in one approval request. If any workout has no free slot on its planned day, no booking is proposed. Each booking is rechecked for conflicts before it is added.",
       "agents": [
         "schedule"
       ],
@@ -901,6 +982,9 @@
       ],
       "failure_codes": [
         "calendar_not_connected",
+        "calendar_unavailable",
+        "no_free_slots",
+        "no_workouts_to_book",
         "plan_not_found",
         "invalid_request",
         "storage_error"
@@ -909,7 +993,7 @@
         "$defs": {
           "Booking": {
             "additionalProperties": false,
-            "description": "Book one workout at a time the student approved.",
+            "description": "One exact workout start time pinned into an approval action.",
             "properties": {
               "week_number": {
                 "minimum": 1,
@@ -937,14 +1021,14 @@
           }
         },
         "additionalProperties": false,
-        "description": "Approved times to add to the calendar.",
+        "description": "Workouts and times to add, or empty bookings to choose times automatically.",
         "properties": {
           "bookings": {
+            "description": "Exact choices from the student, or leave empty so code chooses one preferred free daytime slot per unbooked workout.",
             "items": {
               "$ref": "#/$defs/Booking"
             },
             "maxItems": 21,
-            "minItems": 1,
             "title": "Bookings",
             "type": "array"
           },
@@ -962,9 +1046,6 @@
             "title": "Plan Id"
           }
         },
-        "required": [
-          "bookings"
-        ],
         "title": "BookingArguments",
         "type": "object"
       },

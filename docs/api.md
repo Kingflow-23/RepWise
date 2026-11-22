@@ -66,10 +66,15 @@ filter is applied before the limit; an invalid status returns 422. Omitting
 
 Draft previews do not activate a program. The existing approval workflow calls
 `activate_plan`, which activates the approved draft and archives the previous
-active plan in one transaction. After approval, reload the current-program and
-draft endpoints. The web frontend keeps drafts separate and labels previews
-as not active. Approval controls remain available through the existing agent
-API and Streamlit UI.
+active plan in one transaction. When Google Calendar is connected, the same
+approved action also adds the active plan's workouts to the calendar using free
+daytime slots on each workout's planned day. No workout day is changed
+automatically. The approval lists and pins every selected date and time. If
+any workout has no free slot, the plan is activated but no events are added;
+the approval result reports `calendar_status: "no_slots"`.
+After approval, reload the current-program and draft endpoints. The web
+frontend keeps drafts separate and labels previews as not active. Approval
+controls remain available through the existing agent API and Streamlit UI.
 
 ### Logging feedback
 
@@ -154,7 +159,7 @@ erDiagram
 | `workout_feedback` | One row per plan, week, and workout: completion, difficulty, comment, `health_concern` (the health check's decision on the comment), time, and which workout it adapted. |
 | `workout_performance` | One row per plan, week, workout, and exercise: sets, reps, and weight. Written by the Performance Agent. |
 | `recommendations` | Ideas kept for later review, with their reason and sources. Written by the Planning and Performance agents. |
-| `calendar_events` | One row per plan, week, and workout: the calendar event's ID and times (the internal record of what RepWise booked). |
+| `calendar_events` | One row per plan, week, and workout: the calendar event's ID, URL, and times (the internal record of what RepWise booked). |
 | `memory_facts` | Preferences and facts the student asked the agent to remember (semantic memory). |
 | `memory_episodes` | A short record of each request that used a specialist: what was asked, and what completed, waits for approval, or didn't finish. Kept 90 days (`REPWISE_EPISODE_RETENTION_DAYS`). |
 | `pending_actions` | Consequential actions proposed by an agent or MCP client: tool, exact arguments and their hash, reason, proposer, status, result, expiry. |
@@ -170,9 +175,9 @@ erDiagram
 
 The database is created automatically. Tables and columns added since the first
 release (`pending_actions`, `saved_locations`, plan `status`, feedback
-`health_concern`) are added to an existing database at startup; existing plans
-become `active`. If startup reports an unsupported schema, back up the file and
-point `REPWISE_DATABASE_PATH` at a new one.
+`health_concern`, calendar-event `event_url`) are added to an existing database
+at startup; existing plans become `active`. If startup reports an unsupported
+schema, back up the file and point `REPWISE_DATABASE_PATH` at a new one.
 
 ## Security limits
 

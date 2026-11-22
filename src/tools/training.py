@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import Field, ValidationError
@@ -169,6 +170,15 @@ class ScheduleResult(Model):
         default_factory=list,
         description="Calendar event IDs of moved workouts. They were not changed.",
     )
+
+
+@dataclass(frozen=True)
+class PreparedSchedule:
+    """A validated schedule change, before it is persisted."""
+
+    record: dict
+    plan: TrainingPlan
+    moves: list[WorkoutMove]
 
 
 class RecommendationResult(Model):
@@ -606,35 +616,10 @@ def describe_moves(
     return " ".join(lines)
 
 
-@report_storage_errors
-def organize_schedule(
-    context: ToolContext,
-    moves: list[WorkoutMove] | None = None,
-    plan_id: str | None = None,
-    catch_up_week: int | None = None,
-    from_day: str | None = None,
-) -> ScheduleResult | ToolFailure:
-    """Move workouts to other available days. All the moves apply, or none do.
-
-    Args:
-        context: Trusted tool context.
-        moves: Workouts to move. Two moves in one call can swap two days.
-        plan_id: The plan, or ``None`` for the current plan.
-        catch_up_week: Instead of ``moves``: a week with missed workouts;
-            :func:`catch_up_moves` decides the moves.
-        from_day: With ``catch_up_week``: the first day that may be used.
-
-    Returns:
-        The new schedule, plus the IDs of calendar events that now show an old
-        time, or a failure (``day_not_available``, ``day_conflict``,
-        ``invalid_schedule``, ``workout_not_found``, ``plan_not_found``, or a
-        :func:`catch_up_moves` failure).
-    """
-    if catch_up_week is not None:
-        computed = catch_up_moves(context, catch_up_week, from_day, plan_id)
-        if isinstance(computed, ToolFailure):
-            return computed
-        moves = computed
+def prepare_schedule_change(
+    context: ToolContext, moves: list[WorkoutMove], plan_id: str | None = None
+) -> PreparedSchedule | ToolFailure:
+    """Validate a complete schedule change without persisting it."""
     record = resolve_plan(context, plan_id)
     if isinstance(record, ToolFailure):
         return record
@@ -665,7 +650,7 @@ def organize_schedule(
             workout.model_copy(update={"day": new_day}),
         )
 
-    # Checked after all the moves, so that two workouts can swap days.
+    # Check after applying every move so a valid two-workout swap can pass.
     for week in plan.weeks:
         days = [workout.day for workout in week.workouts]
         if len(days) != len(set(days)):
@@ -675,8 +660,6 @@ def organize_schedule(
                 f"{', '.join(days)}. Move the other workout too.",
             )
     source_ids = {source["source_id"] for source in record["sources"]}
-    # Validate against today's profile, not the snapshot saved with the plan:
-    # a day the student made available since then is a valid destination.
     request = PlanRequest.model_validate(record["request"]).model_copy(
         update={"profile": profile}
     )
@@ -684,6 +667,42 @@ def organize_schedule(
         validate_plan(plan, request, source_ids, require_citations=bool(source_ids))
     except ValueError as error:
         return failure("invalid_schedule", str(error))
+    return PreparedSchedule(record=record, plan=plan, moves=parsed_moves)
+
+
+@report_storage_errors
+def organize_schedule(
+    context: ToolContext,
+    moves: list[WorkoutMove] | None = None,
+    plan_id: str | None = None,
+    catch_up_week: int | None = None,
+    from_day: str | None = None,
+) -> ScheduleResult | ToolFailure:
+    """Move workouts to other available days. All the moves apply, or none do.
+
+    Args:
+        context: Trusted tool context.
+        moves: Workouts to move. Two moves in one call can swap two days.
+        plan_id: The plan, or ``None`` for the current plan.
+        catch_up_week: Instead of ``moves``: a week with missed workouts;
+            :func:`catch_up_moves` decides the moves.
+        from_day: With ``catch_up_week``: the first day that may be used.
+
+    Returns:
+        The new schedule, plus the IDs of calendar events that now show an old
+        time, or a failure (``day_not_available``, ``day_conflict``,
+        ``invalid_schedule``, ``workout_not_found``, ``plan_not_found``, or a
+        :func:`catch_up_moves` failure).
+    """
+    if catch_up_week is not None:
+        computed = catch_up_moves(context, catch_up_week, from_day, plan_id)
+        if isinstance(computed, ToolFailure):
+            return computed
+        moves = computed
+    prepared = prepare_schedule_change(context, moves or [], plan_id)
+    if isinstance(prepared, ToolFailure):
+        return prepared
+    record, plan, parsed_moves = prepared.record, prepared.plan, prepared.moves
 
     context.repository.update_plan(context.student_id, record["id"], plan)
     moved = {(move.week_number, move.workout_index) for move in parsed_moves}

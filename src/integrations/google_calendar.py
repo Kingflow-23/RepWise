@@ -20,7 +20,7 @@ from pathlib import Path
 import httpx
 
 from config.config import REPOSITORY_ROOT, AppConfig
-from src.tools.calendar import BusyPeriod, CalendarError
+from src.tools.calendar import BusyPeriod, CalendarError, CreatedCalendarEvent
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ class GoogleCalendar:
 
     def create_event(
         self, key: str, title: str, description: str, start: datetime, end: datetime
-    ) -> str:
+    ) -> CreatedCalendarEvent:
         """Create an event with a fixed ID, so a retry cannot duplicate it.
 
         Args:
@@ -138,7 +138,7 @@ class GoogleCalendar:
             end: Event end.
 
         Returns:
-            The event ID.
+            The event ID and Google's event URL, when returned.
 
         Raises:
             CalendarError: If Google refuses the event.
@@ -155,10 +155,13 @@ class GoogleCalendar:
         )
         if response.status_code == 409:
             logger.info("Calendar event already exists")
-            return key
+            return CreatedCalendarEvent(event_id=key)
         if response.status_code not in (200, 201):
             raise CalendarError(f"Google Calendar returned {response.status_code}.")
-        return response.json()["id"]
+        event = response.json()
+        return CreatedCalendarEvent(
+            event_id=event["id"], event_url=event.get("htmlLink")
+        )
 
 
 def load_google_calendar(config: AppConfig, student_id: str) -> GoogleCalendar | None:

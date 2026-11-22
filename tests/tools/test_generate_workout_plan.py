@@ -121,6 +121,30 @@ def test_leg_program_returns_json_and_saves_profile_request_and_sources(account)
     generator.generate.assert_called_once()
 
 
+def test_requested_session_duration_is_capped_and_plan_remains_one_week(account):
+    repository, user_id = account
+    pipeline, _, _ = make_pipeline()
+    original_create_plan = pipeline.create_plan
+    pipeline.create_plan = Mock(wraps=original_create_plan)
+
+    result = generate_workout_plan(
+        PlanOptions(
+            focus="Build leg muscles",
+            workouts_per_week=1,
+            max_session_minutes=30,
+        ),
+        student_id=user_id,
+        repository=repository,
+        pipeline=pipeline,
+    )
+
+    request = pipeline.create_plan.call_args.args[0]
+    assert request.weeks == 1
+    assert request.profile.session_minutes == 30
+    assert result.status == "completed"
+    assert result.plan.weeks[0].workouts[0].estimated_minutes <= 30
+
+
 def test_refinement_receives_previous_saved_plan(account):
     repository, user_id = account
     pipeline, _, generator = make_pipeline()

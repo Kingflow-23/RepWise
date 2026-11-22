@@ -92,7 +92,9 @@ def list_ollama_models(
         if isinstance(reason, TimeoutError):
             message = f"Ollama did not answer within {timeout_seconds:g} s."
         else:
-            message = "Ollama refused or dropped the connection. Is `ollama serve` running?"
+            message = (
+                "Ollama refused or dropped the connection. Is `ollama serve` running?"
+            )
         raise OllamaUnavailable(message) from error
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise OllamaUnavailable("Ollama returned an unreadable model list.") from error
