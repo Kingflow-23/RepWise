@@ -42,6 +42,7 @@ export function generationFailureMessage(outcome, serverMessage = '') {
 
 export async function request(path, { method = 'GET', body, token, signal, timeout = 15000 } = {}) {
   const generation = method === 'POST' && /^\/students\/[^/]+\/plans$/.test(path);
+  const agent = method === 'POST' && /^\/students\/[^/]+\/agent\/requests$/.test(path);
   let response;
   try {
     response = await fetch(`/api/v1${path}`, {
@@ -55,6 +56,7 @@ export async function request(path, { method = 'GET', body, token, signal, timeo
   } catch (error) {
     if (error.name === 'AbortError') throw error;
     if (generation) throw new ApiError('The connection was interrupted or timed out. Your plan may still be saved. Refresh your saved plan before trying again.');
+    if (agent) throw new ApiError('The connection was interrupted or timed out. RepWise may still finish this request on the server. Refresh your programs before asking again.');
     throw new ApiError('We couldn’t reach RepWise. Please try again in a moment.');
   }
   let payload;
@@ -68,6 +70,12 @@ export async function request(path, { method = 'GET', body, token, signal, timeo
           : generationFailureMessage(outcome, payload?.detail?.message) || (response.status === 422 ? 'Check your request and make sure the workout count fits your available days.'
             : 'Plan generation is unavailable right now. Please try again in a moment.');
       throw new ApiError(message, response.status, outcome);
+    }
+    if (agent) {
+      const message = response.status === 401 ? 'Your session has expired. Please sign in again.'
+        : response.status === 422 ? `Keep your message between 1 and 1000 characters, then try again.`
+          : 'The assistant is unavailable right now. Refresh your programs, then try again in a moment.';
+      throw new ApiError(message, response.status);
     }
     const login = path === '/auth/login';
     const registration = path === '/auth/register';
