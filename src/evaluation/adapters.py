@@ -638,6 +638,10 @@ def build_real_pipeline_planner(
             "out_of_scope": "blocked",
             "retrieval_error": "error",
             "generation_error": "error",
+            "plan_not_compliant": "error",
+            "provider_unavailable": "error",
+            "model_not_found": "error",
+            "generation_timeout": "error",
         }.get(result_status, "error")
         plan_data = (
             plan_model.model_dump(mode="json") if plan_model is not None else None

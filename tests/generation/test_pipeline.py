@@ -608,7 +608,7 @@ def test_pipeline_can_disable_retries_for_bounded_smoke_runs():
         FakeRetriever(), generator, max_generation_attempts=1
     ).create_plan(request())
 
-    assert result.status == "generation_error"
+    assert result.status == "plan_not_compliant"
     assert generator.calls == 1
     assert "1 attempt(s)" in result.message
     assert result._evaluation_diagnostics["error_stage"] == "validation"
@@ -625,7 +625,7 @@ def test_ollama_generator_retains_raw_response_when_plan_parsing_fails(monkeypat
     generator = OllamaGenerator("test-model")
     monkeypatch.setattr(generator, "_generate_content", lambda *_args: (raw_output, 1))
 
-    with pytest.raises(RuntimeError, match="valid plan"):
+    with pytest.raises(RuntimeError, match="readable plan"):
         generator.generate("system", "user")
 
     assert generator._last_raw_output == raw_output

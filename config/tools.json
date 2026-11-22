@@ -219,7 +219,11 @@
         "out_of_scope",
         "retrieval_error",
         "insufficient_evidence",
+        "provider_unavailable",
+        "model_not_found",
+        "generation_timeout",
         "generation_error",
+        "plan_not_compliant",
         "unavailable"
       ],
       "input_schema": {

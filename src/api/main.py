@@ -76,6 +76,18 @@ from .diagnostics import health_report, list_ollama_models
 
 logger = logging.getLogger(__name__)
 
+#: HTTP status for each plan-generation failure. 422 is kept for what the
+#: student can change in the request; service problems are 5xx.
+PLAN_FAILURE_HTTP_STATUS = {
+    "insufficient_evidence": 422,  # the corpus has too little on this focus
+    "retrieval_error": 503,  # knowledge base not loaded
+    "provider_unavailable": 503,  # Ollama not reachable
+    "model_not_found": 503,  # configured model not installed
+    "generation_timeout": 504,  # the model took too long
+    "generation_error": 502,  # the model's answer was unreadable
+    "plan_not_compliant": 502,  # the model's plan broke the request's rules
+}
+
 
 def create_app(
     config: AppConfig | None = None,
@@ -538,8 +550,10 @@ def create_app(
 
         Raises:
             HTTPException: With status 403 for an account mismatch, 404 when no
-                profile exists, 422 when the request or generation is invalid,
-                or 503 when retrieval fails.
+                profile exists, 422 for an invalid request or too little
+                evidence, 502 when the model's plan is unusable, 503 when
+                retrieval, Ollama or the model is unavailable, and 504 on a
+                generation timeout (see ``PLAN_FAILURE_HTTP_STATUS``).
         """
         check_owner(student_id, user_id)
         result = generate_workout_plan(
@@ -559,8 +573,10 @@ def create_app(
         if result.status == "out_of_scope":
             logger.info("Plan request declined by scope gate")
             return payload
-        logger.warning("Plan request ended status=%s", result.status)
-        status_code = 503 if result.status == "retrieval_error" else 422
+        status_code = PLAN_FAILURE_HTTP_STATUS.get(result.status, 500)
+        logger.warning(
+            "Plan request ended status=%s http_status=%s", result.status, status_code
+        )
         raise HTTPException(status_code=status_code, detail=payload)
 
     @app.get(

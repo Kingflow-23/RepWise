@@ -7,8 +7,12 @@ from time import perf_counter
 from typing import Any, Protocol
 
 from ..schemas.models import TrainingPlan, Workout
+from .errors import classify_provider_error
 
 logger = logging.getLogger(__name__)
+
+#: Time budget for one structured Ollama call, in seconds.
+GENERATION_TIMEOUT_SECONDS = 300
 
 
 class PlanGenerator(Protocol):
@@ -68,7 +72,9 @@ class OllamaGenerator:
             The validated plan.
 
         Raises:
-            RuntimeError: If the Ollama call or response validation fails.
+            GenerationFailure: A ``RuntimeError`` subclass naming the cause:
+                Ollama unreachable, model not installed, timeout (none of
+                them worth a retry), or an unreadable answer (retryable).
         """
         started = perf_counter()
         logger.info("Ollama generation started model=%s", self.model)
@@ -95,17 +101,18 @@ class OllamaGenerator:
             )
             return plan
         except Exception as error:
+            failure = classify_provider_error(
+                error, model=self.model, timeout_seconds=GENERATION_TIMEOUT_SECONDS
+            )
             logger.error(
-                "Ollama generation failed model=%s error_type=%s elapsed_ms=%.1f",
+                "Ollama generation failed model=%s status=%s error_type=%s "
+                "elapsed_ms=%.1f",
                 self.model,
+                failure.status,
                 type(error).__name__,
                 (perf_counter() - started) * 1000,
             )
-            raise RuntimeError(
-                "Ollama could not generate a valid plan. Confirm the local server is "
-                f"running and install the configured model with `ollama pull {self.model}`. "
-                f"Details: {error}"
-            ) from error
+            raise failure from error
 
     def generate_text(self, system_prompt: str, user_prompt: str) -> str:
         """Return the model's raw benchmark answer without schema validation."""
@@ -194,7 +201,7 @@ class OllamaGenerator:
         """Request structured JSON while retaining provider token diagnostics."""
         from ollama import Client
 
-        client = Client(host=self.base_url, timeout=300)
+        client = Client(host=self.base_url, timeout=GENERATION_TIMEOUT_SECONDS)
         response = client.chat(
             model=self.model,
             messages=[
