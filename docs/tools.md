@@ -144,7 +144,12 @@ returns `calendar_unavailable`, never "free".
   workout, with real dates in the student's time zone (daylight saving is
   handled). A workout keeps its planned day when it can. Otherwise its options go
   on another available day that week. Two workouts are never offered the same
-  time.
+  time. Starts and finishes are restricted to 06:00–22:00 local time, leaving an
+  eight-hour overnight window for sleep. Options are
+  chosen near 10:00, 14:00 and 17:00, in that preference order; when possible,
+  the first option stays within 09:00–19:00 rather than at the edge of the
+  allowed window. These are practical daytime defaults, not a personalized
+  sleep schedule or a claim that one workout time is medically best.
 - **`organize_schedule`**: moves workouts to other available days. All the moves
   apply, or none do, and two moves can swap days. After missed workouts, pass
   `catch_up_week` instead of `moves`: code puts the missed workouts first on the

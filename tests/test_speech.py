@@ -36,6 +36,15 @@ def test_pcm_microphone_recording_is_valid():
         wav_recording(seconds=121),
         wav_recording()[:-10],
     ],
+    ids=[
+        "empty",
+        "not-wav",
+        "zero-duration",
+        "unsupported-sample-width",
+        "unsupported-channel-count",
+        "over-duration-limit",
+        "truncated",
+    ],
 )
 def test_invalid_recordings_are_rejected(audio):
     with pytest.raises(ValueError):

@@ -177,6 +177,73 @@ def test_native_recording_preserves_draft_and_requires_explicit_transcription(
     assert app.text_input(key="plan-focus").value == "A recorded request"
 
 
+def test_calendar_connect_button_connects_signed_in_account(monkeypatch, tmp_path):
+    client_file = tmp_path / "client_secret.json"
+    client_file.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "src.integrations.google_calendar.google_directory",
+        lambda _config: tmp_path,
+    )
+    connected_accounts = []
+
+    def fake_connect(_config, student_id):
+        connected_accounts.append(student_id)
+        token_file = tmp_path / "tokens" / f"{student_id}.json"
+        token_file.parent.mkdir(parents=True, exist_ok=True)
+        token_file.write_text("test token", encoding="utf-8")
+        return token_file
+
+    monkeypatch.setattr("src.integrations.google_calendar.connect", fake_connect)
+
+    def fake_request(_method, url, **_kwargs):
+        if url.endswith("/api/v1/health"):
+            return health_response()
+        if url.endswith("/plans"):
+            return FakeResponse([])
+        raise AssertionError(f"Unexpected API request: {url}")
+
+    monkeypatch.setattr("requests.request", fake_request)
+
+    app = AppTest.from_file(str(APP_PATH))
+    set_signed_in_state(app)
+    app.session_state["plan_history"] = []
+    app.run(timeout=20)
+    app.button(key="connect-google-calendar").click().run(timeout=20)
+
+    assert not app.exception
+    assert connected_accounts == ["student-id"]
+    assert any("Google Calendar connected" in item.value for item in app.success)
+
+
+def test_calendar_setup_message_when_oauth_client_is_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "src.integrations.google_calendar.google_directory",
+        lambda _config: tmp_path,
+    )
+
+    def fake_request(_method, url, **_kwargs):
+        if url.endswith("/api/v1/health"):
+            return health_response()
+        if url.endswith("/plans"):
+            return FakeResponse([])
+        raise AssertionError(f"Unexpected API request: {url}")
+
+    monkeypatch.setattr("requests.request", fake_request)
+
+    app = AppTest.from_file(str(APP_PATH))
+    set_signed_in_state(app)
+    app.session_state["plan_history"] = []
+    app.run(timeout=20)
+
+    assert not app.exception
+    assert any("one-time setup" in item.value for item in app.info)
+    assert any(
+        "One-time setup for the person running RepWise" in item.label
+        for item in app.expander
+    )
+    assert not any(button.key == "connect-google-calendar" for button in app.button)
+
+
 def test_scope_refusal_shows_analysis_message_without_plan(monkeypatch: Any) -> None:
     """Display the scope analysis response directly and keep plan history intact."""
     refusal = (

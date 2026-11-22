@@ -5,10 +5,10 @@ Run from the repository root, with the API already started:
 
     python -m streamlit run .\\genai_app\\streamlit_app.py
 
-The app only talks to the HTTP API (``REPWISE_API_URL``). The one exception is
-the System tab, which reads the local tool catalog ``config/tools.json`` to
-display it. Screens fetch data when you click, so nothing is called behind
-your back except the health check.
+The app mostly talks to the HTTP API (``REPWISE_API_URL``). The System tab reads
+the local tool catalog, and the Calendar tab uses the configured local Google
+OAuth client to connect a calendar. Screens fetch data when you click, so
+nothing is called behind your back except the health check.
 """
 
 from __future__ import annotations
@@ -27,6 +27,8 @@ from typing import Any
 
 import requests
 import streamlit as st
+from google.auth.exceptions import GoogleAuthError
+from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 
 # Streamlit may run this file with ``genai_app/`` as the import root. Add the
 # project root so local packages (config, src) resolve from any working directory.
@@ -34,7 +36,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from config.config import AppConfig  # noqa: E402
 from config.app_config import get_api_url  # noqa: E402
+from src.integrations import google_calendar  # noqa: E402
 from src.observability import configure_logging  # noqa: E402
 
 configure_logging("streamlit")
@@ -1709,19 +1713,80 @@ with location_tab:
                 st.error(str(error))
 
     st.divider()
-    st.subheader("⏰ Calendar")
+    st.subheader("Google Calendar")
     st.write(
-        "Free/busy times and bookings use your Google Calendar once connected. Without "
-        "it, the Schedule Agent says no calendar is connected and can still move "
-        "workouts between your available days (with your approval)."
+        "Connect your calendar to help RepWise find free workout times. RepWise "
+        "checks busy times only, not event names or details. It adds a workout "
+        "to your calendar only after you approve it."
     )
-    st.code(
-        'python -m scripts.connect_google_calendar connect "Your full name"',
-        language="powershell",
-    )
-    st.caption(
-        "Run it once from the repository root; it opens Google's consent page in your browser."
-    )
+    if not signed_in:
+        st.info("Sign in to your RepWise account before connecting a calendar.")
+    else:
+        calendar_config = AppConfig.from_environment()
+        client_file = (
+            google_calendar.google_directory(calendar_config) / "client_secret.json"
+        )
+        token_file = google_calendar.token_path(
+            calendar_config, st.session_state["user_id"]
+        )
+        if token_file.is_file():
+            st.success("A Google Calendar connection is saved for this account.")
+            button_label = "Reconnect Google Calendar"
+        else:
+            st.info("Your Google Calendar is not connected yet.")
+            button_label = "Connect Google Calendar"
+
+        if client_file.is_file():
+            if st.button(
+                button_label,
+                key="connect-google-calendar",
+                icon=":material/calendar_add_on:",
+            ):
+                try:
+                    with st.spinner(
+                        "Complete the Google sign-in in the browser window..."
+                    ):
+                        google_calendar.connect(
+                            calendar_config, st.session_state["user_id"]
+                        )
+                except FileNotFoundError:
+                    st.error(
+                        f"The Google OAuth client file is missing at {client_file}. "
+                        "Ask the person running RepWise to finish the one-time setup."
+                    )
+                except (GoogleAuthError, OAuth2Error, OSError, ValueError) as error:
+                    logger.warning(
+                        "Google Calendar sign-in failed error_type=%s",
+                        type(error).__name__,
+                    )
+                    st.error(
+                        "Google sign-in did not finish. If Google says the app is "
+                        "still being tested, ask the person running RepWise to add "
+                        "your Google address as a test user, then try again."
+                    )
+                else:
+                    st.success(
+                        "Google Calendar connected. RepWise can now check your "
+                        "busy times and book workouts you approve."
+                    )
+        else:
+            st.info(
+                "Calendar connection needs a one-time setup by the person running "
+                "RepWise. End users do not need to create a Google Cloud project."
+            )
+            with st.expander("One-time setup for the person running RepWise"):
+                st.markdown(
+                    "Enable the Google Calendar API, create a **Desktop app** OAuth "
+                    "client, and save its downloaded JSON file at. If Google keeps "
+                    "the app in testing, add each user’s Google address under "
+                    "**Test users**:"
+                )
+                st.code(str(client_file), language="text")
+                st.caption(
+                    "For the exact steps, see **Connect Google Calendar** in "
+                    "docs/setup.md. This button is for a local Streamlit app; "
+                    "remote or public hosting needs a web OAuth flow."
+                )
 
 with system_tab:
     st.subheader("⚙️ System")

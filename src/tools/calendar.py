@@ -48,6 +48,11 @@ logger = logging.getLogger(__name__)
 # Candidate start times are this far apart, and each workout gets this many options.
 SLOT_STEP_MINUTES = 30
 OPTIONS_PER_WORKOUT = 3
+TRAINING_DAY_START = time(6, 0)
+TRAINING_DAY_END = time(22, 0)
+PREFERRED_DAY_START = time(9, 0)
+PREFERRED_DAY_END = time(19, 0)
+PREFERRED_OPTION_TIMES = (time(10, 0), time(14, 0), time(17, 0))
 NOT_CONNECTED_MESSAGE = (
     "No external calendar is connected, so RepWise cannot see when the student is "
     "busy. Connect Google Calendar, or move workouts within the plan instead."
@@ -265,12 +270,14 @@ def free_start_times(
         busy: Busy periods that may overlap the day.
         zone: Student's time zone.
         now: Current time; past starts are skipped.
-        earliest: First allowed start time.
-        latest: Latest allowed end time.
+        earliest: Requested start time, bounded below by ``TRAINING_DAY_START``.
+        latest: Requested end time, bounded above by ``TRAINING_DAY_END``.
 
     Returns:
-        Candidate starts, every ``SLOT_STEP_MINUTES``.
+        Candidate starts every ``SLOT_STEP_MINUTES`` inside the daytime window.
     """
+    earliest = max(earliest, TRAINING_DAY_START)
+    latest = min(latest, TRAINING_DAY_END)
     start = datetime.combine(day, earliest, zone)
     last_end = datetime.combine(day, latest, zone)
     length, step = timedelta(minutes=minutes), timedelta(minutes=SLOT_STEP_MINUTES)
@@ -284,17 +291,36 @@ def free_start_times(
 
 
 def spread_options(starts: list[datetime]) -> list[datetime]:
-    """Choose the first, middle and last times, so the options really differ.
+    """Prefer practical daytime starts, then return useful alternatives.
 
     Args:
-        starts: Candidate start times, in order.
+        starts: Candidate starts, all on the same local day.
 
     Returns:
-        At most ``OPTIONS_PER_WORKOUT`` starts.
+        Up to ``OPTIONS_PER_WORKOUT`` starts, favoring 09:00-19:00 when
+        available and nearest to 10:00, 14:00, then 17:00 in that order.
     """
-    if len(starts) <= OPTIONS_PER_WORKOUT:
-        return starts
-    return [starts[0], starts[len(starts) // 2], starts[-1]]
+    remaining = list(starts)
+    options = []
+    for preferred in PREFERRED_OPTION_TIMES[:OPTIONS_PER_WORKOUT]:
+        if not remaining:
+            break
+        target_minutes = preferred.hour * 60 + preferred.minute
+        chosen = min(
+            remaining,
+            key=lambda start: (
+                not (
+                    PREFERRED_DAY_START
+                    <= start.time().replace(tzinfo=None)
+                    <= PREFERRED_DAY_END
+                ),
+                abs(start.hour * 60 + start.minute - target_minutes),
+                start,
+            ),
+        )
+        options.append(chosen)
+        remaining.remove(chosen)
+    return options
 
 
 def event_key(
@@ -361,22 +387,23 @@ def get_calendar_busy(
 def propose_training_slots(
     context: ToolContext,
     week_start: date | None = None,
-    earliest: time = time(7, 0),
-    latest: time = time(21, 0),
+    earliest: time = TRAINING_DAY_START,
+    latest: time = TRAINING_DAY_END,
 ) -> SlotsResult | ToolFailure:
     """Find free times for the current plan's unbooked, unlogged workouts.
 
     A workout stays on its planned day when possible. Otherwise its options are
-    on another available day that no other workout uses that week. The first
-    option of each workout is held while the next workout is placed, so two
-    workouts are never offered the same time. Nothing is booked.
+    on another available day that no other workout uses that week. Options are
+    ordered near practical daytime targets, and the first option of each workout
+    is held while the next workout is placed so two workouts are never offered
+    the same time. Nothing is booked.
 
     Args:
         context: Trusted tool context.
         week_start: A date in the first week to schedule, or ``None`` to choose
             this week (or next week if a planned day already passed).
-        earliest: Earliest start time.
-        latest: Latest end time.
+        earliest: Requested earliest start time, never before 06:00 local.
+        latest: Requested latest finish time, never after 22:00 local.
 
     Returns:
         Options per workout, or a failure (``calendar_not_connected``,
@@ -477,12 +504,13 @@ def propose_training_slots(
 def add_workouts_to_calendar(
     context: ToolContext, bookings: list[Booking], plan_id: str | None = None
 ) -> BookingResult | ToolFailure:
-    """Add approved times to the external calendar, rechecking each one first.
+    """Add approved daytime times to the external calendar, rechecking each one first.
 
     Each booking has its own outcome, so one conflict does not hide the others.
     Booking on a different day than planned does not change the plan: the
     outcome sets ``plan_day_differs``, and ``organize_schedule`` can move it.
-    This tool always requires approval.
+    Times outside the local 06:00-22:00 window are rejected. This tool always
+    requires approval.
 
     Args:
         context: Trusted tool context.
@@ -537,6 +565,23 @@ def add_workouts_to_calendar(
             else booking.start.replace(tzinfo=zone)
         )
         end = start + timedelta(minutes=workout.estimated_minutes)
+        local_start = start.astimezone(zone)
+        local_end = end.astimezone(zone)
+        if (
+            local_start.date() != local_end.date()
+            or local_start.time().replace(tzinfo=None) < TRAINING_DAY_START
+            or local_end.time().replace(tzinfo=None) > TRAINING_DAY_END
+        ):
+            return BookingOutcome(
+                **position,
+                status="failed",
+                start=start,
+                end=end,
+                detail=(
+                    "Workouts must start and finish between 06:00 and 22:00 "
+                    "local time."
+                ),
+            )
         if start <= now:
             return BookingOutcome(
                 **position, status="failed", detail="This time has passed."

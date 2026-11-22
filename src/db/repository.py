@@ -528,7 +528,8 @@ class StudentRepository:
         parameters.append(limit)
         with self._connect() as connection:
             rows = connection.execute(
-                query, parameters,
+                query,
+                parameters,
             ).fetchall()
         logger.info("Database plan history read count=%s", len(rows))
         return [
