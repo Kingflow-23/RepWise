@@ -1,5 +1,8 @@
 import { authenticatedRequest, onSessionChange } from './auth.js';
-import { agentRequestBody, answerParagraphs, readAgentResponse } from './agent-data.js';
+import {
+  agentRequestBody, answerParagraphs, decisionErrorMessage, decisionPath, expiryText,
+  readAgentResponse, readDecision, readPendingActions,
+} from './agent-data.js';
 import './assistant.css';
 
 // Longer than the server's 420 s request budget, so the server always answers first.
@@ -22,8 +25,17 @@ export function initializeAssistant(plans) {
   const send = document.getElementById('assistant-send');
   const stopButton = document.getElementById('assistant-stop');
   const newButton = document.getElementById('assistant-new');
+  const queue = document.getElementById('assistant-queue');
+  const queueList = document.getElementById('assistant-queue-list');
+  const queueStatus = document.getElementById('assistant-queue-status');
+  const queueRefresh = document.getElementById('assistant-queue-refresh');
   let account = null;
   let conversationId = null;
+  let actions = [];
+  let queueRevision = 0;
+  let queueTimer;
+  let deciding = null;
+  const queueResult = document.getElementById('assistant-queue-result');
   let busy = false;
   let revision = 0;
   let pending = null;
@@ -48,6 +60,101 @@ export function initializeAssistant(plans) {
     pending?.abort(); pending = null;
   }
 
+  // --- Actions waiting for approval (stored on the server, so they survive a reload).
+  function renderQueue() {
+    const now = Date.now();
+    actions = actions.filter((action) => action.expiresAt > now);
+    queueList.replaceChildren();
+    actions.forEach((action) => {
+      const item = element('li', null, 'assistant-queue-item');
+      item.dataset.actionId = action.id;
+      item.append(element('strong', action.label), element('p', action.reason), element('span', expiryText(action.expiresAt, now), 'assistant-queue-expiry'));
+      const buttons = element('div', null, 'assistant-queue-buttons');
+      const approve = element('button', deciding === action.id ? 'Applying…' : 'Approve', 'assistant-approve');
+      const decline = element('button', 'Decline', 'text-button');
+      [approve, decline].forEach((button) => { button.type = 'button'; button.disabled = Boolean(deciding); });
+      approve.setAttribute('aria-label', `Approve: ${action.label}`);
+      decline.setAttribute('aria-label', `Decline: ${action.label}`);
+      approve.addEventListener('click', () => decide(action, 'approve'));
+      decline.addEventListener('click', () => decide(action, 'decline'));
+      buttons.append(approve, decline);
+      item.append(buttons);
+      queueList.append(item);
+    });
+    if (!queueStatus.dataset.error) {
+      queueStatus.textContent = actions.length
+        ? 'Nothing changes until you approve. Each action runs exactly as described.'
+        : 'No actions are waiting for your approval.';
+    }
+    queue.hidden = !account;
+  }
+  async function loadQueue() {
+    if (!account) return;
+    const current = ++queueRevision;
+    const userId = account.user_id;
+    queueRefresh.disabled = true; queue.hidden = false;
+    if (!actions.length && !queueStatus.dataset.error) queueStatus.textContent = 'Checking for actions waiting for your approval…';
+    try {
+      const payload = await authenticatedRequest(`/students/${encodeURIComponent(userId)}/agent/actions`);
+      if (current !== queueRevision) return;
+      actions = readPendingActions(payload);
+      delete queueStatus.dataset.error; queueStatus.textContent = '';
+    } catch {
+      if (current !== queueRevision) return;
+      // Keep what was shown; say it may be out of date.
+      queueStatus.dataset.error = 'true';
+      queueStatus.textContent = 'Actions waiting for approval couldn’t load. Use Refresh to try again.';
+    } finally {
+      if (current === queueRevision) { queueRefresh.disabled = false; renderQueue(); }
+    }
+  }
+  // Periodic update: change the expiry text in place so focus stays on the
+  // button a student is about to press; rebuild only when an action expired.
+  function tickQueue() {
+    const now = Date.now();
+    if (actions.some((action) => action.expiresAt <= now)) { renderQueue(); return; }
+    queueList.querySelectorAll('.assistant-queue-item').forEach((item) => {
+      const action = actions.find((entry) => entry.id === item.dataset.actionId);
+      if (action) item.querySelector('.assistant-queue-expiry').textContent = expiryText(action.expiresAt, now);
+    });
+  }
+  function showResult(message, ok) {
+    queueResult.textContent = message; queueResult.hidden = !message;
+    queueResult.className = ok ? 'decision-ok' : 'decision-failed';
+  }
+  async function decide(action, decision) {
+    if (!account || deciding) return;
+    const userId = account.user_id;
+    const session = account;
+    deciding = action.id; showResult('', true); renderQueue();
+    let refreshPlans = decision === 'approve';
+    try {
+      const payload = await authenticatedRequest(decisionPath(userId, action.id, decision), { method: 'POST', timeout: 120000 });
+      if (account !== session) return;
+      const outcome = readDecision(payload, decision, action.label);
+      showResult(outcome.message, outcome.ok);
+    } catch (failure) {
+      if (account !== session) return;
+      // A dropped connection may hide an approval that did run: refresh either way.
+      refreshPlans = refreshPlans || !failure.status;
+      showResult(decisionErrorMessage(failure.status), false);
+    } finally {
+      if (account === session) {
+        if (refreshPlans) plans.refresh();
+        // Keep the buttons disabled until the refreshed list replaces the old one.
+        await loadQueue();
+        deciding = null; renderQueue();
+      }
+    }
+  }
+  function clearQueue() {
+    deciding = null; showResult('', true);
+    queueRevision += 1; clearInterval(queueTimer);
+    actions = []; queueList.replaceChildren();
+    queueStatus.textContent = ''; delete queueStatus.dataset.error; queue.hidden = true;
+  }
+  queueRefresh.addEventListener('click', loadQueue);
+
   function addStudentMessage(text) {
     const item = element('li', null, 'assistant-turn student');
     item.append(element('span', 'You', 'assistant-author'), element('p', text));
@@ -67,7 +174,7 @@ export function initializeAssistant(plans) {
     if (result.pending.length) {
       const box = element('div', null, 'assistant-pending');
       box.append(element('strong', result.pending.length === 1 ? 'Waiting for your approval' : `${result.pending.length} actions waiting for your approval`));
-      box.append(element('p', 'Nothing has changed yet. Approving actions will be available here soon.'));
+      box.append(element('p', 'Nothing has changed yet. Approve or decline them under Waiting for your approval.'));
       const list = element('ul');
       result.pending.forEach((action) => list.append(element('li', action.reason)));
       box.append(list);
@@ -109,10 +216,11 @@ export function initializeAssistant(plans) {
       addAnswer(result);
       input.value = '';
       if (result.changedPlans) plans.refresh();
+      loadQueue();
     } catch (failure) {
       if (current !== revision) return;
       if (failure.name === 'AbortError') {
-        addNotice('You stopped waiting. RepWise may still finish this request on the server; refresh your programs before asking again.');
+        addNotice('You stopped waiting. RepWise may still finish this request on the server. Refresh your programs and the actions waiting for approval before asking again.');
       } else {
         // The typed message stays in the box so it can be sent again.
         showError(failure.message);
@@ -135,6 +243,12 @@ export function initializeAssistant(plans) {
     revision += 1; stop(); account = session;
     conversationId = null; log.replaceChildren(); form.reset();
     showError(''); setBusy(false);
+    clearQueue();
     panel.hidden = !session;
+    if (session) {
+      loadQueue();
+      // Drop expired actions and update the "expires in" text.
+      queueTimer = setInterval(tickQueue, 30000);
+    }
   });
 }

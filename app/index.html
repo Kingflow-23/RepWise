@@ -105,6 +105,12 @@
         </section>
         <section class="assistant-panel" id="assistant-panel" aria-labelledby="assistant-title" hidden>
           <div class="generation-heading"><div><p class="eyebrow">ASK REPWISE</p><h2 id="assistant-title">Your training assistant.</h2><p>Ask about your plan, your week or a nearby gym. RepWise asks before changing anything you follow.</p></div><span data-icon="chat" aria-hidden="true"></span></div>
+          <section class="assistant-queue" id="assistant-queue" aria-labelledby="assistant-queue-title" hidden>
+            <div class="assistant-queue-heading"><h3 id="assistant-queue-title">Waiting for your approval</h3><button class="text-button" id="assistant-queue-refresh" type="button">Refresh</button></div>
+            <p id="assistant-queue-status" role="status"></p>
+            <p id="assistant-queue-result" role="status" hidden></p>
+            <ul id="assistant-queue-list"></ul>
+          </section>
           <ol class="assistant-log" id="assistant-log" aria-live="polite" aria-label="Conversation"></ol>
           <form id="assistant-form" method="post" action="/api/v1/students/me/agent/requests">
             <div class="auth-field"><label for="assistant-message">Your message</label><textarea id="assistant-message" name="message" maxlength="1000" rows="3" required placeholder="I missed Monday’s workout. Can you reorganise the rest of my week?" aria-describedby="assistant-message-hint"></textarea><span class="field-hint" id="assistant-message-hint">Up to 1000 characters. Answers can take one to two minutes.</span></div>

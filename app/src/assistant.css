@@ -15,6 +15,25 @@
 .assistant-pending strong { color: #e9b28d; font-size: 12px; font-weight: 500; }
 .assistant-pending p { color: #b3a690; font-size: 11px; margin-top: 4px; }
 .assistant-pending ul { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
+.assistant-queue { margin-top: 22px; padding: 16px 18px; border-radius: 10px; border: 1px solid #e9b28d44; background: #e9b28d0a; }
+.assistant-queue-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.assistant-queue h3 { color: #e9b28d; font-size: 13px; font-weight: 500; }
+.assistant-queue .text-button { font-size: 12px; color: #e9b28d; padding: 4px 0; }
+.assistant-queue .text-button:disabled { opacity: .5; }
+#assistant-queue-status { color: #b3a690; font-size: 11px; line-height: 1.7; margin-top: 4px; }
+#assistant-queue-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 10px; }
+#assistant-queue-list:empty { display: none; }
+.assistant-queue-item { padding: 12px 14px; border-radius: 8px; background: #11140f80; font-size: 12px; line-height: 1.7; color: #e6e6da; overflow-wrap: anywhere; }
+.assistant-queue-item strong { display: block; font-weight: 500; color: #f0d2bb; }
+.assistant-queue-expiry { display: block; margin-top: 4px; color: #9aa58a; font-size: 11px; }
+.assistant-queue-buttons { display: flex; align-items: center; gap: 16px; margin-top: 10px; }
+.assistant-approve { padding: 7px 16px; border: 0; border-radius: 7px; background: #e9b28d; color: #1b1d17; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
+.assistant-approve:hover:not(:disabled) { background: #f0c29f; }
+.assistant-queue-buttons button:disabled { opacity: .5; cursor: default; }
+.assistant-approve:focus-visible, .assistant-queue-buttons .text-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#assistant-queue-result { margin-top: 8px; font-size: 12px; line-height: 1.7; }
+#assistant-queue-result.decision-ok { color: #b9dca6; }
+#assistant-queue-result.decision-failed { color: #f0b9a0; }
 #assistant-form { margin-top: 22px; }
 #assistant-form textarea { width: 100%; padding: 13px; border: 1px solid #b9c3aa26; border-radius: 8px; color: #eeeee4; background: #11140f60; font: inherit; font-size: 13px; line-height: 1.7; resize: vertical; }
 #assistant-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
