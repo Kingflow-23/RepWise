@@ -73,16 +73,39 @@ def test_free_times_handle_a_daylight_saving_day():
         PARIS,
         datetime(2000, 1, 1, tzinfo=UTC),
         time(7),
-        time(8),
+        time(7, 45),
     )
 
     assert [item.utcoffset() for item in starts] == [timedelta(hours=2)]
 
 
-def test_options_are_spread_across_the_day():
-    starts = cal.free_start_times(NEXT_MONDAY, 30, [], PARIS, NOW, time(7), time(21))
+def test_free_times_stay_inside_daytime_even_if_the_requested_window_is_overnight():
+    starts = cal.free_start_times(
+        NEXT_MONDAY, 60, [], PARIS, NOW, time(0), time(23, 59)
+    )
 
-    assert [item.hour for item in cal.spread_options(starts)] == [7, 14, 20]
+    assert starts
+    assert all(item.time() >= time(6) for item in starts)
+    assert all((item + timedelta(minutes=60)).time() <= time(22) for item in starts)
+
+
+def test_options_prioritize_practical_daytime_starts():
+    starts = cal.free_start_times(NEXT_MONDAY, 30, [], PARIS, NOW, time(8), time(20))
+
+    assert [item.strftime("%H:%M") for item in cal.spread_options(starts)] == [
+        "10:00",
+        "14:00",
+        "17:00",
+    ]
+
+
+def test_options_prefer_normal_waking_hours_over_window_edges():
+    starts = [
+        datetime.combine(NEXT_MONDAY, time(6), PARIS),
+        datetime.combine(NEXT_MONDAY, time(18), PARIS),
+    ]
+
+    assert cal.spread_options(starts)[0].hour == 18
 
 
 # --- propose_training_slots ------------------------------------------------------
@@ -98,6 +121,23 @@ def test_slots_stay_on_planned_days_and_avoid_busy_times(demo):
     assert (monday.planned_day, monday.moved_to_another_day) == ("Monday", False)
     assert monday.options[0].start.hour == 18
     assert {slot.day for slot in monday.options} == {"Monday"}
+
+
+def test_slot_tool_cannot_be_widened_to_night_and_prefers_daytime(demo):
+    result = cal.propose_training_slots(
+        with_calendar(demo, cal.FakeCalendar()),
+        earliest=time(0),
+        latest=time(23, 59),
+    )
+
+    assert result.workouts[0].options[0].start.strftime("%H:%M") == "10:00"
+    for workout in result.workouts:
+        for slot in workout.options:
+            local_start = slot.start.astimezone(PARIS)
+            local_end = slot.end.astimezone(PARIS)
+            assert local_start.date() == local_end.date()
+            assert local_start.time() >= time(6)
+            assert local_end.time() <= time(22)
 
 
 def test_each_slot_label_is_the_real_local_weekday_and_date(demo):
@@ -192,6 +232,21 @@ def test_a_past_time_is_refused(demo):
     )
 
     assert result.outcomes[0].status == "failed"
+
+
+@pytest.mark.parametrize("hour", [0, 5, 22])
+def test_booking_outside_daytime_window_is_refused(demo, hour):
+    outside_window_booking = booking(hour=hour)
+    calendar = cal.FakeCalendar()
+
+    result = cal.add_workouts_to_calendar(
+        with_calendar(demo, calendar), [outside_window_booking]
+    )
+
+    assert result.outcomes[0].status == "failed"
+    assert result.outcomes[0].detail is not None
+    assert "06:00 and 22:00" in result.outcomes[0].detail
+    assert calendar.events == {}
 
 
 def test_a_time_without_a_zone_uses_the_students(demo):

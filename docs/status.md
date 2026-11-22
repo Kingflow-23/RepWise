@@ -30,7 +30,7 @@ left for the web frontend (`app/`). Last verified on 2026-11-07.
 |---|---|---|
 | Agents, plan generation, health check | Ollama with `REPWISE_AGENT_MODEL` and `REPWISE_HEALTH_CHECK_MODEL` | The agent says the model is unreachable and changes nothing. The health check fails closed, so nothing is adapted automatically. |
 | Plan generation, `search_documents` | The prepared corpus (`REPWISE_CHUNK_FILE`) and, for hybrid retrieval, the semantic index | `retrieval_error` / `search_unavailable` |
-| Real calendar slots and bookings | A Google OAuth client and `python -m scripts.connect_google_calendar connect` per account | `calendar_not_connected`. Moving workouts within the plan still works. |
+| Real calendar slots and bookings | One local Google OAuth Desktop client; each Streamlit user connects from **Location & calendar** | `calendar_not_connected`. Moving workouts within the plan still works. Public hosting needs a web OAuth flow. |
 | Nearby places | Internet access to Photon (`REPWISE_PHOTON_URL`). The public server rate-limits bursts of requests. | `places_unavailable` |
 | MCP server | A login token (`REPWISE_MCP_ACCESS_TOKEN`) and the API's secret | The server refuses to start. |
 

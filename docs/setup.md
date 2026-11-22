@@ -108,13 +108,47 @@ $env:REPWISE_MCP_ACCESS_TOKEN = "<access_token>"; python -m src.mcp_server.serve
 python -m scripts.mcp_smoke            # self-check on a temporary account
 ```
 
-To use a real calendar, connect Google Calendar once per account (the OAuth client
-setup is described in
-[`google_calendar.py`](../src/integrations/google_calendar.py)):
+## Connect Google Calendar
 
-```powershell
-python -m scripts.connect_google_calendar connect "Your account name"
-```
+The Google OAuth client is set up **once by the person running RepWise**. Each
+local Streamlit user then signs in to RepWise, opens **Location & calendar**, and
+clicks **Connect Google Calendar**. Google opens its sign-in page; choose the
+Google account to connect and approve access. Users do not need to create a
+Google Cloud project or run a command.
+
+### One-time setup for the person running RepWise
+
+1. Open the [Google Cloud Console](https://console.cloud.google.com/) and create
+   or select a project.
+2. Open **APIs & Services → Library**, search for **Google Calendar API**, and
+   click **Enable**.
+3. Open **Google Auth Platform → Branding**. If prompted, click **Get Started**;
+   enter an app name and support email.
+4. Choose **External** for personal Google accounts. Choose **Internal** only
+   when everyone connecting uses the same Google Workspace organization. Finish
+   the consent-screen setup.
+5. If the audience is **External** and the app is in testing, open
+   **Google Auth Platform → Audience → Test users**, add the Google addresses
+   that will connect, and save.
+6. Open **Google Auth Platform → Data Access → Add or Remove Scopes** and add:
+   - `https://www.googleapis.com/auth/calendar.freebusy`
+   - `https://www.googleapis.com/auth/calendar.events`
+7. Open **Google Auth Platform → Clients → Create client**. Choose **Desktop
+   app**, create it, and download the JSON file.
+8. Put that file in the project’s `data/google` folder and rename it
+   `client_secret.json`. The expected path is
+   `data/google/client_secret.json`. Keep it private; do not commit or share it.
+
+Then start the API and Streamlit app as described above. Sign in to RepWise,
+open **Location & calendar**, click **Connect Google Calendar**, and approve
+access in Google’s browser page. RepWise reads busy/free times only, not event
+names or details. It creates calendar events only after you approve a booking.
+
+This button uses Google’s **Desktop app** flow for a local Streamlit setup. It
+is not suitable for a remotely hosted, multi-user service; that requires a
+web-based OAuth callback and secure server-side token storage. Google may also
+require app verification before an externally available app can request these
+Calendar permissions.
 
 ## Configuration
 

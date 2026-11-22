@@ -198,14 +198,20 @@ class BusyArguments(Model):
 
 
 class SlotArguments(Model):
-    """Constraints for proposed training times."""
+    """Optional time constraints inside the safe daytime training window."""
 
     week_start: date | None = Field(
         default=None,
         description="A date in the first week to schedule, if the student named one.",
     )
-    earliest: time = Field(default=time(7, 0), description="Earliest start, as HH:MM.")
-    latest: time = Field(default=time(21, 0), description="Latest finish, as HH:MM.")
+    earliest: time = Field(
+        default=calendar.TRAINING_DAY_START,
+        description="Earliest start, as HH:MM. Never before 06:00 in the student's time zone.",
+    )
+    latest: time = Field(
+        default=calendar.TRAINING_DAY_END,
+        description="Latest finish, as HH:MM. Never after 22:00 in the student's time zone.",
+    )
 
 
 class BookingArguments(Model):

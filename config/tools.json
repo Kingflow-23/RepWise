@@ -711,7 +711,7 @@
     },
     {
       "name": "propose_training_slots",
-      "description": "Find free times in the connected calendar for the current plan's workouts that are not booked or logged yet, with real dates and times. Books nothing.",
+      "description": "Find free daytime times in the connected calendar for the current plan's workouts that are not booked or logged yet. Times are restricted to 06:00–22:00 in the student's time zone, leaving an eight-hour overnight window for sleep. When available, options favor 09:00–19:00 and are ordered around 10:00, 14:00, then 17:00. Books nothing.",
       "agents": [
         "schedule"
       ],
@@ -729,7 +729,7 @@
       ],
       "input_schema": {
         "additionalProperties": false,
-        "description": "Constraints for proposed training times.",
+        "description": "Optional time constraints inside the safe daytime training window.",
         "properties": {
           "week_start": {
             "anyOf": [
@@ -746,15 +746,15 @@
             "title": "Week Start"
           },
           "earliest": {
-            "default": "07:00:00",
-            "description": "Earliest start, as HH:MM.",
+            "default": "06:00:00",
+            "description": "Earliest start, as HH:MM. Never before 06:00 in the student's time zone.",
             "format": "time",
             "title": "Earliest",
             "type": "string"
           },
           "latest": {
-            "default": "21:00:00",
-            "description": "Latest finish, as HH:MM.",
+            "default": "22:00:00",
+            "description": "Latest finish, as HH:MM. Never after 22:00 in the student's time zone.",
             "format": "time",
             "title": "Latest",
             "type": "string"
