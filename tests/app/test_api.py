@@ -42,6 +42,12 @@ def allow_test_request_scope(monkeypatch):
         "OllamaHealthChecker",
         lambda *_args: FixedHealthChecker(("pain",)),
     )
+    # /health lists installed Ollama models; keep these tests offline.
+    monkeypatch.setattr(
+        api_module,
+        "list_ollama_models",
+        lambda *_args, **_kwargs: ["qwen3.5:9b", "qwen3.5:4b"],
+    )
 
 
 class FakeRetriever:

@@ -74,6 +74,7 @@ def test_recording_requires_authentication(speech_client):
         (b"mp3", "audio/mpeg", 415),
         (b"0" * (MAX_AUDIO_BYTES + 1), "audio/wav", 413),
     ],
+    ids=["empty-body", "invalid-wav", "wrong-content-type", "oversized-body"],
 )
 def test_invalid_recording_never_reaches_transcriber(
     speech_client, content, content_type, status

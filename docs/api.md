@@ -24,7 +24,7 @@ All paths start with `/api/v1`, and `{student}` stands for `students/{student_id
 
 | Method | Route | Login | Purpose |
 |---|---|---:|---|
-| `GET` | `/health` | No | Database, retriever readiness, and model settings. Doesn't contact Ollama. |
+| `GET` | `/health` | No | Configuration and real availability: retriever initialization, Ollama reachability and installed models. Always HTTP 200; `status` is `ok` or `degraded`, with `problems`. Asks Ollama only for its model list (2 s timeout), never runs a model. |
 | `POST` | `/auth/register` | No | Create an account and return a token. |
 | `POST` | `/auth/login` | No | Verify a password and return a token. |
 | `PUT`, `GET` | `/{student}/profile` | Yes | Save or read the profile. |
@@ -40,6 +40,16 @@ All paths start with `/api/v1`, and `{student}` stands for `students/{student_id
 | `POST` | `/{student}/agent/actions/{action_id}/approve` | Yes | Run one pending action exactly as proposed. |
 | `POST` | `/{student}/agent/actions/{action_id}/decline` | Yes | Refuse one pending action; nothing runs. |
 | `PUT`, `GET`, `DELETE` | `/{student}/location` | Yes | Opt in to saving a home location, read it, or forget it. |
+
+### Plan generation errors
+
+A failed `POST /{student}/plans` returns `detail: {"status", "message", ...}`
+and saves nothing. The HTTP code follows the cause: 404 without a profile, 422
+for an invalid request or `insufficient_evidence`, 502 for `generation_error` or
+`plan_not_compliant`, 503 for `retrieval_error`, `provider_unavailable` or
+`model_not_found`, and 504 for `generation_timeout`. The
+[pipeline guide](rag_pipeline.md) explains each status. `out_of_scope` is a
+normal 200 answer.
 
 ### Active program and drafts
 

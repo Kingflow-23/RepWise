@@ -8,6 +8,38 @@ export class ApiError extends Error {
   }
 }
 
+const UNCHANGED = 'Your request and saved plans are unchanged.';
+
+/**
+ * Explain a failed generation from its backend status. Server text is never shown
+ * as is: only a model name or a validation rule that passes a strict pattern.
+ */
+export function generationFailureMessage(outcome, serverMessage = '') {
+  const text = typeof serverMessage === 'string' ? serverMessage : '';
+  switch (outcome) {
+    case 'retrieval_error':
+      return `The training knowledge base is unavailable. Please try again once it is connected. ${UNCHANGED}`;
+    case 'insufficient_evidence':
+      return `There isn’t enough supporting evidence for this request. Try a different training focus. ${UNCHANGED}`;
+    case 'provider_unavailable':
+      return `The AI model service (Ollama) isn’t reachable. Start it, then try again. ${UNCHANGED}`;
+    case 'model_not_found': {
+      const name = text.match(/model ([\w.:/-]{1,80}) is not installed/)?.[1];
+      return `The configured AI model${name ? ` (${name})` : ''} isn’t installed, so trying again won’t help yet. Install it with Ollama or change the configured model. ${UNCHANGED}`;
+    }
+    case 'generation_timeout':
+      return `The AI model took too long to answer. Try again later, or with fewer constraints. ${UNCHANGED}`;
+    case 'generation_error':
+      return `The model’s answer couldn’t be read, even after corrections. Try again or simplify your request. ${UNCHANGED}`;
+    case 'plan_not_compliant': {
+      const rule = text.match(/attempt\(s\): ([a-z0-9 ,'-]{3,160})$/i)?.[1];
+      return `The model kept producing a plan that broke one of your requirements${rule ? ` (${rule})` : ''}. Try again or loosen a constraint. ${UNCHANGED}`;
+    }
+    default:
+      return null;
+  }
+}
+
 export async function request(path, { method = 'GET', body, token, signal, timeout = 15000 } = {}) {
   const generation = method === 'POST' && /^\/students\/[^/]+\/plans$/.test(path);
   let response;
@@ -31,14 +63,9 @@ export async function request(path, { method = 'GET', body, token, signal, timeo
   if (!response.ok) {
     if (generation) {
       const outcome = payload?.detail?.status;
-      const messages = {
-        retrieval_error: 'The training knowledge base is unavailable. Please try again once it is connected.',
-        insufficient_evidence: 'There isn’t enough supporting evidence for this request. Try a different training focus.',
-        generation_error: 'The model couldn’t produce a valid plan. Try simplifying your request or try again.',
-      };
       const message = response.status === 401 ? 'Your session has expired. Please sign in again.'
         : response.status === 404 ? 'Save your training profile before generating a plan.'
-          : messages[outcome] || (response.status === 422 ? 'Check your request and make sure the workout count fits your available days.'
+          : generationFailureMessage(outcome, payload?.detail?.message) || (response.status === 422 ? 'Check your request and make sure the workout count fits your available days.'
             : 'Plan generation is unavailable right now. Please try again in a moment.');
       throw new ApiError(message, response.status, outcome);
     }

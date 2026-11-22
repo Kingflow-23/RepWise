@@ -7,6 +7,7 @@ import json
 import re
 from time import perf_counter
 
+from ..llm.errors import GenerationFailure
 from ..llm.ollama import PlanGenerator
 from ..rag.context import make_highlight_query, make_query, select_evidence
 from ..rag.prompt import (
@@ -79,13 +80,17 @@ class PlanPipeline:
         Returns:
             A result with status ``completed`` and the plan when validation
             succeeds; otherwise a result with an explanatory status such as
-            ``out_of_scope``, ``retrieval_error``, ``insufficient_evidence``, or
-            ``generation_error``. Retrieved sources are included when generation
-            was attempted.
+            ``out_of_scope``, ``retrieval_error``, ``insufficient_evidence``,
+            ``provider_unavailable``, ``model_not_found``, ``generation_timeout``,
+            ``generation_error`` (unreadable model output) or
+            ``plan_not_compliant`` (the plan breaks the request's constraints).
+            Retrieved sources are included when generation was attempted.
 
         Notes:
             Generation is attempted up to ``max_generation_attempts`` times,
-            with correction prompts after validation or provider errors.
+            with correction prompts, but only when a retry can help: an
+            unreadable answer or a plan that failed validation. Ollama being
+            unreachable, a missing model or a timeout stop at once.
         """
         logger.info(
             "Plan generation started weeks=%s top_k=%s",
@@ -112,7 +117,8 @@ class PlanPipeline:
                 status="out_of_scope",
                 message=error.user_message,
             )
-        except Exception as error:
+        except Exception:
+            # The cause (often a file path) stays in the log, not in the response.
             logger.exception(
                 "Plan retrieval failed elapsed_ms=%.1f",
                 (perf_counter() - retrieval_started) * 1000,
@@ -120,8 +126,8 @@ class PlanPipeline:
             return PlanResult(
                 status="retrieval_error",
                 message=(
-                    "Retrieval failed. Check that the knowledge base corpus and configured index are "
-                    f"available. Details: {error}"
+                    "The training knowledge base is unavailable. "
+                    "GET /api/v1/health shows the cause."
                 ),
             )
 
@@ -179,7 +185,8 @@ class PlanPipeline:
                     )
                     user_prompt += (
                         "\n\nCorrection request: the previous response failed validation: "
-                        f"{last_error}. Return corrected JSON only. Keep the plan "
+                        f"{getattr(last_error, 'detail', None) or last_error}. "
+                        "Return corrected JSON only. Keep the plan "
                         "in clear English, interpret any source language as needed, "
                         "and do not invent source IDs."
                     )
@@ -221,6 +228,35 @@ class PlanPipeline:
                     },
                 )
                 break
+            except GenerationFailure as error:
+                if error.retryable:
+                    last_error = error
+                    last_error_stage = error_stage
+                    last_raw_output = getattr(self.generator, "_last_raw_output", None)
+                    logger.warning(
+                        "Generated plan rejected attempt=%s status=%s",
+                        attempt + 1,
+                        error.status,
+                    )
+                    continue
+                # Ollama down, model missing or timeout: another attempt
+                # cannot fix it and would only make the student wait.
+                logger.error(
+                    "Plan generation stopped without retry attempt=%s status=%s",
+                    attempt + 1,
+                    error.status,
+                )
+                result = PlanResult(
+                    status=error.status, message=str(error), sources=sources
+                )
+                result._evaluation_diagnostics = {
+                    "error_stage": "generation",
+                    "last_error": f"{type(error).__name__}: {error}",
+                    "candidate_attempt": None,
+                    "candidate_plan": None,
+                    "raw_model_output": None,
+                }
+                return result
             except (OSError, ValueError, RuntimeError) as error:
                 last_error = error
                 last_error_stage = error_stage
@@ -232,16 +268,31 @@ class PlanPipeline:
                 )
         else:
             assert last_error is not None
-            logger.error("Plan generation failed after retries")
-            result = PlanResult(
-                status="generation_error",
-                message=(
-                    "The plan could not be generated or validated after "
-                    f"{self.max_generation_attempts} attempt(s); last error during "
-                    f"{last_error_stage}: {last_error}"
-                ),
-                sources=sources,
+            logger.error(
+                "Plan generation failed after retries stage=%s", last_error_stage
             )
+            attempts = self.max_generation_attempts
+            if last_error_stage == "validation":
+                # The model answered, but the plan breaks the student's
+                # constraints. The reason is our own validation text.
+                result = PlanResult(
+                    status="plan_not_compliant",
+                    message=(
+                        "The generated plan did not meet your requirements after "
+                        f"{attempts} attempt(s): {last_error}"
+                    ),
+                    sources=sources,
+                )
+            else:
+                result = PlanResult(
+                    status="generation_error",
+                    message=(
+                        "The model did not return a usable plan after "
+                        f"{attempts} attempt(s). Last error: "
+                        f"{last_error if isinstance(last_error, GenerationFailure) else type(last_error).__name__}"
+                    ),
+                    sources=sources,
+                )
             result._evaluation_diagnostics = {
                 "error_stage": last_error_stage,
                 "last_error": f"{type(last_error).__name__}: {last_error}",

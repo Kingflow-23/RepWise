@@ -228,6 +228,17 @@ def generation_error_message(error: ApiError) -> str:
     status = detail.get("status")
     reason = str(detail.get("message", str(error))).casefold()
 
+    service_problems = {
+        "model_not_found": "the configured language model isn't installed.",
+        "provider_unavailable": "the language model service couldn't be reached.",
+        "generation_timeout": "the model took too long to respond.",
+    }
+    if status in service_problems:
+        # Not the request's fault, and retrying unchanged won't fix a missing model.
+        return (
+            f"We couldn't generate this plan because {service_problems[status]} "
+            f"{detail.get('message', '')} Your saved plans were not changed."
+        ).strip()
     if status == "insufficient_evidence":
         cause = "there wasn't enough relevant training material for this request."
     elif status == "retrieval_error":
@@ -1121,6 +1132,9 @@ with st.sidebar:
             f"Strategy: {health.get('retriever', 'unknown')} · "
             f"Model: {health.get('model', 'unknown')}"
         )
+        if health.get("status") == "degraded":
+            # The API answers, but a service it depends on is not available.
+            st.warning("\n\n".join(health.get("problems") or ["A service is unavailable."]))
     elif st.session_state.get("health_error"):
         st.error(st.session_state.health_error)
     st.divider()

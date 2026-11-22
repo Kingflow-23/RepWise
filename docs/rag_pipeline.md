@@ -12,13 +12,31 @@ flowchart TD
     Search --> Enough{At least 5 chunks?}
     Enough -->|no| Insufficient[insufficient_evidence]
     Enough -->|yes| Generate[Generate JSON plan with Ollama]
-    Generate --> Check{Passes validation?}
+    Generate -->|Ollama down, model missing, timeout| Service[provider_unavailable / model_not_found / generation_timeout]
+    Generate --> Check{Readable and valid?}
     Check -->|no, up to 2 corrections| Generate
-    Check -->|still no| Failed[generation_error]
+    Check -->|still unreadable| Failed[generation_error]
+    Check -->|still breaks the rules| Rejected[plan_not_compliant]
     Check -->|yes| Saved[Save and show plan with sources]
 ```
 
 If the retriever isn't available, the request stops with `retrieval_error`.
+Service failures (Ollama unreachable, model not installed, timeout) stop at once:
+another attempt can't fix them. Only an unreadable answer or a plan that breaks
+the request's rules is sent back for correction.
+
+| Status | HTTP | Meaning |
+|---|---:|---|
+| `invalid_request` | 422 | The request itself is invalid. |
+| `insufficient_evidence` | 422 | Too little material in the corpus for this focus; change the focus. |
+| `retrieval_error` | 503 | The knowledge base isn't loaded (`/health` shows why). |
+| `provider_unavailable` | 503 | Ollama isn't reachable. |
+| `model_not_found` | 503 | The configured model isn't installed (`ollama pull <model>`). |
+| `generation_timeout` | 504 | The model didn't finish in time (300 s per call). |
+| `generation_error` | 502 | The model's answer stayed unreadable after the corrections. |
+| `plan_not_compliant` | 502 | The plan kept breaking a rule below; the message names it. |
+
+Messages never include file paths, stack traces or raw model output; those stay in the logs.
 
 ## 1. The request
 
@@ -104,7 +122,7 @@ Pydantic parses the output, then `validate_plan` rejects a plan when:
 - an exercise needs equipment missing from the profile, unless it says full gym.
 
 A failure goes back to the model with the error, up to two more times, and then
-returns `generation_error`. Exact quotes aren't required, so French evidence can't
+returns `plan_not_compliant`. Exact quotes aren't required, so French evidence can't
 break an English plan.
 
 **These checks are about structure, not truth.** They can't prove that a source

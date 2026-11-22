@@ -101,8 +101,10 @@ one workout.
   first plan becomes active. If an active plan already exists, the new one is
   saved as a **draft**, and an `activate_plan` action is proposed for approval
   automatically. Failure statuses: `missing_profile`, `invalid_request`,
-  `out_of_scope`, `retrieval_error`, `insufficient_evidence`, `generation_error`,
-  `unavailable`.
+  `out_of_scope`, `retrieval_error`, `insufficient_evidence`,
+  `provider_unavailable`, `model_not_found`, `generation_timeout`,
+  `generation_error`, `plan_not_compliant`, `unavailable`
+  ([meanings](rag_pipeline.md)).
 - **`activate_plan`**: makes a draft the active plan and archives the previous
   one. The previous plan is kept, not deleted.
 - **`get_workout_history`**: logged workouts (completed, partial and missed), their
