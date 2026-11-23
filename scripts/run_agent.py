@@ -163,7 +163,7 @@ def main() -> int:
     llm = build_chat_model(config)
     entries, passed = [], 0
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
-        context, _plan_id = demo_context(config, Path(directory) / "agent.sqlite3")
+        context, _ = demo_context(config, Path(directory) / "agent.sqlite3")
         orchestrator = build_orchestrator(context, llm)
         for number, case in enumerate(cases, start=1):
             print(f"\n[{number}/{len(cases)}] {case['request']}", flush=True)

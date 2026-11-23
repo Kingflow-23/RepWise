@@ -126,11 +126,7 @@ def test_empty_booking_request_prepares_all_times_for_one_approval(demo):
     pending = demo.repository.get_pending_action(demo.student_id, run.result.action_id)
     assert pending["status"] == "pending"
     bookings = pending["arguments"]["bookings"]
-    assert len(bookings) == len(
-        demo.repository.get_current_plan(demo.student_id)["plan"]["weeks"][0][
-            "workouts"
-        ]
-    )
+    assert len(bookings) == 2
     starts = [item["start"] for item in bookings]
     assert len(starts) == len(set(starts))
     assert "Week 1:" in pending["reason"]

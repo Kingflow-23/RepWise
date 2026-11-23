@@ -24,9 +24,9 @@ from pydantic import Field, ValidationError, model_validator
 
 from src.agents import memory
 from src.schemas.models import (
+    AgentPlanOptions,
     CompletionStatus,
     Model,
-    PlanOptions,
     TrainingPlan,
     WorkoutDifficulty,
 )
@@ -86,7 +86,7 @@ class HistoryArguments(Model):
     max_plans: int = Field(default=5, ge=1, le=20, description="How many recent plans.")
 
 
-class PlanArguments(PlanOptions):
+class PlanArguments(AgentPlanOptions):
     """Options for a new one-week plan (the profile is read from the database)."""
 
 

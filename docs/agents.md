@@ -120,6 +120,17 @@ has passed and is skipped that week. The moves are computed before approval, so
 the approval message lists each one ("Week 1: Lower body, Monday (missed) →
 Friday.") and the stored action holds exactly those moves.
 
+Plan generation and calendar scheduling are separate. A generated plan keeps
+its requested weekly workout count even when the student asks midweek; it is a
+weekly template, not a promise that every workout can still fit in the current
+week. The slot finder uses the current week if any planned weekday is today or
+later, skips earlier dates, and looks at next week if every planned weekday is
+earlier than today's weekday. It also skips workouts with any saved feedback
+and workouts already booked in RepWise. If any remaining workout has no free
+time, automatic booking proposes no partial schedule. Logging is explicit—
+RepWise does not automatically detect a completed workout. A catch-up move
+requires approval and changes the plan day, but does not create a calendar event.
+
 ### Key facts computed by code
 
 A small model mixes up *available days* (when the student can train) and
@@ -270,8 +281,9 @@ Every response carries `metrics` ([`metrics.py`](../src/agents/metrics.py)):
 - each tool call's latency;
 - totals.
 
-The Streamlit **Assistant** tab shows them under each answer. The **Metrics** tab
-collects every request of the session, with CSV and JSON export for evaluation.
+The Streamlit **Assistant** tab shows them under each answer. **Progress**
+collects the current session's request metrics, with CSV and JSON export for
+evaluation.
 
 ## Tests
 

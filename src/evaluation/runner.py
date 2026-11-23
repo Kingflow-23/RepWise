@@ -1012,7 +1012,6 @@ def run_evaluation(
                     runtime_settings.ollama_url,
                 ),
                 llm_mode=llm_mode,
-                rag_enabled=planner_name == "ollama-rag",
             )
         else:
             results["generation"] = evaluate_generation(
@@ -1146,9 +1145,7 @@ def _serialize_result(result: SuiteResult) -> dict:
     }
 
 
-def evaluate_judged_generation(
-    cases, planner, judge, *, llm_mode: str, rag_enabled: bool
-) -> SuiteResult:
+def evaluate_judged_generation(cases, planner, judge, *, llm_mode: str) -> SuiteResult:
     """Score raw benchmark answers with an LLM, without production validation."""
     from .judge import QUALITY_DIMENSIONS
 
@@ -1228,7 +1225,6 @@ def evaluate_judged_generation(
                 case_input,
                 answer,
                 str(output.get("evidence") or ""),
-                rag_enabled=rag_enabled,
             )
         except Exception as error:
             result.failures.append(
@@ -1462,7 +1458,6 @@ def evaluate_red_team_scope(cases, planner, judge, *, llm_mode: str) -> SuiteRes
                     case_input,
                     str(output["answer"]),
                     str(output.get("evidence") or ""),
-                    rag_enabled=bool(output.get("rag_enabled")),
                 )
                 scores = evaluation["scores"]
                 if expected_scope == "in_scope":
@@ -1656,7 +1651,6 @@ def run_comparison(
             planner,
             judge,
             llm_mode="real Ollama; raw answers judged by Ollama",
-            rag_enabled=True,
         )
 
     pairwise_comparison = compare_generation_answers(
@@ -1705,7 +1699,6 @@ def run_comparison(
         no_rag_planner,
         judge,
         llm_mode="real Ollama; raw answers judged by Ollama",
-        rag_enabled=False,
     )
     red_team_cases = datasets.load_red_team_cases()
     red_team_retriever = adapters.build_retriever(
@@ -1847,14 +1840,12 @@ def run_rag_vs_no_rag(
             rag_planner,
             judge,
             llm_mode="real Ollama; raw answers judged by Ollama",
-            rag_enabled=True,
         ),
         no_rag_arm: evaluate_judged_generation(
             generation_cases,
             no_rag_planner,
             judge,
             llm_mode="real Ollama; raw answers judged by Ollama",
-            rag_enabled=False,
         ),
     }
     meta = {

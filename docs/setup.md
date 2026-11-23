@@ -78,13 +78,14 @@ python -m uvicorn src.api.main:app --reload
 python -m streamlit run .\genai_app\streamlit_app.py
 ```
 
-Open the Streamlit URL, register an account, save a profile, and request a plan.
-The Streamlit app is also a test console for the whole backend: **Assistant**
-(chat with the agents, with each request's plan, the work of each specialist, and
-Approve/Decline buttons), **Approvals** (pending and past actions), **Metrics** (time, tokens, model and
-tool calls per request, with CSV and JSON export), **Location &
-calendar** (opt-in saved location, Google Calendar connection), and **System**
-(health, the tool catalog, and an MCP host configuration for your account).
+Open the Streamlit URL, create an account, save a profile, and request a plan.
+The workspace includes **Profile**, **Create a plan**, **Saved plans**,
+**Assistant**, **Approvals**, **Progress**, **Location & calendar**, and
+**Settings**. The Assistant shows specialist results and pending actions;
+Approvals lists actions to review; Progress provides the current session's
+agent metrics; Settings includes account deletion and system diagnostics.
+See the [Streamlit user guide](user-guide.md) for weekly plan counts, workout
+logging, and calendar booking behavior.
 The database is created (or extended) automatically, and the API's interactive
 docs, including the agent and approval routes, are at
 `http://127.0.0.1:8000/docs`.
@@ -143,6 +144,11 @@ Then start the API and Streamlit app as described above. Sign in to RepWise,
 open **Location & calendar**, click **Connect Google Calendar**, and approve
 access in Google’s browser page. RepWise reads busy/free times only, not event
 names or details. It creates calendar events only after you approve a booking.
+Calendar slot suggestions skip logged or already-booked workouts and dates
+that have passed. Plan generation itself creates a weekly template; it does
+not adjust the requested workout count to the number of days remaining this
+week. See the [user guide](user-guide.md#connect-and-book-google-calendar)
+for the complete behavior.
 
 This button uses Google’s **Desktop app** flow for a local Streamlit setup. It
 is not suitable for a remotely hosted, multi-user service; that requires a

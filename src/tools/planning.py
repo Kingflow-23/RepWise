@@ -15,13 +15,21 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from datetime import date
 from typing import Literal
 
 from pydantic import ValidationError, model_validator
 
 from src.db.repository import StudentRepository
 from src.generation.pipeline import PlanPipeline
-from src.schemas.models import Model, PlanOptions, PlanRequest, PlanResult, PlanStatus
+from src.schemas.models import (
+    AgentPlanOptions,
+    Model,
+    PlanOptions,
+    PlanRequest,
+    PlanResult,
+    PlanStatus,
+)
 from src.tools import calendar as calendar_tools
 from src.tools.context import ToolContext
 from src.tools.results import (
@@ -40,10 +48,14 @@ class GenerateWorkoutPlanResult(PlanResult):
     Attributes:
         plan_id: ID of the saved plan, only when ``status`` is ``completed``.
         plan_status: ``active`` or ``draft`` for a saved plan.
+        schedule_week_start: Monday of the constrained week, when requested.
+        schedule_note: Calendar and availability facts used for the schedule.
     """
 
     plan_id: str | None = None
     plan_status: PlanStatus | None = None
+    schedule_week_start: date | None = None
+    schedule_note: str | None = None
 
     @model_validator(mode="after")
     def saved_plan_matches_status(self) -> "GenerateWorkoutPlanResult":
@@ -83,6 +95,9 @@ def generate_workout_plan(
     repository: StudentRepository,
     pipeline: PlanPipeline,
     status: Literal["active", "draft"] = "active",
+    available_days: list[str] | None = None,
+    schedule_week_start: date | None = None,
+    schedule_note: str | None = None,
 ) -> GenerateWorkoutPlanResult:
     """Load the saved profile, generate one week, and save only successful plans.
 
@@ -97,6 +112,9 @@ def generate_workout_plan(
         pipeline: The configured RAG generation pipeline.
         status: How to save a completed plan: ``active`` (the API default) or
             ``draft`` (waiting for approval).
+        available_days: Trusted date-specific weekdays to constrain this plan to.
+        schedule_week_start: Monday of the specific calendar week, when used.
+        schedule_note: Availability facts to return to the planning agent.
 
     Returns:
         A structured outcome. Missing profiles, impossible schedules, scope
@@ -119,6 +137,8 @@ def generate_workout_plan(
                 )
             }
         )
+    if available_days is not None:
+        profile = profile.model_copy(update={"available_days": available_days})
     try:
         request = PlanRequest(profile=profile, **options.model_dump())
     except ValidationError as error:
@@ -130,10 +150,18 @@ def generate_workout_plan(
     previous_plan = repository.get_latest_plan(student_id)
     result = pipeline.create_plan(request, previous_plan=previous_plan)
     if result.status != "completed":
-        return GenerateWorkoutPlanResult(**result.model_dump())
+        return GenerateWorkoutPlanResult(
+            **result.model_dump(),
+            schedule_week_start=schedule_week_start,
+            schedule_note=schedule_note,
+        )
     plan_id = repository.save_plan(student_id, request, result, status=status)
     return GenerateWorkoutPlanResult(
-        **result.model_dump(), plan_id=plan_id, plan_status=status
+        **result.model_dump(),
+        plan_id=plan_id,
+        plan_status=status,
+        schedule_week_start=schedule_week_start,
+        schedule_note=schedule_note,
     )
 
 
@@ -144,7 +172,7 @@ def generate_plan_for_agent(
 
     Args:
         context: Trusted tool context.
-        **arguments: :class:`PlanOptions` fields supplied by the model.
+        **arguments: :class:`AgentPlanOptions` fields supplied by the model.
 
     Returns:
         The generation outcome; ``plan_status`` says whether the new plan is
@@ -152,14 +180,91 @@ def generate_plan_for_agent(
         database returns ``status="unavailable"``.
     """
     try:
-        options = PlanOptions.model_validate(arguments)
+        agent_options = AgentPlanOptions.model_validate(arguments)
+        options = PlanOptions.model_validate(
+            agent_options.model_dump(exclude={"schedule_scope"})
+        )
         has_active_plan = context.repository.get_current_plan(context.student_id)
+        available_days = None
+        schedule_week_start = None
+        schedule_note = None
+        if agent_options.schedule_scope == "this_week":
+            profile = context.repository.get_profile(context.student_id)
+            if profile is not None:
+                session_minutes = min(
+                    profile.session_minutes,
+                    options.max_session_minutes or profile.session_minutes,
+                )
+                availability = calendar_tools.available_days_this_week(
+                    context, profile.available_days, session_minutes
+                )
+                if isinstance(availability, ToolFailure):
+                    return GenerateWorkoutPlanResult(
+                        status="unavailable",
+                        message=(
+                            "Calendar availability could not be checked, so a "
+                            "date-specific plan was not generated. "
+                            f"{availability.error}"
+                        ),
+                        schedule_note=availability.error,
+                    )
+                if not availability.available_days:
+                    empty_schedule_message = (
+                        "No future profile weekday has enough free time in the "
+                        "current calendar week."
+                        if availability.calendar_checked
+                        else "No profile weekday remains in the current calendar week."
+                    )
+                    return GenerateWorkoutPlanResult(
+                        status="no_available_days",
+                        message=empty_schedule_message,
+                        schedule_week_start=availability.week_start,
+                        schedule_note=empty_schedule_message,
+                    )
+
+                requested_count = options.workouts_per_week or min(
+                    3, len(profile.available_days)
+                )
+                effective_count = min(requested_count, len(availability.available_days))
+                calendar_detail = (
+                    "Connected calendar was checked; availability is not booked"
+                    if availability.calendar_checked
+                    else (
+                        "No calendar is connected; busy times could not be checked "
+                        "or booked"
+                    )
+                )
+                days_description = (
+                    "Available profile days"
+                    if availability.calendar_checked
+                    else "Remaining profile weekdays"
+                )
+                reduction_detail = (
+                    f" Requested {requested_count} workouts were reduced to "
+                    f"{effective_count}."
+                    if effective_count < requested_count
+                    else ""
+                )
+                schedule_note = (
+                    f"{calendar_detail} for the week starting "
+                    f"{availability.week_start.isoformat()}. {days_description}: "
+                    f"{', '.join(availability.available_days)}."
+                    f"{reduction_detail}"
+                )
+                available_days = availability.available_days
+                schedule_week_start = availability.week_start
+                options = options.model_copy(
+                    update={"workouts_per_week": effective_count}
+                )
         return generate_workout_plan(
             options,
             student_id=context.student_id,
             repository=context.repository,
             pipeline=context.pipeline(),
             status="draft" if has_active_plan else "active",
+            available_days=available_days,
+            schedule_week_start=schedule_week_start,
+            schedule_note=schedule_note,
         )
     except ValidationError as error:
         return GenerateWorkoutPlanResult(

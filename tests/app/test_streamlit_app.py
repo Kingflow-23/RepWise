@@ -410,6 +410,36 @@ def test_saved_plan_delete_action_is_available_outside_details_expander(
     assert [plan["id"] for plan in app.session_state["plan_history"]] == ["first-plan"]
 
 
+def test_account_deletion_requires_exact_confirmation_and_signs_out(monkeypatch):
+    delete_requests = []
+
+    def fake_request(method, url, **kwargs):
+        if url.endswith("/api/v1/health"):
+            return health_response()
+        if method == "DELETE" and url.endswith("/api/v1/auth/me"):
+            delete_requests.append(kwargs["headers"]["Authorization"])
+            return FakeResponse(None, status_code=204)
+        raise AssertionError(f"Unexpected API request: {method} {url}")
+
+    monkeypatch.setattr("requests.request", fake_request)
+    app = AppTest.from_file(str(APP_PATH))
+    set_signed_in_state(app)
+    app.session_state["plan_history"] = []
+    app.run(timeout=20)
+
+    app.button(key="delete-account-submit").click().run(timeout=20)
+    assert delete_requests == []
+    assert any("Type" in item.value for item in app.error)
+
+    app.text_input(key="delete-account-confirmation").set_value("DELETE")
+    app.button(key="delete-account-submit").click().run(timeout=20)
+
+    assert delete_requests == ["Bearer test-token"]
+    assert "access_token" not in app.session_state
+    assert "user_id" not in app.session_state
+    assert any("Your RepWise account" in item.value for item in app.success)
+
+
 def test_saved_workout_feedback_form_refreshes_the_displayed_plan(
     monkeypatch: Any,
 ) -> None:

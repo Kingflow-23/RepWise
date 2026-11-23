@@ -42,11 +42,21 @@ def test_weekday_becomes_a_date_in_the_right_week():
     assert cal.date_of_workout(NEXT_MONDAY, 1, "Someday") is None
 
 
-def test_week_start_waits_until_every_workout_is_still_ahead():
+def test_week_start_keeps_the_week_when_any_workout_day_remains():
     wednesday = date(2030, 1, 9)
-    assert cal.default_week_start(["Monday", "Friday"], wednesday) == NEXT_MONDAY
+    assert cal.default_week_start(["Monday", "Friday"], wednesday) == date(2030, 1, 7)
     assert cal.default_week_start(["Wednesday", "Friday"], wednesday) == date(
         2030, 1, 7
+    )
+    assert cal.default_week_start(
+        ["Monday", "Wednesday", "Friday", "Sunday"], wednesday
+    ) == date(2030, 1, 7)
+
+
+def test_week_start_moves_to_next_week_after_the_last_workout_day():
+    saturday = date(2030, 1, 12)
+    assert cal.default_week_start(["Monday", "Wednesday", "Friday"], saturday) == date(
+        2030, 1, 14
     )
 
 
@@ -118,11 +128,17 @@ def test_slots_stay_on_planned_days_and_avoid_busy_times(demo):
 
     result = cal.propose_training_slots(context)
 
-    assert result.week_start == NEXT_MONDAY
-    monday = result.workouts[0]
-    assert (monday.planned_day, monday.moved_to_another_day) == ("Monday", False)
-    assert monday.options[0].start.hour == 18
-    assert {slot.day for slot in monday.options} == {"Monday"}
+    assert result.week_start == date(2030, 1, 7)
+    assert [workout.planned_day for workout in result.workouts] == [
+        "Wednesday",
+        "Friday",
+    ]
+    assert all(not workout.moved_to_another_day for workout in result.workouts)
+    assert all(
+        slot.day in {"Wednesday", "Friday"}
+        for workout in result.workouts
+        for slot in workout.options
+    )
 
 
 def test_slot_tool_cannot_be_widened_to_night_and_prefers_daytime(demo):
@@ -132,7 +148,7 @@ def test_slot_tool_cannot_be_widened_to_night_and_prefers_daytime(demo):
         latest=time(23, 59),
     )
 
-    assert result.workouts[0].options[0].start.strftime("%H:%M") == "10:00"
+    assert result.workouts[0].options[0].start.strftime("%H:%M") == "10:30"
     for workout in result.workouts:
         for slot in workout.options:
             local_start = slot.start.astimezone(PARIS)
@@ -146,7 +162,9 @@ def test_each_slot_label_is_the_real_local_weekday_and_date(demo):
     result = cal.propose_training_slots(with_calendar(demo, cal.FakeCalendar()))
 
     first = result.workouts[0].options[0]
-    assert first.label == f"Monday {NEXT_MONDAY.isoformat()} {first.start:%H:%M}"
+    assert (
+        first.label == f"Wednesday {date(2030, 1, 9).isoformat()} {first.start:%H:%M}"
+    )
     for workout in result.workouts:
         for slot in workout.options:
             local = slot.start.astimezone(PARIS)
@@ -161,7 +179,7 @@ def test_two_workouts_are_never_offered_the_same_time(demo):
 
 
 def test_a_full_day_does_not_move_a_workout_without_approval(demo):
-    context = with_calendar(demo, cal.FakeCalendar([busy_on(NEXT_MONDAY, 0, 23)]))
+    context = with_calendar(demo, cal.FakeCalendar([busy_on(date(2030, 1, 9), 0, 23)]))
 
     workout = cal.propose_training_slots(context).workouts[0]
 
@@ -171,7 +189,7 @@ def test_a_full_day_does_not_move_a_workout_without_approval(demo):
 
 
 def test_no_free_time_is_said_plainly(demo):
-    context = with_calendar(demo, cal.FakeCalendar([busy_on(NEXT_MONDAY, 0, 23)]))
+    context = with_calendar(demo, cal.FakeCalendar([busy_on(date(2030, 1, 9), 0, 23)]))
 
     workout = cal.propose_training_slots(context).workouts[0]
 

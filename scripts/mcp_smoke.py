@@ -43,7 +43,7 @@ def server_environment(folder: Path) -> dict[str, str]:
         Environment variables for ``server.py``.
     """
     database = folder / "mcp.sqlite3"
-    student_id, _plan_id = seed_demo_account(database)
+    student_id, _ = seed_demo_account(database)
     secret = secrets.token_hex(32)
     return {
         **os.environ,

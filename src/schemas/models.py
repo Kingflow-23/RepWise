@@ -89,6 +89,18 @@ class PlanOptions(Model):
     refinement_instructions: str | None = Field(default=None, max_length=500)
 
 
+class AgentPlanOptions(PlanOptions):
+    """Plan options exposed to the planning agent, including date scope."""
+
+    schedule_scope: Literal["weekly", "this_week"] = Field(
+        default="weekly",
+        description=(
+            "Use recurring profile weekdays, or constrain sessions to free dates "
+            "in the current calendar week."
+        ),
+    )
+
+
 class PlanRequest(PlanOptions):
     """Complete input to generation, combining request options and a saved profile.
 

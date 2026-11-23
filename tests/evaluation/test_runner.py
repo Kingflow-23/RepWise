@@ -770,10 +770,10 @@ def test_staged_smoke_runs_all_retrievers_and_bounded_real_generation(
     assert planner_options["retriever"].rewrite is False
     assert planner_options["max_generation_attempts"] == 1
     assert benchmark_options["retriever"] is built_retrievers["bm25"]
+    assert benchmark_options["use_rag"] is True
     assert benchmark_options["use_query_expansion"] is False
     assert benchmark_options["scope_analyzer"] is not None
     assert judged_calls[0][0] == ["G1"]
-    assert judged_calls[0][1]["rag_enabled"] is True
     assert generation_calls == [(["RT1"], "real Ollama; plan presence check")]
     run = next((tmp_path / "runs").iterdir())
     payload = json.loads((run / "results.json").read_text(encoding="utf-8"))
@@ -1030,7 +1030,7 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
         runner.adapters, "build_benchmark_planner", build_benchmark_planner
     )
 
-    def evaluate_judged(_cases, planner, _judge, *, llm_mode, rag_enabled):
+    def evaluate_judged(_cases, planner, _judge, *, llm_mode):
         quality = (
             0.6 if planner.model_name == "model-a" else 0.8 if planner.use_rag else 0.75
         )
@@ -1042,7 +1042,7 @@ def test_comparison_ranks_retrievers_and_runs_three_generation_arms(
                 "answer_quality": Ratio(quality, 1),
                 "answer_generation_rate": Ratio(1, 1),
                 "judge_coverage": Ratio(1, 1),
-                "evidence_support": Ratio(0.7 if rag_enabled else 0, 1),
+                "evidence_support": Ratio(0.7 if planner.use_rag else 0, 1),
             },
             extra={
                 "generation_latency_ms_median": 1.0,

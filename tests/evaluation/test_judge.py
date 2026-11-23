@@ -40,7 +40,6 @@ def test_ollama_quality_judge_validates_rubric_scores(monkeypatch):
         {"request": "Build strength"},
         "A raw answer, not a validated plan.",
         "Use controlled repetitions.",
-        rag_enabled=True,
     )
 
     assert result["scores"] == _judge_payload()["scores"]
@@ -72,7 +71,6 @@ def test_ollama_quality_judge_scores_no_rag_evidence_support(monkeypatch):
         {"request": "Build strength"},
         "A free-form answer with no JSON.",
         "",
-        rag_enabled=False,
     )
 
     assert result == payload
@@ -99,7 +97,7 @@ def test_ollama_quality_judge_rejects_out_of_range_scores(monkeypatch):
 
     with pytest.raises(ValueError, match="domain_safety"):
         OllamaQualityJudge("qwen3.5:4b").score(
-            {"request": "Build strength"}, "answer", "", rag_enabled=True
+            {"request": "Build strength"}, "answer", ""
         )
 
 
@@ -291,7 +289,6 @@ def test_judged_generation_records_raw_answer_and_judge_rationale():
         FixedPlanner(),
         FixedJudge(),
         llm_mode="mocked",
-        rag_enabled=True,
     )
 
     assert result.metrics["answer_quality"] == Ratio(12, 12)
@@ -323,7 +320,6 @@ def test_no_rag_evidence_support_reduces_answer_quality():
         FixedPlanner(),
         FixedJudge(),
         llm_mode="mocked",
-        rag_enabled=False,
     )
 
     assert result.metrics["answer_quality"] == Ratio(10, 12)
@@ -353,7 +349,6 @@ def test_judge_failure_does_not_count_as_zero_quality():
         FixedPlanner(),
         FailingJudge(),
         llm_mode="mocked",
-        rag_enabled=False,
     )
 
     assert result.metrics["answer_generation_rate"] == Ratio(1, 1)

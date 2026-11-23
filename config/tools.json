@@ -203,7 +203,7 @@
     },
     {
       "name": "generate_workout_plan",
-      "description": "Generate a validated, evidence-based one-week workout plan from the student's profile and this request, using the RAG pipeline. When the student already has an active plan, the new plan is saved as a draft and activating it needs approval.",
+      "description": "Generate a validated, evidence-based one-week workout plan from the student's profile and this request, using the RAG pipeline. For this-week plans, constrain weekdays to remaining calendar availability and reduce the workout count if needed. When the student already has an active plan, the new plan is saved as a draft and activating it needs approval.",
       "agents": [
         "planning"
       ],
@@ -211,7 +211,8 @@
       "approval": "never",
       "external_services": [
         "ollama",
-        "fitness_corpus"
+        "fitness_corpus",
+        "google_calendar"
       ],
       "failure_codes": [
         "missing_profile",
@@ -224,6 +225,7 @@
         "generation_timeout",
         "generation_error",
         "plan_not_compliant",
+        "no_available_days",
         "unavailable"
       ],
       "input_schema": {
@@ -234,6 +236,16 @@
             "maxLength": 300,
             "minLength": 3,
             "title": "Focus",
+            "type": "string"
+          },
+          "schedule_scope": {
+            "default": "weekly",
+            "description": "Use recurring profile weekdays, or constrain sessions to free dates in the current calendar week.",
+            "enum": [
+              "weekly",
+              "this_week"
+            ],
+            "title": "Schedule Scope",
             "type": "string"
           },
           "workouts_per_week": {

@@ -113,6 +113,25 @@ def test_repository_rolls_back_and_closes_connections_on_failure(tmp_path, monke
     assert all(connection.closed for connection in connections)
 
 
+def test_deleting_an_account_cascades_through_its_profile_and_plans(tmp_path):
+    repository = StudentRepository(tmp_path / "delete-account.sqlite3")
+    repository.initialize()
+    user_id = repository.create_user("Delete Me", "not-a-real-password-hash")
+    saved_profile = profile()
+    repository.save_profile(user_id, saved_profile)
+    repository.save_plan(
+        user_id,
+        PlanRequest(focus="General strength", profile=saved_profile),
+        PlanResult(status="completed", message="Test plan.", plan=plan()),
+    )
+
+    assert repository.delete_user(user_id)
+    assert repository.get_account_identity(user_id) is None
+    assert repository.get_profile(user_id) is None
+    assert repository.get_current_plan(user_id) is None
+    assert not repository.delete_user(user_id)
+
+
 def test_profiles_and_plans_require_their_account_and_profile(tmp_path):
     """Enforce foreign-key ownership from profiles and plans to their parents.
 

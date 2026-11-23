@@ -389,8 +389,8 @@ def test_proposed_times_reach_the_student_exactly_as_code_computed_them(demo):
     )
 
     assert "Free times checked in your calendar, nothing booked yet" in response.answer
-    assert "Monday 2030-01-14 10:00" in response.answer
-    assert "Monday 2030-01-14 07:00" not in response.answer
+    assert "Wednesday 2030-01-09 10:30" in response.answer
+    assert "Friday 2030-01-11 10:00" in response.answer
 
 
 def test_key_facts_separate_available_days_from_workout_days(demo):

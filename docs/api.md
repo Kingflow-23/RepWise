@@ -11,9 +11,12 @@ interactive reference is at `http://127.0.0.1:8000/docs` when the API is running
    eight characters. It creates a UUID account ID and stores only an Argon2 hash.
 2. `POST /api/v1/auth/login` checks the password against that hash.
 3. Both return a signed JWT, the account ID, and the full name. Tokens last one hour.
-4. Other routes get the account ID from the token and require it to match the
-   `student_id` in the URL, so changing a URL grants no access. Updates and deletes
-   also filter on the owner.
+4. `GET /api/v1/auth/me` returns the authenticated account's public identity.
+   `DELETE /api/v1/auth/me` deletes only the authenticated account; it has no
+   caller-supplied account ID.
+5. Student-data routes get the account ID from the token and require it to match
+   the `student_id` in the URL, so changing a URL grants no access. Updates and
+   deletes also filter on the owner.
 
 Without `REPWISE_AUTH_SECRET`, registration and login return a setup error. Raw
 passwords and tokens are never stored.
@@ -27,6 +30,8 @@ All paths start with `/api/v1`, and `{student}` stands for `students/{student_id
 | `GET` | `/health` | No | Configuration and real availability: retriever initialization, Ollama reachability and installed models. Always HTTP 200; `status` is `ok` or `degraded`, with `problems`. Asks Ollama only for its model list (2 s timeout), never runs a model. |
 | `POST` | `/auth/register` | No | Create an account and return a token. |
 | `POST` | `/auth/login` | No | Verify a password and return a token. |
+| `GET` | `/auth/me` | Yes | Return the authenticated account's public identity. |
+| `DELETE` | `/auth/me` | Yes | Permanently delete the authenticated account and its RepWise data; returns 204. |
 | `PUT`, `GET` | `/{student}/profile` | Yes | Save or read the profile. |
 | `POST` | `/{student}/plans` | Yes | Generate and save a validated plan. |
 | `GET` | `/{student}/plans/current` | Yes | Read the active program; returns JSON `null` when none exists. |
@@ -75,6 +80,11 @@ the approval result reports `calendar_status: "no_slots"`.
 After approval, reload the current-program and draft endpoints. The web
 frontend keeps drafts separate and labels previews as not active. Approval
 controls remain available through the existing agent API and Streamlit UI.
+
+The direct `POST /{student}/plans` endpoint is different: after successful
+generation it saves the new plan as active and archives any previous active
+plan. It does not create an approval action. Assistant-generated replacements
+use the draft-and-approval workflow instead.
 
 ### Logging feedback
 
@@ -166,7 +176,11 @@ erDiagram
 | `saved_locations` | The location a student chose to save (opt-in), with the time of consent. |
 
 - Deleting an account cascades through profiles, plans, and everything linked to a
-  plan. Deleting a plan doesn't remove its events from the calendar itself.
+  plan, including workout history, recommendations, internal booking records,
+  memory, approvals, and saved location. Account deletion also removes that
+  account's locally stored Google Calendar credentials. It does **not** delete
+  events already created in Google Calendar. Deleting a plan doesn't remove its
+  events from the calendar itself.
 - A successful adaptation updates the plan and its feedback link in one transaction.
 - Connections commit on success, roll back on failure, and always close.
 - Failed generations are returned as errors and never stored. Health details are never

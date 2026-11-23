@@ -186,6 +186,14 @@ class SlotsResult(Model):
     workouts: list[WorkoutSlots]
 
 
+class WeekAvailability(Model):
+    """Profile weekdays that still have enough room during the current week."""
+
+    week_start: date
+    available_days: list[str]
+    calendar_checked: bool
+
+
 class Booking(Model):
     """One exact workout start time pinned into an approval action."""
 
@@ -257,18 +265,19 @@ def monday_of(day: date) -> date:
 
 
 def default_week_start(plan_days: list[str], today: date) -> date:
-    """Choose which week to schedule: this one, unless a workout day has passed.
+    """Choose the week containing the remaining workouts.
 
     Args:
         plan_days: Weekday names used by the plan.
         today: Today's date in the student's time zone.
 
     Returns:
-        The Monday of this week, or of next week when a planned day is past.
+        The Monday of this week when at least one planned day remains,
+        or the Monday of next week when every planned day has passed.
     """
     known = [n for n in (weekday_number(day) for day in plan_days) if n is not None]
     this_monday = monday_of(today)
-    if known and min(known) < today.weekday():
+    if known and max(known) < today.weekday():
         return this_monday + timedelta(days=7)
     return this_monday
 
@@ -325,6 +334,56 @@ def free_start_times(
             starts.append(start)
         start += step
     return starts
+
+
+def available_days_this_week(
+    context: ToolContext, profile_days: list[str], minutes: int
+) -> WeekAvailability | ToolFailure:
+    """Filter profile weekdays to future dates with enough free calendar time.
+
+    When no external calendar is connected, only past dates are removed and
+    ``calendar_checked`` is false. A connected but unavailable calendar is a
+    failure: it must not be treated as an empty or free calendar.
+    """
+    zone = ZoneInfo(context.timezone)
+    local_now = context.clock().astimezone(zone)
+    week_start = monday_of(local_now.date())
+    range_start = datetime.combine(week_start, time.min, zone)
+    busy: list[BusyPeriod] = []
+    calendar_checked = context.calendar is not None
+    if context.calendar is not None:
+        try:
+            busy = list(
+                context.calendar.busy_periods(
+                    range_start, range_start + timedelta(days=7)
+                )
+            )
+        except CalendarError as error:
+            logger.warning("Calendar read failed: %s", error)
+            return failure("calendar_unavailable", str(error))
+
+    available = []
+    for day in profile_days:
+        workout_date = date_of_workout(week_start, 1, day)
+        if workout_date is None or workout_date < local_now.date():
+            continue
+        if calendar_checked and not free_start_times(
+            workout_date,
+            minutes,
+            busy,
+            zone,
+            local_now,
+            TRAINING_DAY_START,
+            TRAINING_DAY_END,
+        ):
+            continue
+        available.append(day)
+
+    return WeekAvailability(
+        week_start=week_start,
+        available_days=available,
+        calendar_checked=calendar_checked,
+    )
 
 
 def spread_options(starts: list[datetime]) -> list[datetime]:
@@ -489,6 +548,8 @@ def propose_training_slots(
                 continue
             minutes = workout.estimated_minutes
             planned_date = date_of_workout(first_monday, week.number, workout.day)
+            if planned_date and planned_date < local_now.date():
+                continue
             starts = (
                 free_start_times(
                     planned_date, minutes, busy, zone, local_now, earliest, latest

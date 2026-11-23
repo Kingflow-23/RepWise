@@ -1,5 +1,6 @@
 """Exercise the generation tool with real validation and SQLite persistence."""
 
+from datetime import datetime, time, timedelta
 from unittest.mock import Mock
 
 import pytest
@@ -9,19 +10,22 @@ from src.db.repository import StudentRepository
 from src.generation.pipeline import PlanPipeline
 from src.retrieval.query_expansion import ScopeRefusalError
 from src.schemas.models import (
+    AgentPlanOptions,
     PlanOptions,
     PlanRequest,
     RetrievedChunk,
     TrainingPlan,
     UserProfile,
 )
+from src.tools import calendar as calendar_tools
 from src.tools.catalog import get_tool_spec
+from src.tools.registry import PlanArguments
 from src.tools.planning import (
     GenerateWorkoutPlanResult,
     generate_plan_for_agent,
     generate_workout_plan,
 )
-from tests.conftest import make_context
+from tests.conftest import NOW, PARIS, make_context
 
 
 @pytest.fixture
@@ -231,7 +235,8 @@ def test_pipeline_failures_return_structured_result_without_saving(account, fail
 
 def test_tool_catalog_uses_actual_input_schema():
     schema = get_tool_spec("generate_workout_plan").input_schema
-    assert schema["properties"] == PlanOptions.model_json_schema()["properties"]
+    assert schema["properties"] == AgentPlanOptions.model_json_schema()["properties"]
+    assert schema["properties"] == PlanArguments.model_json_schema()["properties"]
     assert "student_id" not in schema["properties"]
     with pytest.raises(ValidationError):
         PlanOptions.model_validate(
@@ -260,6 +265,99 @@ def test_agent_plan_without_a_pipeline_is_unavailable(account):
     )
 
     assert result.status == "unavailable"
+    assert repository.list_plans(user_id) == []
+
+
+def test_this_week_plan_uses_only_free_profile_days_and_reduces_workout_count(account):
+    repository, user_id = account
+    repository.save_profile(
+        user_id,
+        UserProfile(
+            experience="beginner",
+            goal="Build leg muscles",
+            available_days=[
+                "Monday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+                "Sunday",
+            ],
+            session_minutes=45,
+            equipment=["bodyweight"],
+        ),
+    )
+    pipeline, _, generator = make_pipeline()
+    plan = generator.generate.return_value
+    week = plan.weeks[0]
+    generator.generate.return_value = plan.model_copy(
+        update={
+            "weeks": [
+                week.model_copy(
+                    update={
+                        "workouts": [
+                            week.workouts[0].model_copy(update={"day": "Saturday"})
+                        ]
+                    }
+                )
+            ]
+        }
+    )
+    busy = [
+        calendar_tools.BusyPeriod(
+            start=datetime.combine(NOW.date() + timedelta(days=offset), time(6), PARIS),
+            end=datetime.combine(NOW.date() + timedelta(days=offset), time(22), PARIS),
+        )
+        for offset in (0, 1, 2, 4)
+    ]
+    context = make_context(
+        repository,
+        user_id,
+        calendar=calendar_tools.FakeCalendar(busy),
+        pipeline_factory=lambda: pipeline,
+    )
+
+    result = generate_plan_for_agent(
+        context,
+        focus="Build leg muscles",
+        schedule_scope="this_week",
+        workouts_per_week=3,
+    )
+
+    assert result.status == "completed"
+    assert result.schedule_week_start.isoformat() == "2030-01-07"
+    assert [workout.day for workout in result.plan.weeks[0].workouts] == ["Saturday"]
+    saved_request = repository.list_plans(user_id)[0]["request"]
+    assert saved_request["profile"]["available_days"] == ["Saturday"]
+    assert saved_request["workouts_per_week"] == 1
+    assert "Available profile days: Saturday" in result.schedule_note
+    assert "reduced to 1" in result.schedule_note
+
+
+def test_this_week_plan_does_not_generate_when_calendar_is_unavailable(account):
+    repository, user_id = account
+    pipeline, _, generator = make_pipeline()
+
+    class UnavailableCalendar:
+        def busy_periods(self, start: datetime, end: datetime):
+            if end <= start:
+                return []
+            raise calendar_tools.CalendarError("Calendar read failed")
+
+    context = make_context(
+        repository,
+        user_id,
+        calendar=UnavailableCalendar(),
+        pipeline_factory=lambda: pipeline,
+    )
+
+    result = generate_plan_for_agent(
+        context, focus="Build legs", schedule_scope="this_week"
+    )
+
+    assert result.status == "unavailable"
+    assert "Calendar read failed" in result.message
+    generator.generate.assert_not_called()
     assert repository.list_plans(user_id) == []
 
 

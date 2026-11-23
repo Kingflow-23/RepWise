@@ -66,8 +66,6 @@ class OllamaQualityJudge:
         case: dict[str, Any],
         answer: str,
         evidence: str,
-        *,
-        rag_enabled: bool,
     ) -> dict[str, Any]:
         """Return validated rubric scores and a concise overall rationale."""
         from ollama import Client
