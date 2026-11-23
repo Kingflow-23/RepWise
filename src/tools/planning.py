@@ -79,7 +79,8 @@ class ActivatePlanResult(Model):
 
     ok: Literal[True] = True
     plan_id: str
-    plan_status: Literal["active"] = "active"
+    plan_status: Literal["active", "draft"] = "active"
+    activated: bool = True
     calendar_status: Literal[
         "scheduled", "partial", "no_slots", "not_connected", "unavailable", "failed"
     ] = "not_connected"
@@ -140,7 +141,11 @@ def generate_workout_plan(
     if available_days is not None:
         profile = profile.model_copy(update={"available_days": available_days})
     try:
-        request = PlanRequest(profile=profile, **options.model_dump())
+        request = PlanRequest(
+            profile=profile,
+            schedule_week_start=schedule_week_start,
+            **options.model_dump(),
+        )
     except ValidationError as error:
         return GenerateWorkoutPlanResult(
             status="invalid_request",
@@ -188,7 +193,8 @@ def generate_plan_for_agent(
         available_days = None
         schedule_week_start = None
         schedule_note = None
-        if agent_options.schedule_scope == "this_week":
+        is_date_scoped = agent_options.schedule_scope == "this_week"
+        if is_date_scoped:
             profile = context.repository.get_profile(context.student_id)
             if profile is not None:
                 session_minutes = min(
@@ -200,7 +206,7 @@ def generate_plan_for_agent(
                 )
                 if isinstance(availability, ToolFailure):
                     return GenerateWorkoutPlanResult(
-                        status="unavailable",
+                        status=availability.code,
                         message=(
                             "Calendar availability could not be checked, so a "
                             "date-specific plan was not generated. "
@@ -212,8 +218,6 @@ def generate_plan_for_agent(
                     empty_schedule_message = (
                         "No future profile weekday has enough free time in the "
                         "current calendar week."
-                        if availability.calendar_checked
-                        else "No profile weekday remains in the current calendar week."
                     )
                     return GenerateWorkoutPlanResult(
                         status="no_available_days",
@@ -228,16 +232,6 @@ def generate_plan_for_agent(
                 effective_count = min(requested_count, len(availability.available_days))
                 calendar_detail = (
                     "Connected calendar was checked; availability is not booked"
-                    if availability.calendar_checked
-                    else (
-                        "No calendar is connected; busy times could not be checked "
-                        "or booked"
-                    )
-                )
-                days_description = (
-                    "Available profile days"
-                    if availability.calendar_checked
-                    else "Remaining profile weekdays"
                 )
                 reduction_detail = (
                     f" Requested {requested_count} workouts were reduced to "
@@ -247,7 +241,7 @@ def generate_plan_for_agent(
                 )
                 schedule_note = (
                     f"{calendar_detail} for the week starting "
-                    f"{availability.week_start.isoformat()}. {days_description}: "
+                    f"{availability.week_start.isoformat()}. Available profile days: "
                     f"{', '.join(availability.available_days)}."
                     f"{reduction_detail}"
                 )
@@ -261,7 +255,7 @@ def generate_plan_for_agent(
             student_id=context.student_id,
             repository=context.repository,
             pipeline=context.pipeline(),
-            status="draft" if has_active_plan else "active",
+            status="draft" if has_active_plan or is_date_scoped else "active",
             available_days=available_days,
             schedule_week_start=schedule_week_start,
             schedule_note=schedule_note,
@@ -304,6 +298,45 @@ def activate_plan(
     Returns:
         The activated plan and calendar outcome, or a structured failure.
     """
+    record = context.repository.get_plan(context.student_id, plan_id)
+    if record is None:
+        return failure(PLAN_NOT_FOUND, "Saved plan not found.")
+    schedule_week_start = record["request"].get("schedule_week_start")
+    if schedule_week_start:
+        if context.calendar is None or calendar_status != "scheduled" or not bookings:
+            return failure(
+                "no_workouts_to_book",
+                "This week's plan cannot be activated without approved calendar slots.",
+            )
+        result = calendar_tools.add_workouts_to_calendar(context, bookings, plan_id)
+        if isinstance(result, ToolFailure):
+            return result
+        calendar_workouts = sum(
+            outcome.status in {"booked", "already_booked"}
+            for outcome in result.outcomes
+        )
+        if calendar_workouts != len(result.outcomes):
+            return ActivatePlanResult(
+                plan_id=plan_id,
+                plan_status="draft",
+                activated=False,
+                calendar_status="partial",
+                calendar_workouts=calendar_workouts,
+                calendar_message=(
+                    "One or more approved slots became unavailable. The plan "
+                    "remains a draft; see each booking outcome."
+                ),
+                calendar_result=result,
+            )
+        if not context.repository.activate_plan(context.student_id, plan_id):
+            return failure(PLAN_NOT_FOUND, "Saved plan could not be activated.")
+        return ActivatePlanResult(
+            plan_id=plan_id,
+            calendar_status="scheduled",
+            calendar_workouts=calendar_workouts,
+            calendar_result=result,
+        )
+
     if not context.repository.activate_plan(context.student_id, plan_id):
         return failure(PLAN_NOT_FOUND, "Saved plan not found.")
 

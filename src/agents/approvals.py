@@ -227,9 +227,9 @@ def run_tool_with_approval(
 
     result = execute_tool(context, tool_name, arguments)
     run = ToolRun(tool_name, result)
-    # A plan generated while another plan is active is only a draft: replacing
-    # the plan the student follows is a consequential change, so its activation
-    # is proposed here, in code, rather than left to the model to remember.
+    # Draft plans are activated only through an approval containing the exact
+    # calendar times. Date-specific plans stay drafts if those times cannot be
+    # prepared; the model must not claim they are active or booked.
     if (
         isinstance(result, GenerateWorkoutPlanResult)
         and result.status == "completed"
@@ -238,6 +238,17 @@ def run_tool_with_approval(
         activation = validate_arguments("activate_plan", {"plan_id": result.plan_id})
         prepared_activation = prepare_arguments(context, "activate_plan", activation)
         if isinstance(prepared_activation, ToolFailure):
+            if result.schedule_week_start is not None:
+                run.result = result.model_copy(
+                    update={
+                        "schedule_note": (
+                            f"{result.schedule_note or ''} Activation was not "
+                            "proposed because exact calendar slots could not be "
+                            f"prepared. {prepared_activation.error}"
+                        )
+                    }
+                )
+                return run
             logger.error(
                 "Could not prepare plan activation plan_id=%s error=%s",
                 result.plan_id,

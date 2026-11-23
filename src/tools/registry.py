@@ -325,7 +325,18 @@ def prepare_activation(
     context: ToolContext, arguments: ActivatePlanArguments
 ) -> ActivatePlanArguments | ToolFailure:
     """Pin exact calendar times into the activation action before approval."""
+    record = profile.resolve_plan(context, arguments.plan_id)
+    if isinstance(record, ToolFailure):
+        return record
+    requested_week = record["request"].get("schedule_week_start")
+    week_start = date.fromisoformat(str(requested_week)) if requested_week else None
+    requires_bookings = week_start is not None
     if context.calendar is None:
+        if requires_bookings:
+            return failure(
+                "calendar_not_connected",
+                "Connect a calendar before preparing this week's plan activation.",
+            )
         return arguments.model_copy(
             update={
                 "bookings": [],
@@ -333,8 +344,12 @@ def prepare_activation(
                 "calendar_message": "No calendar is connected.",
             }
         )
-    slots = calendar.propose_training_slots(context, plan_id=arguments.plan_id)
+    slots = calendar.propose_training_slots(
+        context, week_start=week_start, plan_id=arguments.plan_id
+    )
     if isinstance(slots, ToolFailure):
+        if requires_bookings:
+            return slots
         if slots.code == "calendar_unavailable":
             return arguments.model_copy(
                 update={
@@ -362,6 +377,8 @@ def prepare_activation(
             if missing
             else "There are no unbooked workouts to add."
         )
+        if requires_bookings:
+            return failure("no_workouts_to_book", message)
         return arguments.model_copy(
             update={
                 "bookings": [],

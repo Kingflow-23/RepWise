@@ -6,6 +6,7 @@ from unittest.mock import Mock
 import pytest
 from pydantic import ValidationError
 
+from src.agents import approvals
 from src.db.repository import StudentRepository
 from src.generation.pipeline import PlanPipeline
 from src.retrieval.query_expansion import ScopeRefusalError
@@ -249,8 +250,12 @@ def test_agent_plan_is_active_first_then_a_draft_that_keeps_the_current_plan(acc
     pipeline, _, _ = make_pipeline()
     context = make_context(repository, user_id, pipeline_factory=lambda: pipeline)
 
-    first = generate_plan_for_agent(context, focus="Build leg muscles")
-    second = generate_plan_for_agent(context, focus="Build leg muscles again")
+    first = generate_plan_for_agent(
+        context, focus="Build leg muscles", schedule_scope="weekly"
+    )
+    second = generate_plan_for_agent(
+        context, focus="Build leg muscles again", schedule_scope="weekly"
+    )
 
     assert (first.status, first.plan_status) == ("completed", "active")
     assert (second.status, second.plan_status) == ("completed", "draft")
@@ -261,7 +266,9 @@ def test_agent_plan_without_a_pipeline_is_unavailable(account):
     repository, user_id = account
 
     result = generate_plan_for_agent(
-        make_context(repository, user_id), focus="Build legs"
+        make_context(repository, user_id),
+        focus="Build legs",
+        schedule_scope="weekly",
     )
 
     assert result.status == "unavailable"
@@ -325,11 +332,13 @@ def test_this_week_plan_uses_only_free_profile_days_and_reduces_workout_count(ac
     )
 
     assert result.status == "completed"
+    assert result.plan_status == "draft"
     assert result.schedule_week_start.isoformat() == "2030-01-07"
     assert [workout.day for workout in result.plan.weeks[0].workouts] == ["Saturday"]
     saved_request = repository.list_plans(user_id)[0]["request"]
     assert saved_request["profile"]["available_days"] == ["Saturday"]
     assert saved_request["workouts_per_week"] == 1
+    assert saved_request["schedule_week_start"] == "2030-01-07"
     assert "Available profile days: Saturday" in result.schedule_note
     assert "reduced to 1" in result.schedule_note
 
@@ -355,10 +364,238 @@ def test_this_week_plan_does_not_generate_when_calendar_is_unavailable(account):
         context, focus="Build legs", schedule_scope="this_week"
     )
 
-    assert result.status == "unavailable"
+    assert result.status == "calendar_unavailable"
     assert "Calendar read failed" in result.message
     generator.generate.assert_not_called()
     assert repository.list_plans(user_id) == []
+
+
+def test_this_week_plan_requires_a_connected_calendar(account):
+    repository, user_id = account
+    pipeline, _, generator = make_pipeline()
+
+    result = generate_plan_for_agent(
+        make_context(repository, user_id, pipeline_factory=lambda: pipeline),
+        focus="Build legs",
+    )
+
+    assert result.status == "calendar_not_connected"
+    assert "Connect Google Calendar" in result.message
+    generator.generate.assert_not_called()
+    assert repository.list_plans(user_id) == []
+
+
+def test_this_week_plan_is_not_generated_when_all_profile_days_are_busy(account):
+    repository, user_id = account
+    repository.save_profile(
+        user_id,
+        UserProfile(
+            experience="beginner",
+            goal="Build leg muscles",
+            available_days=["Saturday"],
+            session_minutes=45,
+            equipment=["bodyweight"],
+        ),
+    )
+    pipeline, _, generator = make_pipeline()
+    saturday = NOW.date() + timedelta(days=3)
+    calendar = calendar_tools.FakeCalendar(
+        [
+            calendar_tools.BusyPeriod(
+                start=datetime.combine(saturday, time(6), PARIS),
+                end=datetime.combine(saturday, time(22), PARIS),
+            )
+        ]
+    )
+
+    result = generate_plan_for_agent(
+        make_context(
+            repository,
+            user_id,
+            calendar=calendar,
+            pipeline_factory=lambda: pipeline,
+        ),
+        focus="Build legs",
+    )
+
+    assert result.status == "no_available_days"
+    assert result.plan_id is None
+    generator.generate.assert_not_called()
+    assert repository.list_plans(user_id) == []
+
+
+def test_first_this_week_plan_waits_for_approval_of_exact_calendar_slots(account):
+    repository, user_id = account
+    repository.save_profile(
+        user_id,
+        UserProfile(
+            experience="beginner",
+            goal="Build leg muscles",
+            available_days=["Saturday"],
+            session_minutes=45,
+            equipment=["bodyweight"],
+        ),
+    )
+    pipeline, _, generator = make_pipeline()
+    plan = generator.generate.return_value
+    week = plan.weeks[0]
+    generator.generate.return_value = plan.model_copy(
+        update={
+            "weeks": [
+                week.model_copy(
+                    update={
+                        "workouts": [
+                            week.workouts[0].model_copy(update={"day": "Saturday"})
+                        ]
+                    }
+                )
+            ]
+        }
+    )
+    calendar = calendar_tools.FakeCalendar()
+    context = make_context(
+        repository,
+        user_id,
+        calendar=calendar,
+        pipeline_factory=lambda: pipeline,
+    )
+
+    run = approvals.run_tool_with_approval(
+        context,
+        "generate_workout_plan",
+        {"focus": "Build leg muscles"},
+        "planning",
+    )
+
+    assert run.result.plan_status == "draft"
+    assert repository.get_current_plan(user_id) is None
+    assert len(run.pending) == 1
+    action = repository.get_pending_action(user_id, run.pending[0].action_id)
+    assert action["tool_name"] == "activate_plan"
+    booking = action["arguments"]["bookings"][0]
+    assert booking["start"].startswith("2030-01-12")
+
+    decision = approvals.approve(context, run.pending[0].action_id)
+
+    assert decision.action.result["activated"] is True
+    assert decision.action.result["plan_status"] == "active"
+    assert repository.get_current_plan(user_id)["id"] == run.result.plan_id
+    assert len(calendar.events) == 1
+
+
+def test_this_week_plan_is_not_approved_if_slots_disappear_before_preparation(account):
+    repository, user_id = account
+    repository.save_profile(
+        user_id,
+        UserProfile(
+            experience="beginner",
+            goal="Build leg muscles",
+            available_days=["Saturday"],
+            session_minutes=45,
+            equipment=["bodyweight"],
+        ),
+    )
+    pipeline, _, generator = make_pipeline()
+    plan = generator.generate.return_value
+    week = plan.weeks[0]
+    generator.generate.return_value = plan.model_copy(
+        update={
+            "weeks": [
+                week.model_copy(
+                    update={
+                        "workouts": [
+                            week.workouts[0].model_copy(update={"day": "Saturday"})
+                        ]
+                    }
+                )
+            ]
+        }
+    )
+
+    class CalendarWithChangingAvailability:
+        reads = 0
+
+        def busy_periods(self, start: datetime, end: datetime):
+            self.reads += 1
+            if self.reads == 1:
+                return []
+            return [calendar_tools.BusyPeriod(start=start, end=end)]
+
+    context = make_context(
+        repository,
+        user_id,
+        calendar=CalendarWithChangingAvailability(),
+        pipeline_factory=lambda: pipeline,
+    )
+
+    run = approvals.run_tool_with_approval(
+        context,
+        "generate_workout_plan",
+        {"focus": "Build leg muscles"},
+        "planning",
+    )
+
+    assert run.result.plan_status == "draft"
+    assert "Activation was not proposed" in run.result.schedule_note
+    assert run.pending == []
+    assert repository.get_current_plan(user_id) is None
+
+
+def test_this_week_plan_stays_draft_if_approved_slot_becomes_busy(account):
+    repository, user_id = account
+    repository.save_profile(
+        user_id,
+        UserProfile(
+            experience="beginner",
+            goal="Build leg muscles",
+            available_days=["Saturday"],
+            session_minutes=45,
+            equipment=["bodyweight"],
+        ),
+    )
+    pipeline, _, generator = make_pipeline()
+    plan = generator.generate.return_value
+    week = plan.weeks[0]
+    generator.generate.return_value = plan.model_copy(
+        update={
+            "weeks": [
+                week.model_copy(
+                    update={
+                        "workouts": [
+                            week.workouts[0].model_copy(update={"day": "Saturday"})
+                        ]
+                    }
+                )
+            ]
+        }
+    )
+    calendar = calendar_tools.FakeCalendar()
+    context = make_context(
+        repository,
+        user_id,
+        calendar=calendar,
+        pipeline_factory=lambda: pipeline,
+    )
+    run = approvals.run_tool_with_approval(
+        context,
+        "generate_workout_plan",
+        {"focus": "Build leg muscles"},
+        "planning",
+    )
+    action = repository.get_pending_action(user_id, run.pending[0].action_id)
+    approved_start = datetime.fromisoformat(action["arguments"]["bookings"][0]["start"])
+    calendar.busy.append(
+        calendar_tools.BusyPeriod(
+            start=approved_start, end=approved_start + timedelta(minutes=45)
+        )
+    )
+
+    decision = approvals.approve(context, run.pending[0].action_id)
+
+    assert decision.action.result["activated"] is False
+    assert decision.action.result["plan_status"] == "draft"
+    assert repository.get_current_plan(user_id) is None
+    assert calendar.events == {}
 
 
 def test_completed_result_cannot_claim_success_without_a_saved_id():

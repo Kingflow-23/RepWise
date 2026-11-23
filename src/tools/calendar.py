@@ -191,7 +191,6 @@ class WeekAvailability(Model):
 
     week_start: date
     available_days: list[str]
-    calendar_checked: bool
 
 
 class Booking(Model):
@@ -341,33 +340,29 @@ def available_days_this_week(
 ) -> WeekAvailability | ToolFailure:
     """Filter profile weekdays to future dates with enough free calendar time.
 
-    When no external calendar is connected, only past dates are removed and
-    ``calendar_checked`` is false. A connected but unavailable calendar is a
-    failure: it must not be treated as an empty or free calendar.
+    A missing or unavailable external calendar is a failure, never an
+    assumption that the student is free.
     """
+    if context.calendar is None:
+        return failure("calendar_not_connected", NOT_CONNECTED_MESSAGE)
     zone = ZoneInfo(context.timezone)
     local_now = context.clock().astimezone(zone)
     week_start = monday_of(local_now.date())
     range_start = datetime.combine(week_start, time.min, zone)
-    busy: list[BusyPeriod] = []
-    calendar_checked = context.calendar is not None
-    if context.calendar is not None:
-        try:
-            busy = list(
-                context.calendar.busy_periods(
-                    range_start, range_start + timedelta(days=7)
-                )
-            )
-        except CalendarError as error:
-            logger.warning("Calendar read failed: %s", error)
-            return failure("calendar_unavailable", str(error))
+    try:
+        busy = list(
+            context.calendar.busy_periods(range_start, range_start + timedelta(days=7))
+        )
+    except CalendarError as error:
+        logger.warning("Calendar read failed: %s", error)
+        return failure("calendar_unavailable", str(error))
 
     available = []
     for day in profile_days:
         workout_date = date_of_workout(week_start, 1, day)
         if workout_date is None or workout_date < local_now.date():
             continue
-        if calendar_checked and not free_start_times(
+        if not free_start_times(
             workout_date,
             minutes,
             busy,
@@ -382,7 +377,6 @@ def available_days_this_week(
     return WeekAvailability(
         week_start=week_start,
         available_days=available,
-        calendar_checked=calendar_checked,
     )
 
 

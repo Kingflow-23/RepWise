@@ -86,7 +86,7 @@ def make_user_prompt(
     return (
         "STUDENT REQUEST\n"
         + json.dumps(
-            request.model_dump(exclude={"refinement_instructions"}),
+            request.model_dump(mode="json", exclude={"refinement_instructions"}),
             ensure_ascii=False,
             indent=2,
         )
@@ -131,7 +131,7 @@ def make_benchmark_prompts(request: PlanRequest, evidence: str) -> tuple[str, st
     user_prompt = (
         "STUDENT REQUEST AND PROFILE\n"
         + json.dumps(
-            request.model_dump(exclude={"refinement_instructions"}),
+            request.model_dump(mode="json", exclude={"refinement_instructions"}),
             ensure_ascii=False,
             indent=2,
         )

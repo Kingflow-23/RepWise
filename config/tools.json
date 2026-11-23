@@ -203,7 +203,7 @@
     },
     {
       "name": "generate_workout_plan",
-      "description": "Generate a validated, evidence-based one-week workout plan from the student's profile and this request, using the RAG pipeline. For this-week plans, constrain weekdays to remaining calendar availability and reduce the workout count if needed. When the student already has an active plan, the new plan is saved as a draft and activating it needs approval.",
+      "description": "Generate a validated, evidence-based workout plan from the student's profile and this request. This-week plans require a connected calendar and stay in draft until the exact available slots are approved and booked. When the student already has an active plan, replacement also needs approval.",
       "agents": [
         "planning"
       ],
@@ -226,6 +226,8 @@
         "generation_error",
         "plan_not_compliant",
         "no_available_days",
+        "calendar_not_connected",
+        "calendar_unavailable",
         "unavailable"
       ],
       "input_schema": {
@@ -236,16 +238,6 @@
             "maxLength": 300,
             "minLength": 3,
             "title": "Focus",
-            "type": "string"
-          },
-          "schedule_scope": {
-            "default": "weekly",
-            "description": "Use recurring profile weekdays, or constrain sessions to free dates in the current calendar week.",
-            "enum": [
-              "weekly",
-              "this_week"
-            ],
-            "title": "Schedule Scope",
             "type": "string"
           },
           "workouts_per_week": {
@@ -297,6 +289,16 @@
             ],
             "default": null,
             "title": "Refinement Instructions"
+          },
+          "schedule_scope": {
+            "default": "this_week",
+            "description": "Use recurring profile weekdays, or constrain sessions to free dates in the current calendar week.",
+            "enum": [
+              "weekly",
+              "this_week"
+            ],
+            "title": "Schedule Scope",
+            "type": "string"
           }
         },
         "required": [
@@ -312,17 +314,20 @@
     },
     {
       "name": "activate_plan",
-      "description": "Make a draft plan the student's active plan. Before approval, code prepares exact free times on each planned workout day and lists them in the approval. The same approval archives the previous plan and books those events; if any workout has no slot, it explains why and books none. Never changes workout days.",
+      "description": "Make a draft plan active after approval. Current-week plans require exact available calendar slots in the approval and remain drafts if a slot is unavailable. Other drafts can be activated without calendar bookings. Never changes workout days.",
       "agents": [
         "planning"
       ],
       "access": "write",
       "approval": "always",
-      "approval_reason": "The new plan was saved as a draft. Approve to activate it and archive your current plan.",
+      "approval_reason": "The plan is a draft. Approve to activate it; this may replace your current plan.",
       "failure_codes": [
         "plan_not_found",
         "student_not_found",
         "invalid_request",
+        "no_workouts_to_book",
+        "calendar_not_connected",
+        "calendar_unavailable",
         "storage_error"
       ],
       "input_schema": {

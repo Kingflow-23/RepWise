@@ -245,7 +245,11 @@ def ask(context, model, request, conversation="c1"):
         (
             "Propose-moi un programme pour prendre du muscle au niveau de mes jambes.",
             "planning",
-            tool_call("generate_workout_plan", focus="Build leg muscle"),
+            tool_call(
+                "generate_workout_plan",
+                focus="Build leg muscle",
+                schedule_scope="weekly",
+            ),
         ),
     ],
 )
@@ -272,7 +276,9 @@ def test_find_a_gym_and_create_a_programme_coordinates_two_specialists(demo):
             tool_call("search_nearby_places", category="gym"),
             AIMessage("Nearest gym: Basic-Fit Cachan."),
             tool_call(
-                "generate_workout_plan", focus="Build muscle at Basic-Fit Cachan"
+                "generate_workout_plan",
+                focus="Build muscle at Basic-Fit Cachan",
+                schedule_scope="weekly",
             ),
             AIMessage("Plan saved as a draft."),
             AIMessage("Here is your gym and your new plan."),

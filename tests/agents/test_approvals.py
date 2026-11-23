@@ -289,7 +289,10 @@ def test_a_draft_plan_gets_an_activation_waiting_for_approval(demo):
 
     context = make_context(demo.repository, demo.student_id, pipeline_factory=Pipeline)
     run = approvals.run_tool_with_approval(
-        context, "generate_workout_plan", {"focus": "Legs"}, "planning"
+        context,
+        "generate_workout_plan",
+        {"focus": "Legs", "schedule_scope": "weekly"},
+        "planning",
     )
 
     assert run.result.plan_status == "draft"
@@ -321,7 +324,10 @@ def test_approving_a_draft_plan_schedules_it_in_the_connected_calendar(demo):
         pipeline_factory=Pipeline,
     )
     run = approvals.run_tool_with_approval(
-        context, "generate_workout_plan", {"focus": "Legs"}, "planning"
+        context,
+        "generate_workout_plan",
+        {"focus": "Legs", "schedule_scope": "weekly"},
+        "planning",
     )
     pending = demo.repository.get_pending_action(
         demo.student_id, run.pending[0].action_id
@@ -360,7 +366,10 @@ def test_activation_uses_approved_times_and_does_not_silently_reschedule(demo):
         pipeline_factory=Pipeline,
     )
     run = approvals.run_tool_with_approval(
-        context, "generate_workout_plan", {"focus": "Legs"}, "planning"
+        context,
+        "generate_workout_plan",
+        {"focus": "Legs", "schedule_scope": "weekly"},
+        "planning",
     )
     action_id = run.pending[0].action_id
     pending = demo.repository.get_pending_action(demo.student_id, action_id)
@@ -411,7 +420,10 @@ def test_activation_with_any_missing_slot_approves_without_partial_booking(demo)
         pipeline_factory=Pipeline,
     )
     run = approvals.run_tool_with_approval(
-        context, "generate_workout_plan", {"focus": "Legs"}, "planning"
+        context,
+        "generate_workout_plan",
+        {"focus": "Legs", "schedule_scope": "weekly"},
+        "planning",
     )
     pending = demo.repository.get_pending_action(
         demo.student_id, run.pending[0].action_id

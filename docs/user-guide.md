@@ -22,14 +22,17 @@ each week. By default, the app selects up to three workouts, limited by your
 available days. For example, with four available days, the default is three;
 choose four explicitly to request four workouts.
 
-Plan generation creates a **one-week template** by default. When you ask the
-assistant for a plan for this week, it considers only your remaining profile
-weekdays and, when connected, checks that each has enough free calendar time.
-If fewer weekdays are available than the requested workout count, it reduces
-the count and reports that in the result. Without a connected calendar, busy
-times cannot be verified. A new plan becomes active when you have no active plan;
-when you already have one, the new plan is saved as a draft and activation
-waits for your approval.
+The **Create a plan** form creates a recurring one-week template. In the
+assistant, a plan defaults to the current calendar week: RepWise checks your
+remaining profile weekdays against your connected calendar and only generates
+sessions for days with enough free time. If fewer weekdays fit than requested,
+it reduces the count. A connected calendar is required; without one, no
+date-specific plan is generated. The plan stays a draft until you approve the
+exact proposed calendar slots. If a slot becomes busy before approval, the plan
+remains a draft. Ask explicitly for a recurring template to use your saved
+profile weekdays instead. A recurring template becomes active immediately if
+you have no active plan; otherwise, it is saved as a draft and waits for your
+approval.
 
 Plans show their source links and saved status in **Saved plans**. The newest
 plan is not necessarily the active one; drafts wait for approval and archived
