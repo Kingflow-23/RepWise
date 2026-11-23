@@ -93,7 +93,8 @@ async def check_server(environment: dict[str, str]) -> list[str]:
                 "organize_schedule",
                 {
                     "moves": [
-                        {"week_number": 1, "workout_index": 0, "new_day": "Friday"}
+                        {"week_number": 1, "workout_index": 0, "new_day": "Friday"},
+                        {"week_number": 1, "workout_index": 2, "new_day": "Monday"},
                     ]
                 },
             )
