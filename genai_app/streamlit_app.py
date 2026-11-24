@@ -766,7 +766,11 @@ def delete_account() -> None:
 # --- Assistant and approvals ------------------------------------------------
 
 
-def decide_action(action_id: str, decision: str) -> None:
+def decide_action(
+    action_id: str,
+    decision: str,
+    selections: list[dict[str, Any]] | None = None,
+) -> None:
     """Approve or decline one pending action and remember the outcome.
 
     Args:
@@ -775,9 +779,15 @@ def decide_action(action_id: str, decision: str) -> None:
     """
     student_id = st.session_state.get("user_id")
     try:
+        kwargs = (
+            {"json": {"selections": selections}}
+            if decision == "approve" and selections
+            else {}
+        )
         result = api_request(
             "POST",
             f"/api/v1/students/{student_id}/agent/actions/{action_id}/{decision}",
+            **kwargs,
         )
     except ApiError as error:
         reasons = {
@@ -896,6 +906,34 @@ def show_action(action: dict[str, Any], key_prefix: str) -> None:
             }:
                 st.json(decided["result"], expanded=False)
             return
+        selections = None
+        slot_choices = (action.get("arguments") or {}).get("slot_choices") or []
+        if slot_choices and action.get("tool_name") in {
+            "add_workouts_to_calendar",
+            "activate_plan",
+        }:
+            st.write("Choose one time for each workout:")
+            grouped: dict[tuple[int, int], list[dict[str, Any]]] = {}
+            for choice in slot_choices:
+                position = (choice["week_number"], choice["workout_index"])
+                grouped.setdefault(position, []).append(choice)
+            selections = []
+            for position, choices in grouped.items():
+                labels = [choice["label"] for choice in choices]
+                selected_label = st.radio(
+                    f"Week {position[0]}, workout {position[1] + 1}",
+                    labels,
+                    key=f"slot-{key_prefix}-{action_id}-{position[0]}-{position[1]}",
+                    horizontal=False,
+                )
+                selected = choices[labels.index(selected_label)]
+                selections.append(
+                    {
+                        "week_number": selected["week_number"],
+                        "workout_index": selected["workout_index"],
+                        "start": selected["start"],
+                    }
+                )
         approve, decline = st.columns(2)
         approve.button(
             "Approve",
@@ -904,7 +942,7 @@ def show_action(action: dict[str, Any], key_prefix: str) -> None:
             icon=":material/check:",
             width="stretch",
             on_click=decide_action,
-            args=(action_id, "approve"),
+            args=(action_id, "approve", selections),
         )
         decline.button(
             "Decline",

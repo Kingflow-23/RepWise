@@ -109,6 +109,11 @@ class ActivatePlanArguments(Model):
         default=None,
         description="Internal: code sets any calendar limitation before approval.",
     )
+    slot_choices: list[calendar.SlotChoice] = Field(
+        default_factory=list,
+        max_length=63,
+        description="Available exact times shown to the student for choosing.",
+    )
 
 
 class ScheduleArguments(Model):
@@ -257,6 +262,11 @@ class BookingArguments(Model):
         ),
     )
     plan_id: str | None = Field(default=None, description="Omit for the current plan.")
+    slot_choices: list[calendar.SlotChoice] = Field(
+        default_factory=list,
+        max_length=63,
+        description="Available exact times shown to the student for choosing.",
+    )
 
 
 def preferred_bookings(slots: calendar.SlotsResult) -> list[calendar.Booking]:
@@ -268,6 +278,20 @@ def preferred_bookings(slots: calendar.SlotsResult) -> list[calendar.Booking]:
             start=workout.options[0].start,
         )
         for workout in slots.workouts
+    ]
+
+
+def slot_choices(slots: calendar.SlotsResult) -> list[calendar.SlotChoice]:
+    """Expose every proposed workout time as a student-selectable choice."""
+    return [
+        calendar.SlotChoice(
+            week_number=workout.week_number,
+            workout_index=workout.workout_index,
+            start=slot.start,
+            label=slot.label,
+        )
+        for workout in slots.workouts
+        for slot in workout.options
     ]
 
 
@@ -293,7 +317,11 @@ def prepare_bookings(
             f"{descriptions}. Choose another day or week first.",
         )
     bookings = preferred_bookings(slots)
-    return BookingArguments(bookings=bookings, plan_id=slots.plan_id)
+    return BookingArguments(
+        bookings=bookings,
+        plan_id=slots.plan_id,
+        slot_choices=slot_choices(slots),
+    )
 
 
 def describe_bookings(context: ToolContext, arguments: BookingArguments) -> str:
@@ -392,6 +420,7 @@ def prepare_activation(
             "bookings": bookings,
             "calendar_status": "scheduled",
             "calendar_message": None,
+            "slot_choices": slot_choices(slots),
         }
     )
 

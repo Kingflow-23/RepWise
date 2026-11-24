@@ -278,6 +278,7 @@ def activate_plan(
     context: ToolContext,
     plan_id: str,
     bookings: list[calendar_tools.Booking] | None = None,
+    slot_choices: list[calendar_tools.SlotChoice] | None = None,
     calendar_status: Literal[
         "scheduled", "no_slots", "not_connected", "unavailable"
     ] = "not_connected",

@@ -48,6 +48,8 @@ logger = logging.getLogger(__name__)
 # Candidate start times are this far apart, and each workout gets this many options.
 SLOT_STEP_MINUTES = 30
 OPTIONS_PER_WORKOUT = 3
+# Simple, realistic padding for travel, changing, and showering around a workout.
+WORKOUT_BUFFER_MINUTES = 30
 TRAINING_DAY_START = time(6, 0)
 TRAINING_DAY_END = time(22, 0)
 PREFERRED_DAY_START = time(9, 0)
@@ -176,6 +178,15 @@ class BusyResult(Model):
     busy: list[BusyPeriod]
 
 
+def workout_reserved_period(start: datetime, minutes: int) -> BusyPeriod:
+    """Reserve time for the workout plus travel, changeover, and shower buffers."""
+    buffer = timedelta(minutes=WORKOUT_BUFFER_MINUTES)
+    return BusyPeriod(
+        start=start - buffer,
+        end=start + timedelta(minutes=minutes) + buffer,
+    )
+
+
 class SlotsResult(Model):
     """Output of ``propose_training_slots``. Nothing has been booked."""
 
@@ -199,6 +210,15 @@ class Booking(Model):
     week_number: int = Field(ge=1)
     workout_index: int = Field(ge=0)
     start: datetime
+
+
+class SlotChoice(Model):
+    """A proposed exact time for one workout, including a display label."""
+
+    week_number: int = Field(ge=1)
+    workout_index: int = Field(ge=0)
+    start: datetime
+    label: str
 
 
 class CalendarSource(Model):
@@ -307,7 +327,7 @@ def free_start_times(
     earliest: time,
     latest: time,
 ) -> list[datetime]:
-    """List start times on one day when the whole workout is free and in the future.
+    """List start times with a 30-minute gap before and after the workout.
 
     Args:
         day: The date to check.
@@ -325,10 +345,14 @@ def free_start_times(
     latest = min(latest, TRAINING_DAY_END)
     start = datetime.combine(day, earliest, zone)
     last_end = datetime.combine(day, latest, zone)
-    length, step = timedelta(minutes=minutes), timedelta(minutes=SLOT_STEP_MINUTES)
+    length = timedelta(minutes=minutes)
+    buffer = timedelta(minutes=WORKOUT_BUFFER_MINUTES)
+    step = timedelta(minutes=SLOT_STEP_MINUTES)
     starts = []
     while start + length <= last_end:
-        overlaps = any(start < p.end and start + length > p.start for p in busy)
+        reserved_start = start - buffer
+        reserved_end = start + length + buffer
+        overlaps = any(reserved_start < p.end and reserved_end > p.start for p in busy)
         if start > now and not overlaps:
             starts.append(start)
         start += step
@@ -561,7 +585,7 @@ def propose_training_slots(
                 for start in spread_options(starts)
             ]
             if options:
-                busy.append(BusyPeriod(start=options[0].start, end=options[0].end))
+                busy.append(workout_reserved_period(options[0].start, minutes))
             results.append(
                 WorkoutSlots(
                     plan_id=record["id"],
@@ -574,7 +598,10 @@ def propose_training_slots(
                     note=(
                         None
                         if options
-                        else "No free time that week fits this workout on its planned day."
+                        else (
+                            "No free time that week fits this workout on its "
+                            "planned day with travel and shower buffers."
+                        )
                     ),
                 )
             )
@@ -588,7 +615,10 @@ def propose_training_slots(
 
 @report_storage_errors
 def add_workouts_to_calendar(
-    context: ToolContext, bookings: list[Booking], plan_id: str | None = None
+    context: ToolContext,
+    bookings: list[Booking],
+    plan_id: str | None = None,
+    slot_choices: list[SlotChoice] | None = None,
 ) -> BookingResult | ToolFailure:
     """Add approved daytime times to the external calendar, rechecking each one first.
 
@@ -707,14 +737,18 @@ def add_workouts_to_calendar(
                 detail="This time has passed.",
             )
         try:
-            if context.calendar.busy_periods(start, end):
+            reserved = workout_reserved_period(start, workout.estimated_minutes)
+            if context.calendar.busy_periods(reserved.start, reserved.end):
                 return BookingOutcome(
                     **position,
                     status="conflict",
                     start=start,
                     end=end,
                     workout=workout_details(workout),
-                    detail="The calendar is busy at this time.",
+                    detail=(
+                        "The calendar is busy at this time or within the "
+                        "30-minute gap before or after the workout."
+                    ),
                 )
             created = context.calendar.create_event(
                 event_key(

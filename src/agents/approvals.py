@@ -333,7 +333,11 @@ def list_actions(
     return [_to_action(record) for record in records]
 
 
-def approve(context: ToolContext, action_id: str) -> ActionDecision:
+def approve(
+    context: ToolContext,
+    action_id: str,
+    selections: list[dict[str, Any]] | None = None,
+) -> ActionDecision:
     """Run one pending action that the authenticated student approved.
 
     Args:
@@ -354,6 +358,50 @@ def approve(context: ToolContext, action_id: str) -> ActionDecision:
         raise ApprovalError(
             "tampered", "The stored action changed after it was proposed."
         )
+    arguments = action.arguments
+    if selections:
+        choices = arguments.get("slot_choices") or []
+        available = {
+            (
+                choice["week_number"],
+                choice["workout_index"],
+                choice["start"],
+            )
+            for choice in choices
+        }
+        selected_bookings = []
+        selected_positions = set()
+        for selection in selections:
+            position = (
+                int(selection["week_number"]),
+                int(selection["workout_index"]),
+                str(selection["start"]),
+            )
+            if position not in available:
+                raise ApprovalError(
+                    "tampered",
+                    "The selected time is not one of this action's proposed slots.",
+                )
+            selected_positions.add(position[:2])
+            selected_bookings.append(
+                {
+                    "week_number": position[0],
+                    "workout_index": position[1],
+                    "start": position[2],
+                }
+            )
+        required_positions = {
+            (choice["week_number"], choice["workout_index"]) for choice in choices
+        }
+        if selected_positions != required_positions:
+            raise ApprovalError(
+                "tampered",
+                "Choose one proposed time for every workout.",
+            )
+        arguments = {
+            **arguments,
+            "bookings": selected_bookings,
+        }
     now = context.clock().isoformat()
     if not context.repository.decide_pending_action(
         context.student_id, action_id, "approved", now
@@ -362,7 +410,10 @@ def approve(context: ToolContext, action_id: str) -> ActionDecision:
             "already_decided", "This action was already decided or expired."
         )
 
-    result = execute_tool(context, action.tool_name, action.arguments)
+    arguments = {
+        key: value for key, value in arguments.items() if key != "slot_choices"
+    }
+    result = execute_tool(context, action.tool_name, arguments)
     status = "failed" if isinstance(result, ToolFailure) else "executed"
     context.repository.finish_pending_action(
         context.student_id, action_id, status, result.model_dump(mode="json")

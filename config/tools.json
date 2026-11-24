@@ -359,6 +359,39 @@
             ],
             "title": "Booking",
             "type": "object"
+          },
+          "SlotChoice": {
+            "additionalProperties": false,
+            "description": "A proposed exact time for one workout, including a display label.",
+            "properties": {
+              "week_number": {
+                "minimum": 1,
+                "title": "Week Number",
+                "type": "integer"
+              },
+              "workout_index": {
+                "minimum": 0,
+                "title": "Workout Index",
+                "type": "integer"
+              },
+              "start": {
+                "format": "date-time",
+                "title": "Start",
+                "type": "string"
+              },
+              "label": {
+                "title": "Label",
+                "type": "string"
+              }
+            },
+            "required": [
+              "week_number",
+              "workout_index",
+              "start",
+              "label"
+            ],
+            "title": "SlotChoice",
+            "type": "object"
           }
         },
         "additionalProperties": false,
@@ -403,6 +436,15 @@
             "default": null,
             "description": "Internal: code sets any calendar limitation before approval.",
             "title": "Calendar Message"
+          },
+          "slot_choices": {
+            "description": "Available exact times shown to the student for choosing.",
+            "items": {
+              "$ref": "#/$defs/SlotChoice"
+            },
+            "maxItems": 63,
+            "title": "Slot Choices",
+            "type": "array"
           }
         },
         "required": [
@@ -1035,6 +1077,39 @@
             ],
             "title": "Booking",
             "type": "object"
+          },
+          "SlotChoice": {
+            "additionalProperties": false,
+            "description": "A proposed exact time for one workout, including a display label.",
+            "properties": {
+              "week_number": {
+                "minimum": 1,
+                "title": "Week Number",
+                "type": "integer"
+              },
+              "workout_index": {
+                "minimum": 0,
+                "title": "Workout Index",
+                "type": "integer"
+              },
+              "start": {
+                "format": "date-time",
+                "title": "Start",
+                "type": "string"
+              },
+              "label": {
+                "title": "Label",
+                "type": "string"
+              }
+            },
+            "required": [
+              "week_number",
+              "workout_index",
+              "start",
+              "label"
+            ],
+            "title": "SlotChoice",
+            "type": "object"
           }
         },
         "additionalProperties": false,
@@ -1061,6 +1136,15 @@
             "default": null,
             "description": "Omit for the current plan.",
             "title": "Plan Id"
+          },
+          "slot_choices": {
+            "description": "Available exact times shown to the student for choosing.",
+            "items": {
+              "$ref": "#/$defs/SlotChoice"
+            },
+            "maxItems": 63,
+            "title": "Slot Choices",
+            "type": "array"
           }
         },
         "title": "BookingArguments",

@@ -142,6 +142,39 @@ def test_empty_booking_request_prepares_all_times_for_one_approval(demo):
     )
 
 
+def test_custom_slot_selection_replaces_the_preferred_booking(demo):
+    calendar = calendar_tools.FakeCalendar()
+    context = make_context(demo.repository, demo.student_id, calendar=calendar)
+    run = approvals.run_tool_with_approval(
+        context, "add_workouts_to_calendar", {}, "schedule"
+    )
+
+    pending = demo.repository.get_pending_action(demo.student_id, run.result.action_id)
+    choices = pending["arguments"]["slot_choices"]
+    assert choices
+
+    selections_by_position = {}
+    for choice in choices:
+        position = (choice["week_number"], choice["workout_index"])
+        selections_by_position[position] = choice
+    selections = [
+        {
+            "week_number": choice["week_number"],
+            "workout_index": choice["workout_index"],
+            "start": choice["start"],
+        }
+        for choice in selections_by_position.values()
+    ]
+    booked = approvals.approve(
+        context,
+        run.result.action_id,
+        selections,
+    )
+
+    assert booked.executed
+    assert len(booked.action.result["outcomes"]) == len(selections)
+
+
 def test_empty_booking_request_is_rejected_if_any_workout_has_no_slot(demo):
     class FullCalendar(calendar_tools.FakeCalendar):
         def busy_periods(self, start, end):

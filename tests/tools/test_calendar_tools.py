@@ -69,8 +69,6 @@ def test_free_times_skip_busy_periods_and_the_past():
 
     assert [item.strftime("%H:%M") for item in starts] == [
         "10:30",
-        "11:00",
-        "14:00",
         "14:30",
         "15:00",
     ]
@@ -118,6 +116,20 @@ def test_options_prefer_normal_waking_hours_over_window_edges():
     ]
 
     assert cal.spread_options(starts)[0].hour == 18
+
+
+def test_free_times_leave_a_buffer_around_busy_events():
+    day = NEXT_MONDAY
+    busy = [
+        busy_on(day, 9, 10),
+        busy_on(day, 12, 13),
+    ]
+
+    starts = cal.free_start_times(day, 60, busy, PARIS, NOW, time(8), time(16))
+
+    assert datetime.combine(day, time(10), PARIS) not in starts
+    assert datetime.combine(day, time(11), PARIS) not in starts
+    assert datetime.combine(day, time(13, 30), PARIS) in starts
 
 
 # --- propose_training_slots ------------------------------------------------------
@@ -300,6 +312,23 @@ def test_a_conflict_blocks_only_that_booking(demo):
 
     assert [item.status for item in result.outcomes] == ["conflict", "booked"]
     assert len(calendar.events) == 1
+
+
+def test_booking_requires_a_gap_before_and_after_an_existing_event(demo):
+    calendar = cal.FakeCalendar([busy_on(NEXT_MONDAY, 9, 10)])
+    too_close_before = booking(hour=10)
+    far_enough = booking(hour=11)
+
+    too_close = cal.add_workouts_to_calendar(
+        with_calendar(demo, calendar), [too_close_before]
+    )
+    far_result = cal.add_workouts_to_calendar(
+        with_calendar(demo, cal.FakeCalendar([busy_on(NEXT_MONDAY, 9, 10)])),
+        [far_enough],
+    )
+
+    assert too_close.outcomes[0].status == "conflict"
+    assert far_result.outcomes[0].status == "booked"
 
 
 def test_a_past_time_is_refused(demo):
