@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 import logging
 import operator
+import re
 from dataclasses import dataclass
 from time import monotonic, perf_counter
 from typing import Annotated, Any, Literal, TypedDict
@@ -49,13 +50,24 @@ from pydantic import Field
 from config.config import AppConfig
 from src.agents import memory
 from src.agents.approvals import PendingActionResult, run_tool_with_approval
-from src.agents.metrics import Recorder, RequestMetrics, record_call
+from src.agents.metrics import (
+    Recorder,
+    RequestMetrics,
+    collect_request_metrics,
+    record_call,
+    record_failure,
+)
 from src.agents.specialists import (
     MODEL_ERRORS,
     SPECIALISTS,
     SpecialistName,
     SpecialistReport,
     run_specialist,
+)
+from src.langfuse_tracing import (
+    finish_generation,
+    generation_observation,
+    request_observation,
 )
 from src.schemas.models import Model
 from src.tools.context import ToolContext
@@ -102,9 +114,10 @@ Combine the specialists' reports below into one coherent answer, in the language
 - Only state what the reports and tool results confirm. Do not invent plans, places, times, sources or numbers.
 - The "Key facts" lines were computed by code from the saved data and are always right: never contradict them, and use them for any day, weekday or count you mention.
 - Available days are when the student could train; only the timetable says which days have workouts.
-- Places and free training times are listed by code right after your answer, nearest or earliest first. Do not repeat that list or reorder it; you may name the nearest place or refer to "the list below".
+- Code appends verified places and free training times after your answer. Do not repeat them, refer to a list, or invent locations, times, or placeholders.
 - For calendar booking, distinguish a pending approval from a completed event. Include only exact times and links confirmed by tool results; never claim an event was added before approval.
 - Keep the answer focused on the request. Do not include gyms, profile details, or extra plan summaries unless asked.
+- Add a Sources section only when a knowledge specialist report includes sources. Never invent generic sources or placeholder entries.
 - If an action waits for approval, say what it will do and that nothing changed yet.
 - If a step failed, say plainly what could not be done.
 - Keep source titles and links from the Fitness Knowledge Agent.
@@ -265,25 +278,42 @@ class Orchestrator:
         Returns:
             The answer, the executed plan, the reports and pending actions.
         """
+        with request_observation(self.context.config.agent_model) as observation:
+            response = self._ask(request, conversation_id)
+            if observation is not None and response.metrics is not None:
+                observation.update(
+                    metadata={
+                        "model_calls": len(response.metrics.model_calls),
+                        "tool_calls": response.metrics.tool_calls,
+                        "input_tokens": response.metrics.input_tokens,
+                        "output_tokens": response.metrics.output_tokens,
+                        "duration_seconds": response.metrics.total_seconds,
+                    }
+                )
+            return response
+
+    def _ask(self, request: str, conversation_id: str) -> AgentResponse:
+        """Run the graph and assemble the response for one request."""
         started = monotonic()
         self.recorder.reset()
-        state = self.graph.invoke(
-            {
-                "request": request,
-                "history": [],
-                "shared_context": "",
-                "steps": [],
-                "current": 0,
-                "reports": [],
-                "replans": 0,
-                "health_concern": False,
-                "planner_failed": False,
-                "started_at": started,
-                "answer": "",
-                "notices": [],
-            },
-            {"configurable": {"thread_id": conversation_id}, "recursion_limit": 60},
-        )
+        with collect_request_metrics(self.recorder):
+            state = self.graph.invoke(
+                {
+                    "request": request,
+                    "history": [],
+                    "shared_context": "",
+                    "steps": [],
+                    "current": 0,
+                    "reports": [],
+                    "replans": 0,
+                    "health_concern": False,
+                    "planner_failed": False,
+                    "started_at": started,
+                    "answer": "",
+                    "notices": [],
+                },
+                {"configurable": {"thread_id": conversation_id}, "recursion_limit": 60},
+            )
         reports = [SpecialistReport.model_validate(item) for item in state["reports"]]
         notices = state["notices"]
         return AgentResponse(
@@ -633,6 +663,38 @@ def slot_notice(report: dict[str, Any]) -> str | None:
     )
 
 
+def strip_unverified_sources(answer: str, reports: list[dict[str, Any]]) -> str:
+    """Remove a generated sources section unless retrieval returned cited sources."""
+    has_sources = any(
+        report.get("agent") == "knowledge"
+        and any(
+            document.get("title") and document.get("url")
+            for result in report.get("results", {}).values()
+            for document in result.get("documents", [])
+        )
+        for report in reports
+    )
+    if has_sources:
+        return answer
+
+    for index, line in enumerate(answer.splitlines()):
+        heading = (
+            re.sub(r"[:\s]+$", "", re.sub(r"^\s*#{1,6}\s*", "", line))
+            .strip()
+            .casefold()
+        )
+        if heading in {
+            "source",
+            "sources",
+            "sources utilisées",
+            "sources utilisees",
+            "references",
+            "références",
+        }:
+            return "\n".join(answer.splitlines()[:index]).rstrip()
+    return answer
+
+
 def places_notice(report: dict[str, Any]) -> str | None:
     """List the places found exactly as code sorted them, nearest first.
 
@@ -687,7 +749,7 @@ def build_orchestrator(
         An :class:`Orchestrator` ready to :meth:`~Orchestrator.ask`.
     """
     limits = context.config.agent_limits
-    recorder = Recorder()
+    recorder = Recorder(context.config.agent_model)
     # include_raw keeps the model's reply, so its token counts can be recorded.
     planner = llm.with_structured_output(OrchestratorPlan, include_raw=True)
     chooser = llm.with_structured_output(SpecialistChoice, include_raw=True)
@@ -886,22 +948,35 @@ def build_orchestrator(
             else:
                 context_parts.append(NO_REPORTS_NOTE)
             started = perf_counter()
-            try:
-                reply = llm.invoke(
-                    [
-                        SystemMessage(
-                            RESPONDER_PROMPT.format(
-                                context="\n\n".join(p for p in context_parts if p)
-                            )
-                        ),
-                        HumanMessage(state["request"]),
-                    ]
-                )
-                recorder.model_calls.append(record_call("respond", started, reply))
-                answer = str(reply.content).strip()
-            except MODEL_ERRORS as error:
-                logger.warning("Responder model failed error=%s", error)
-                answer = ""
+            purpose = "respond"
+            with generation_observation(
+                purpose, context.config.agent_model
+            ) as observation:
+                try:
+                    reply = llm.invoke(
+                        [
+                            SystemMessage(
+                                RESPONDER_PROMPT.format(
+                                    context="\n\n".join(p for p in context_parts if p)
+                                )
+                            ),
+                            HumanMessage(state["request"]),
+                        ]
+                    )
+                    call = record_call(purpose, started, reply)
+                    recorder.model_calls.append(call)
+                    finish_generation(
+                        observation,
+                        started,
+                        call.input_tokens,
+                        call.output_tokens,
+                    )
+                    answer = str(reply.content).strip()
+                except MODEL_ERRORS as error:
+                    recorder.model_calls.append(record_failure(purpose, started))
+                    finish_generation(observation, started, error=error)
+                    logger.warning("Responder model failed error=%s", error)
+                    answer = ""
             if not answer:
                 # Without the model, still give the specialists' own words.
                 answer = (
@@ -909,6 +984,7 @@ def build_orchestrator(
                     or NO_MODEL_ANSWER
                 )
 
+        answer = strip_unverified_sources(answer, state["reports"])
         for report in state["reports"]:
             for notice in (places_notice(report), slot_notice(report)):
                 if notice:

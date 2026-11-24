@@ -13,6 +13,7 @@ from src.agents.orchestrator import (
     build_orchestrator,
     key_facts,
     places_notice,
+    strip_unverified_sources,
 )
 from src.integrations.photon import PhotonClient
 from src.schemas.models import PlanResult, TrainingPlan
@@ -22,6 +23,30 @@ from src.tools.profile import get_timetable
 from tests.conftest import ScriptedModel, make_context, tool_call
 
 HOME = Location(label="Home", latitude=48.79, longitude=2.33)
+
+
+def test_strip_unverified_sources_without_knowledge_results():
+    answer = "Free times are listed below.\n\nSources :\n- RepWise Orchestrator Agent"
+
+    assert strip_unverified_sources(answer, []) == "Free times are listed below."
+
+
+def test_keep_sources_returned_by_knowledge_search():
+    answer = "Training guidance.\n\nSources:\n- Verified title"
+    reports = [
+        {
+            "agent": "knowledge",
+            "results": {
+                "search_documents": {
+                    "documents": [
+                        {"title": "Verified title", "url": "https://example.test"}
+                    ]
+                }
+            },
+        }
+    ]
+
+    assert strip_unverified_sources(answer, reports) == answer
 
 
 def gym_service():

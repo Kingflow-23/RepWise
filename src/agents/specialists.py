@@ -41,7 +41,12 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import Field
 
 from src.agents.approvals import PendingActionResult, run_tool_with_approval
-from src.agents.metrics import ModelCall, record_call
+from src.agents.metrics import ModelCall, record_call, record_failure
+from src.langfuse_tracing import (
+    finish_generation,
+    generation_observation,
+    tool_request_observation,
+)
 from src.schemas.models import Model
 from src.tools.catalog import AgentName, tools_for_agent
 from src.tools.context import ToolContext
@@ -249,17 +254,26 @@ def run_specialist(
     def think(state: SpecialistState) -> dict:
         """Ask the model for the next tool calls or the final answer."""
         started = perf_counter()
-        try:
-            reply = model.invoke(state["messages"])
-            report["model_calls"].append(
-                record_call(f"{specialist.name}: think", started, reply)
-            )
-        except MODEL_ERRORS as error:
-            logger.warning(
-                "Specialist model failed agent=%s error=%s", specialist.name, error
-            )
-            report["error"] = f"The language model could not be reached: {error}"
-            reply = AIMessage("")
+        purpose = f"{specialist.name}: think"
+        with generation_observation(purpose, context.config.agent_model) as observation:
+            try:
+                reply = model.invoke(state["messages"])
+                call_record = record_call(purpose, started, reply)
+                report["model_calls"].append(call_record)
+                finish_generation(
+                    observation,
+                    started,
+                    call_record.input_tokens,
+                    call_record.output_tokens,
+                )
+            except MODEL_ERRORS as error:
+                report["model_calls"].append(record_failure(purpose, started))
+                finish_generation(observation, started, error=error)
+                logger.warning(
+                    "Specialist model failed agent=%s error=%s", specialist.name, error
+                )
+                report["error"] = f"The language model could not be reached: {error}"
+                reply = AIMessage("")
         return {"messages": [*state["messages"], reply]}
 
     def act(state: SpecialistState) -> dict:
@@ -270,24 +284,43 @@ def run_specialist(
             if call["name"] not in allowed:
                 # A specialist only reaches its own tools, even if the model
                 # names another agent's tool.
-                content = json.dumps(
-                    {
-                        "ok": False,
-                        "code": "not_allowed",
-                        "error": f"{call['name']} is not one of your tools.",
-                    }
-                )
-                report["tools_used"].append(
-                    {"name": call["name"], "ok": False, "code": "not_allowed", "ms": 0}
-                )
+                with tool_request_observation(call["name"]) as observation:
+                    content = json.dumps(
+                        {
+                            "ok": False,
+                            "code": "not_allowed",
+                            "error": f"{call['name']} is not one of your tools.",
+                        }
+                    )
+                    report["tools_used"].append(
+                        {
+                            "name": call["name"],
+                            "ok": False,
+                            "code": "not_allowed",
+                            "ms": 0,
+                        }
+                    )
+                    if observation is not None:
+                        observation.update(
+                            metadata={"ok": False, "code": "not_allowed"}
+                        )
             else:
                 started = perf_counter()
-                run = run_tool_with_approval(
-                    context, call["name"], call["args"], specialist.name
-                )
-                elapsed_ms = round((perf_counter() - started) * 1000)
-                content = run.as_json()
-                data = json.loads(content)
+                with tool_request_observation(call["name"]) as observation:
+                    run = run_tool_with_approval(
+                        context, call["name"], call["args"], specialist.name
+                    )
+                    elapsed_ms = round((perf_counter() - started) * 1000)
+                    content = run.as_json()
+                    data = json.loads(content)
+                    if observation is not None:
+                        observation.update(
+                            metadata={
+                                "duration_ms": elapsed_ms,
+                                "ok": run.succeeded,
+                                "code": data.get("code"),
+                            }
+                        )
                 report["results"][call["name"]] = data
                 report["all_results"].append({"name": call["name"], "data": data})
                 report["pending_actions"].extend(run.pending)

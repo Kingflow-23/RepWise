@@ -101,6 +101,32 @@ python -m scripts.run_agent            # the 5 requests of the agent sheet
 python -m scripts.run_agent --multi    # multi-agent scenarios
 ```
 
+### Optional Langfuse tracing
+
+Create a free project in [Langfuse Cloud](https://cloud.langfuse.com), then copy
+the project's secret and public keys into your **local**, ignored `.env` file.
+For the EU Cloud region, also set `LANGFUSE_BASE_URL=https://cloud.langfuse.com`;
+use the URL shown for your project if it is in another region. The variables are
+listed, commented out, in `.env.example`. Never paste project keys into source
+files or commit them.
+
+With both keys configured, RepWise creates one trace per agent request. It
+records model-generation and tool-execution observations, durations, reported
+token counts, and safe status metadata. Prompts, answers, student details, tool
+arguments, and tool results are deliberately not sent to Langfuse. The five
+agent-sheet requests run on a temporary synthetic account and flush traces at
+the end:
+
+```powershell
+python -m scripts.run_agent
+```
+
+Open the traces in the Langfuse project and record the per-request counts and
+any trace issue in [TRACES.md](../TRACES.md). Token counts depend on whether
+the local Ollama model reports usage; unavailable counts are marked as such.
+Tracing is disabled when neither key is set, and a one-key configuration is an
+error rather than a silently incomplete setup.
+
 The MCP server is a separate, optional process for MCP hosts. It needs a token
 from `/api/v1/auth/login`; see [The MCP server](mcp.md):
 

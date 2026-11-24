@@ -17,6 +17,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, time, timedelta
+from time import perf_counter
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -33,6 +34,7 @@ from src.schemas.models import (
 from src.tools import calendar, knowledge, places, planning, profile, training
 from src.tools.catalog import ToolSpec, generated_parts, get_tool_spec, load_catalog
 from src.tools.context import ToolContext
+from src.langfuse_tracing import tool_observation
 from src.tools.results import ToolFailure, failure
 
 logger = logging.getLogger(__name__)
@@ -757,6 +759,24 @@ def execute_tool(
         The tool's result model, or a :class:`ToolFailure` for invalid
         arguments or an unexpected crash (which is logged in full).
     """
+    started = perf_counter()
+    with tool_observation(name) as observation:
+        result = _execute_tool(context, name, arguments)
+        if observation is not None:
+            observation.update(
+                metadata={
+                    "duration_ms": round((perf_counter() - started) * 1000),
+                    "ok": not isinstance(result, ToolFailure),
+                    "code": getattr(result, "code", None),
+                }
+            )
+    return result
+
+
+def _execute_tool(
+    context: ToolContext, name: str, arguments: Model | dict | None
+) -> Model:
+    """Validate and dispatch one tool without starting another trace span."""
     try:
         validated = (
             arguments

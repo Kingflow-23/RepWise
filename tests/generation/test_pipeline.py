@@ -623,7 +623,9 @@ def test_ollama_generator_retains_raw_response_when_plan_parsing_fails(monkeypat
 
     raw_output = '{"weeks":[]}'
     generator = OllamaGenerator("test-model")
-    monkeypatch.setattr(generator, "_generate_content", lambda *_args: (raw_output, 1))
+    monkeypatch.setattr(
+        generator, "_generate_content", lambda *_args: (raw_output, 1, None)
+    )
 
     with pytest.raises(RuntimeError, match="readable plan"):
         generator.generate("system", "user")
