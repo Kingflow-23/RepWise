@@ -3,8 +3,7 @@
 Each topic has one home. Start with the question you have:
 
 For current capabilities and known limitations, see
-[implementation status](status.md). The [21 November handoff](HANDOFF_2026-11-21.md)
-is a dated historical snapshot, not the current source of truth.
+[implementation status](status.md).
 
 | I want to... | Read |
 |---|---|

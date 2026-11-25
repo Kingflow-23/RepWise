@@ -136,7 +136,8 @@
         "orchestrator"
       ],
       "access": "write",
-      "approval": "never",
+      "approval": "always",
+      "approval_reason": "This saves the exact fact shown in the action arguments for future conversations. Approve only if you explicitly asked RepWise to remember it.",
       "external_services": [
         "ollama"
       ],

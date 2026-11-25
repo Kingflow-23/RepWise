@@ -1386,7 +1386,10 @@ with st.sidebar:
 signed_in = bool(st.session_state.get("user_id"))
 if signed_in:
     history_count = len(st.session_state.get("plan_history", []))
-    pending_count = len(st.session_state.get("agent_actions", []))
+    pending_count = sum(
+        action.get("status", "pending") == "pending"
+        for action in st.session_state.get("agent_actions", [])
+    )
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Account", st.session_state.get("full_name", ""))
     m2.metric("Saved plans", history_count)
@@ -1859,14 +1862,20 @@ with approvals_tab:
     else:
         show_action_notice()
         refresh, history = st.columns(2)
-        if refresh.button(
-            "Load pending actions", width="stretch", icon=":material/refresh:"
-        ):
-            load_actions("pending")
-        if history.button(
-            "Show all decisions", width="stretch", icon=":material/history:"
-        ):
-            load_actions("all")
+        refresh.button(
+            "Load pending actions",
+            width="stretch",
+            icon=":material/refresh:",
+            on_click=load_actions,
+            args=("pending",),
+        )
+        history.button(
+            "Show all decisions",
+            width="stretch",
+            icon=":material/history:",
+            on_click=load_actions,
+            args=("all",),
+        )
         actions = st.session_state.get("agent_actions")
         if actions is None:
             st.caption("Click **Load pending actions** to fetch them.")
