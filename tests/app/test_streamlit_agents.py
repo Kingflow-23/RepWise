@@ -271,6 +271,29 @@ def test_the_approvals_inbox_loads_and_declines(monkeypatch):
     assert app.session_state["agent_actions"] == []
 
 
+def test_decided_actions_are_not_counted_as_pending(monkeypatch):
+    actions = [
+        {**PENDING, "id": "pending", "status": "pending"},
+        {**PENDING, "id": "executed", "status": "executed"},
+        {**PENDING, "id": "declined", "status": "declined"},
+    ]
+
+    def handler(method, url, kwargs):
+        if url.endswith("/agent/actions"):
+            assert kwargs["params"] == {"status": "all"}
+            return FakeResponse(actions)
+        raise AssertionError(f"Unexpected API request: {method} {url}")
+
+    app, _calls = start(monkeypatch, handler)
+    next(b for b in app.button if b.label == "Show all decisions").click().run(
+        timeout=20
+    )
+
+    assert not app.exception
+    pending_metric = next(m for m in app.metric if m.label == "Pending approvals")
+    assert pending_metric.value == "1"
+
+
 def test_an_expired_approval_is_explained(monkeypatch):
     def handler(method, url, kwargs):
         if url.endswith("/agent/actions"):

@@ -10,7 +10,7 @@ from typing import Any
 
 from ..schemas.models import PlanRequest, TrainingPlan
 
-PROMPT_FILE = Path(__file__).resolve().parents[2] / "prompts" / "system_prompt_v1.txt"
+PROMPT_FILE = Path(__file__).resolve().parents[2] / "prompts" / "system_prompt.txt"
 PREVIOUS_PLAN_CONTEXT_MAX_CHARS = 2_400
 
 

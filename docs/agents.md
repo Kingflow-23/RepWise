@@ -8,7 +8,7 @@ design of [Planning and Memory](agent/Planning_and_Memory.md).
 
 | Agent | Responsibility | Tools ([catalog](tools.md)) |
 |---|---|---|
-| **Orchestrator** ([`orchestrator.py`](../src/agents/orchestrator.py)) | Reads the context, plans which specialists to use and in what order, delegates, checks each step, replans once if needed, and writes one answer. It has no training or calendar writes. | `get_user_profile`, `get_current_plan`, `get_timetable`, `get_workout`, `remember_fact` |
+| **Orchestrator** ([`orchestrator.py`](../src/agents/orchestrator.py)) | Reads the context, plans which specialists to use and in what order, delegates, checks each step, replans once if needed, and writes one answer. Its memory writes require approval; it has no training or calendar writes. | `get_user_profile`, `get_current_plan`, `get_timetable`, `get_workout`, `remember_fact` |
 | **Workout Planning** | Personalised weekly programmes through the RAG pipeline. Draft or active plans. | `generate_workout_plan`, `activate_plan`, `get_workout_history`, `save_recommendation` |
 | **Performance & Adaptation** | Records completed, partial and missed workouts, analyses progress, adjusts the next workout within guardrails. | `save_workout_feedback`, `log_workout_performance`, `update_upcoming_workout`, `get_workout_history`, `save_recommendation` |
 | **Schedule & Calendar** | Free slots in the connected calendar, moving workouts between days, booking approved sessions. | `get_calendar_busy`, `propose_training_slots`, `organize_schedule`, `add_workouts_to_calendar` |
@@ -41,8 +41,10 @@ flowchart TD
    tools once and recalls memory. The result is the *shared context*, so a
    specialist never re-reads the profile or the plan.
 2. **Plan.** The model returns an `OrchestratorPlan`. That is a list of
-   `Delegation(agent, task, workout?)`, plus facts the student asked to remember
-   and a `health_concern` flag. Code caps it at `REPWISE_AGENT_MAX_DELEGATIONS`
+   `Delegation(agent, task, workout?)`, optional facts the student asked to
+   remember, and a `health_concern` flag. Memory facts are proposed only when
+   the latest request explicitly asks for them, and are saved only after the
+   student approves the exact fact. Code caps the plan at `REPWISE_AGENT_MAX_DELEGATIONS`
    steps (4 by default). The model first classifies the request (`request_kind`:
    `saved_data`, `greeting` or `needs_specialists`). If it says specialists are
    needed but plans none, code asks once more, and then asks a simpler question
@@ -158,6 +160,12 @@ its pending actions. A later agent therefore relies on facts (the gym's name, a
 `plan_id`) and not on another model's paraphrase. Specialists never see the
 account ID, tokens or credentials.
 
+Requests, saved context, memory, conversation history, reports, retrieved
+passages and tool results are passed as JSON data in user/tool messages, not
+interpolated into system instructions. Agents are instructed to treat this
+content as untrusted data and ignore embedded instructions. Consequential
+actions, including saving a memory fact, still require authenticated approval.
+
 ## Approvals
 
 Approval rules come from the catalog (`approval` in
@@ -168,7 +176,7 @@ Approval rules come from the catalog (`approval` in
 |---|---|---|
 | Read | `get_timetable`, `search_nearby_places` | Runs. |
 | Recommendation or draft | `save_recommendation`; `generate_workout_plan` while a plan is active | Runs, and changes nothing the student follows. A draft plan gets a pending `activate_plan` automatically. |
-| Approved write | `organize_schedule`, `add_workouts_to_calendar`, `update_upcoming_workout`, `activate_plan`; feedback that may mention pain | Held as a **pending action**. Runs only when the student approves that action ID. |
+| Approved write | `organize_schedule`, `add_workouts_to_calendar`, `update_upcoming_workout`, `activate_plan`, `remember_fact`; feedback that may mention pain | Held as a **pending action**. Runs only when the student approves that action ID. For memory, the latest request must explicitly ask to remember a fact, and the exact fact is shown in the action arguments. |
 | Failed or rejected | Invalid arguments, a declined or expired action | Returns a `ToolFailure` or an `ApprovalError`. Nothing runs. |
 
 A pending action stores the exact tool, the exact validated arguments (with their
@@ -221,9 +229,9 @@ documented with their status codes in [API and database](api.md#agent-routes):
 The planning document left retention open ("maybe 90 days"). The final policy is
 90 days, configurable.
 
-Memory is recalled into the planner's and the specialists' context as background,
-under a heading that says it isn't an instruction. Every query is scoped to the
-authenticated account.
+Memory is recalled into the planner's and specialists' untrusted reference
+context. Every query is scoped to the authenticated account. A model-proposed
+fact is not stored until the student approves the exact action arguments.
 
 **Health details never enter long-term memory.** `remember_fact` refuses them, and
 an episode for a request flagged as health-related stores a neutral placeholder
