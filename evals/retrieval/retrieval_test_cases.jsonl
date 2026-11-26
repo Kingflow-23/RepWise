@@ -1,128 +1,62 @@
-{"id": "R001", "query": "Combien de temps de repos entre les séries pour prendre du muscle ?", "answerable": true, "topic": "rest_intervals"}
-{"id": "R002", "query": "Je débute la muscu, je prends combien de récup entre mes séries ?", "answerable": true, "topic": "rest_intervals"}
-{"id": "R003", "query": "J'ai seulement 45 minutes par séance, est-ce que je peux raccourcir mes temps de pause ?", "answerable": true, "topic": "rest_intervals"}
-{"id": "R004", "query": "Est-ce qu'il faut chronométrer sa récupération entre deux séries ?", "answerable": true, "topic": "rest_intervals"}
-{"id": "R005", "query": "Comment organiser concrètement une semaine de deload ?", "answerable": true, "topic": "deload"}
-{"id": "R006", "query": "À quels signes je vois que mon corps a besoin d'une semaine plus légère ?", "answerable": true, "topic": "deload"}
-{"id": "R007", "query": "Tous les combien de semaines faut-il lever le pied à l'entraînement ?", "answerable": true, "topic": "deload"}
-{"id": "R008", "query": "Un débutant a-t-il besoin de faire des semaines de décharge ?", "answerable": true, "topic": "deload"}
-{"id": "R009", "query": "Je stagne depuis plusieurs semaines sur mes charges, est-ce normal ?", "answerable": true, "topic": "plateau"}
-{"id": "R010", "query": "Est-ce grave d'arrêter complètement la salle une semaine pendant les vacances ?", "answerable": true, "topic": "break_detraining"}
-{"id": "R011", "query": "Combien de séries par muscle et par semaine pour l'hypertrophie ?", "answerable": true, "topic": "volume"}
-{"id": "R012", "query": "Comment faire évoluer mon nombre de séries au cours d'un cycle de plusieurs semaines ?", "answerable": true, "topic": "cycles"}
-{"id": "R013", "query": "Pour progresser, vaut-il mieux rajouter des reps ou mettre plus lourd ?", "answerable": true, "topic": "progression"}
-{"id": "R014", "query": "Selon l'American Academy of Sleep Medicine citée dans la vidéo, combien d'heures de sommeil un adulte devrait-il avoir en moyenne ?", "answerable": true, "topic": "fatigue_recovery"}
-{"id": "R015", "query": "Je m'entraîne trois fois par semaine et je débute, à quoi ressemble une bonne semaine type ?", "answerable": true, "topic": "frequency_split"}
-{"id": "R016", "query": "Quelle alternative au front squat si mon objectif est seulement l'hypertrophie ?", "answerable": true, "topic": "substitution"}
-{"id": "R021", "query": "Push pull legs, full body ou upper lower : quel format choisir pour prendre du muscle ?", "answerable": true, "topic": "frequency_split"}
-{"id": "R022", "query": "Si je fais pecs et dos dans la même séance, est-ce que le dos va fatiguer mes pecs ?", "answerable": true, "topic": "program_design"}
-{"id": "R023", "query": "Mon programme a 3 séances différentes mais je m'entraîne 4 jours, comment je les place dans la semaine ?", "answerable": true, "topic": "frequency_split"}
-{"id": "R024", "query": "Quel rythme hebdomadaire l'auteur présente-t-il comme son rythme idéal d'entraînement ?", "answerable": true, "topic": "frequency_split"}
-{"id": "R025", "query": "Est-ce une bonne idée de commencer la séance jambes par leg extension et leg curl ?", "answerable": true, "topic": "program_design"}
-{"id": "R026", "query": "Les supersets agonistes antagonistes sont-ils plus efficaces qu'un push pull legs classique ?", "answerable": true, "topic": "program_design"}
-{"id": "R027", "query": "Ma salle n'a pas de hack squat, je le remplace par quoi ?", "answerable": true, "topic": "substitution"}
-{"id": "R028", "query": "Quelle fourchette de répétitions pour le premier exercice de ma séance ?", "answerable": true, "topic": "rep_ranges"}
-{"id": "R029", "query": "Comment bien définir mon objectif avant de construire mon programme ?", "answerable": true, "topic": "program_design"}
-{"id": "R030", "query": "Quel ordre de grandeur d'évolution des mensurations la vidéo évoque-t-elle sur six mois ?", "answerable": true, "topic": "progression"}
-{"id": "R031", "query": "C'est quoi la différence entre macrocycle, mésocycle et microcycle ?", "answerable": true, "topic": "cycles"}
-{"id": "R032", "query": "Dans quel ordre enchaîner force, prise de masse et sèche sur 6 mois ?", "answerable": true, "topic": "cycles"}
-{"id": "R033", "query": "Quel format d'entraînement choisir pendant une phase de perte de gras ?", "answerable": true, "topic": "frequency_split"}
-{"id": "R034", "query": "Comment découper un cycle de 8 semaines en plusieurs phases ?", "answerable": true, "topic": "cycles"}
-{"id": "R035", "query": "C'est quoi l'overreaching et pourquoi en faire à la fin d'un cycle ?", "answerable": true, "topic": "cycles"}
-{"id": "R036", "query": "En sèche, comment je fais évoluer mes séances semaine après semaine ?", "answerable": true, "topic": "cycles"}
-{"id": "R037", "query": "Est-ce qu'on peut progresser en gardant exactement le même programme pendant 6 mois ?", "answerable": true, "topic": "progression"}
-{"id": "R038", "query": "Combien de jours doit durer un deload après un cycle intense ?", "answerable": true, "topic": "deload"}
-{"id": "R039", "query": "Je veux prendre du muscle, perdre du gras et gagner en force en même temps, c'est possible ?", "answerable": true, "topic": "program_design"}
-{"id": "R040", "query": "Le squat et le développé couché sont-ils obligatoires pour progresser ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R041", "query": "Faut-il changer souvent d'exercices pour surprendre le muscle ?", "answerable": true, "topic": "program_design"}
-{"id": "R042", "query": "Pendant combien de séances garder les mêmes séries et répétitions avant de changer ?", "answerable": true, "topic": "program_design"}
-{"id": "R043", "query": "D'après son expérience, en quoi un partenaire d'entraînement peut-il aider à progresser ?", "answerable": true, "topic": "motivation"}
-{"id": "R044", "query": "Pour l'hypertrophie, je dois miser sur le volume ou sur l'intensité ?", "answerable": true, "topic": "volume"}
-{"id": "R045", "query": "Comment on calcule le volume d'entraînement ?", "answerable": true, "topic": "volume"}
-{"id": "R046", "query": "Ça veut dire quoi l'intensité en musculation ?", "answerable": true, "topic": "effort"}
-{"id": "R047", "query": "Avec des charges légères, je peux prendre autant de muscle qu'avec du lourd ?", "answerable": true, "topic": "effort"}
-{"id": "R048", "query": "Vaut-il mieux faire toutes ses séries pecs le même jour ou les répartir dans la semaine ?", "answerable": true, "topic": "volume"}
-{"id": "R049", "query": "Mes courbatures durent longtemps, est-ce que ça gêne ma progression ?", "answerable": true, "topic": "fatigue_recovery"}
-{"id": "R050", "query": "À quel pourcentage de mon max je dois travailler quand je débute ?", "answerable": true, "topic": "beginner"}
-{"id": "R051", "query": "Combien de séries par muscle et par semaine pour un débutant ?", "answerable": true, "topic": "beginner"}
-{"id": "R052", "query": "Comment faire varier l'intensité sur un cycle de 9 semaines ?", "answerable": true, "topic": "cycles"}
-{"id": "R053", "query": "Arnold ou Mike Mentzer, haut volume ou bas volume, qui a raison ?", "answerable": true, "topic": "volume"}
-{"id": "R054", "query": "C'est quoi le volume inutile, le « junk volume » ?", "answerable": true, "topic": "volume"}
-{"id": "R055", "query": "Si je rajoute toujours plus de séries, je prends toujours plus de muscle ?", "answerable": true, "topic": "volume"}
-{"id": "R056", "query": "Est-ce que je peux copier l'entraînement des bodybuilders pros quand je suis natty ?", "answerable": true, "topic": "volume"}
-{"id": "R057", "query": "Comment savoir si ma récupération me permet de faire beaucoup de volume ?", "answerable": true, "topic": "fatigue_recovery"}
-{"id": "R058", "query": "Quand est-ce que je peux ajouter une ou deux séries la semaine suivante ?", "answerable": true, "topic": "progression"}
-{"id": "R059", "query": "Deux séries par exercice, c'est suffisant si je m'entraîne dur ?", "answerable": true, "topic": "volume"}
-{"id": "R060", "query": "Combien de cycles de sommeil on fait par nuit et ils durent combien de temps ?", "answerable": true, "topic": "fatigue_recovery"}
-{"id": "R061", "query": "Quels effets d'une nuit blanche la vidéo rapporte-t-elle sur la dégradation des protéines musculaires ?", "answerable": true, "topic": "fatigue_recovery"}
-{"id": "R062", "query": "Dormir 5 heures par nuit pendant une semaine, ça change quoi sur la testostérone ?", "answerable": true, "topic": "fatigue_recovery"}
-{"id": "R063", "query": "Quelles modifications de l'appétit et des choix alimentaires sont associées au manque de sommeil dans la vidéo ?", "answerable": true, "topic": "fatigue_recovery"}
-{"id": "R064", "query": "Mieux dormir permet-il de prendre plus de muscle à entraînement égal ?", "answerable": true, "topic": "fatigue_recovery"}
-{"id": "R065", "query": "Quelle température mettre dans la chambre pour bien dormir ?", "answerable": true, "topic": "fatigue_recovery"}
-{"id": "R066", "query": "Pourquoi la vidéo recommande-t-elle d'éviter les écrans avant de dormir ?", "answerable": true, "topic": "fatigue_recovery"}
-{"id": "R067", "query": "Prendre de la caféine avant ma séance du soir, ça gêne mon sommeil ?", "answerable": true, "topic": "fatigue_recovery"}
-{"id": "R068", "query": "Quelle priorité adopter avant d'envisager la mélatonine selon la vidéo ?", "answerable": true, "topic": "fatigue_recovery"}
-{"id": "R069", "query": "Quelles erreurs éviter pendant ma première année de musculation ?", "answerable": true, "topic": "beginner"}
-{"id": "R070", "query": "Quelle conclusion la vidéo tire-t-elle de son expérience du cardio modéré à jeun pour perdre du gras ?", "answerable": true, "topic": "cardio"}
-{"id": "R071", "query": "Est-ce vraiment utile de noter toutes mes charges et mes séances ?", "answerable": true, "topic": "progression"}
-{"id": "R072", "query": "Au squat je sens surtout les fessiers et le bas du dos, pas les quadriceps, c'est normal ?", "answerable": true, "topic": "technique"}
-{"id": "R073", "query": "Quel intérêt la vidéo attribue-t-elle au cardio en complément de la musculation ?", "answerable": true, "topic": "cardio"}
-{"id": "R074", "query": "Qu'est-ce qui fait vraiment la différence sur le long terme en musculation ?", "answerable": true, "topic": "motivation"}
-{"id": "R075", "query": "Pourquoi ne pas travailler seulement les pecs, les bras et les quadriceps ?", "answerable": true, "topic": "program_design"}
-{"id": "R076", "query": "Au squat je bascule vers l'avant, comment garder la bonne trajectoire ?", "answerable": true, "topic": "technique"}
-{"id": "R077", "query": "Ça veut dire quoi garder la colonne neutre pendant un squat ?", "answerable": true, "topic": "technique"}
-{"id": "R078", "query": "Quel écartement de pieds choisir pour mon squat ?", "answerable": true, "topic": "technique"}
-{"id": "R079", "query": "Mes genoux rentrent vers l'intérieur à la fin de mes séries de squat, je fais comment ?", "answerable": true, "topic": "technique"}
-{"id": "R080", "query": "Squat barre haute ou barre basse, c'est quoi la différence ?", "answerable": true, "topic": "technique"}
-{"id": "R081", "query": "Comment respirer quand je fais du squat lourd ?", "answerable": true, "topic": "technique"}
-{"id": "R082", "query": "Comment faire travailler surtout les quadriceps au squat plutôt que les fessiers ?", "answerable": true, "topic": "technique"}
-{"id": "R083", "query": "Est-ce qu'il faut descendre les fesses jusqu'au sol au squat pour prendre du muscle ?", "answerable": true, "topic": "technique"}
-{"id": "R084", "query": "Pour les élévations latérales à la poulie, je règle la poulie en bas ou au niveau de la hanche ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R085", "query": "C'est quoi la courbe de résistance d'un exercice ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R086", "query": "Les exercices en étirement sont-ils toujours les meilleurs pour l'hypertrophie ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R087", "query": "Comment bien exécuter les élévations latérales à la poulie basse ?", "answerable": true, "topic": "technique"}
-{"id": "R088", "query": "Mes épaules sont un point faible, quelles variantes d'élévations latérales privilégier ?", "answerable": true, "topic": "weak_point"}
-{"id": "R089", "query": "Au développé couché haltères, est-ce grave de rentrer les coudes et de faire un pont ?", "answerable": true, "topic": "technique"}
-{"id": "R090", "query": "Est-ce que je peux faire des petites pauses entre les répétitions d'une même série ?", "answerable": true, "topic": "technique"}
-{"id": "R091", "query": "Comment bien faire le curl à la poulie dos à la poulie ?", "answerable": true, "topic": "technique"}
-{"id": "R092", "query": "Mettre des disques sous les talons pour squatter, c'est une bonne idée ?", "answerable": true, "topic": "technique"}
-{"id": "R093", "query": "En fin de série je fais des demi-répétitions, il y a mieux comme technique d'intensification ?", "answerable": true, "topic": "effort"}
-{"id": "R094", "query": "Le développé incliné à la barre est-il bon pour tout le monde pour le haut des pecs ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R095", "query": "S'il ne fallait garder qu'un seul exercice pour les pectoraux, ce serait lequel ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R096", "query": "Quelle modification du mouvement est proposée si les dips provoquent une gêne au sternum ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R097", "query": "La machine de développé convergente est-elle un bon exercice pour les pecs ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R098", "query": "Comment exécuter le rowing à un bras pour cibler le grand dorsal ?", "answerable": true, "topic": "technique"}
-{"id": "R099", "query": "Tirage vertical en supination ou en pronation pour le dos ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R100", "query": "Les tractions, c'est le meilleur exercice pour le dos ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R101", "query": "Quel est le meilleur exercice pour le grand dorsal ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R102", "query": "Le développé Arnold est-il un bon exercice pour les épaules ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R103", "query": "Quelles limites la vidéo attribue-t-elle au tirage menton pour les épaules ?", "answerable": true, "topic": "pain_safety"}
-{"id": "R104", "query": "Élévations latérales aux haltères ou à la poulie, lesquelles sont les meilleures ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R105", "query": "Développé au-dessus de la tête debout ou développé militaire pour les épaules ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R106", "query": "Je ne prends plus de muscle alors que je m'entraîne énormément, je fais trop de volume ?", "answerable": true, "topic": "plateau"}
-{"id": "R107", "query": "Le stress au travail peut-il bloquer ma prise de muscle ?", "answerable": true, "topic": "plateau"}
-{"id": "R108", "query": "Comment savoir si je m'entraîne vraiment assez dur ?", "answerable": true, "topic": "effort"}
-{"id": "R109", "query": "Je progresse beaucoup moins vite qu'un pote qui suit le même programme, c'est normal ?", "answerable": true, "topic": "plateau"}
-{"id": "R110", "query": "L'alcool et le tabac freinent-ils vraiment la prise de muscle ?", "answerable": true, "topic": "lifestyle"}
-{"id": "R111", "query": "D'où vient un point faible musculaire et comment savoir si je peux le corriger ?", "answerable": true, "topic": "weak_point"}
-{"id": "R112", "query": "Pour rattraper un point faible, je commence par des exercices en contraction ou en étirement ?", "answerable": true, "topic": "weak_point"}
-{"id": "R113", "query": "Faut-il enchaîner supersets et dégressifs à chaque séance pour rattraper un point faible ?", "answerable": true, "topic": "weak_point"}
-{"id": "R114", "query": "Les séries de 100 répétitions ou les 21 sont-elles efficaces pour les biceps ?", "answerable": true, "topic": "effort"}
-{"id": "R115", "query": "Le curl à la barre EZ me fait mal aux coudes, je fais quoi à la place ?", "answerable": true, "topic": "pain_safety"}
-{"id": "R116", "query": "Le curl incliné peut-il provoquer une déchirure du biceps ?", "answerable": true, "topic": "pain_safety"}
-{"id": "R117", "query": "Quel est le meilleur exercice pour les biceps ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R118", "query": "Les extensions triceps derrière la tête valent-elles le coup ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R119", "query": "Quel est le meilleur exercice pour les triceps ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R120", "query": "La presse à cuisse est-elle un bon exercice pour les quadriceps ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R121", "query": "Le squat est-il le meilleur exercice pour les quadriceps ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R122", "query": "Les fentes marchées sont-elles un bon exercice pour les quadriceps ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R123", "query": "Quel est le meilleur exercice pour les quadriceps ?", "answerable": true, "topic": "exercise_selection"}
-{"id": "R124", "query": "Une semaine de deload sert-elle aussi à récupérer nerveusement ?", "answerable": true, "topic": "deload"}
-{"id": "R125", "query": "Faut-il planifier ses semaines de deload des mois à l'avance ?", "answerable": true, "topic": "deload"}
-{"id": "R126", "query": "Seules mes jambes sont fatiguées, je dois faire un deload complet ?", "answerable": true, "topic": "deload"}
-{"id": "R127", "query": "Pourquoi faire un deload juste après une phase d'overreaching ?", "answerable": true, "topic": "deload"}
-{"id": "R128", "query": "Que dit l'auteur sur le niveau de preuve scientifique concernant l'efficacité des deloads ?", "answerable": true, "topic": "deload"}
-{"id": "R129", "query": "Combien de temps de repos entre les séries quand on s'entraîne pour la force ?", "answerable": true, "topic": "rest_intervals"}
-{"id": "R130", "query": "Les femmes récupèrent-elles plus vite que les hommes entre les séries ?", "answerable": true, "topic": "rest_intervals"}
-{"id": "R131", "query": "Peut-on prendre du muscle avec des temps de repos très courts ?", "answerable": true, "topic": "rest_intervals"}
-{"id": "R132", "query": "Dans quel ordre placer les exercices dans une séance ?", "answerable": true, "topic": "program_design"}
+{"id": "R001", "query": "Est ce que le superset est la meilleure manière de travailler à la salle ?", "answerable": true, "topic": "superset_effectiveness"}
+{"id": "R002", "query": "Comment repartir travailler mes groupes de muscle par semaine ?", "answerable": true, "topic": "weekly_muscle_split"}
+{"id": "R003", "query": "Quelle est le meilleur exercice pour le dos ?", "answerable": true, "topic": "best_back_exercise"}
+{"id": "R004", "query": "Qu'est ce que les pompes permettent de travailler ?", "answerable": true, "topic": "push_ups_muscles"}
+{"id": "R005", "query": "Combien de serie faut-il faire pour les séances épaules bras ?", "answerable": true, "topic": "shoulders_arms_sets"}
+{"id": "R006", "query": "Combien de serie faut-il faire pour les séances pieds ?", "answerable": true, "topic": "legs_sets"}
+{"id": "R007", "query": "Quelle exercice faut-il pour travailler les fessiers ?", "answerable": true, "topic": "glute_exercise"}
+{"id": "R008", "query": "Combien de jours faut-il que je m'entraine par semaine ?", "answerable": true, "topic": "weekly_training_frequency"}
+{"id": "R009", "query": "Est ce que c'est mieux de charger lourd et faire moins de serie, ou tu charges moyennement le poids et tu fais plus de série ?", "answerable": true, "topic": "heavy_load_vs_more_sets"}
+{"id": "R010", "query": "Pourquoi faut-il periodiser mes séances à la salle ? Quand est ce qu'il faut que j'augmente le nombre de série ? Quand est ce qu'il faut que j'augmente le nombre de répétitions ?", "answerable": true, "topic": "periodization_sets_reps"}
+{"id": "R011", "query": "Combien de temps dois-je suivre un programme avant de le changer ?", "answerable": true, "topic": "program_duration"}
+{"id": "R012", "query": "Les séries que je fais sans vraiment forcer comptent-elles ?", "answerable": true, "topic": "junk_volume"}
+{"id": "R013", "query": "Comment savoir si je fais trop de volume ?", "answerable": true, "topic": "too_much_volume"}
+{"id": "R014", "query": "Est ce quelle dois m'entrainer comme Arnold, avec 20 séries sur un muscle ?", "answerable": true, "topic": "arnold_high_volume"}
+{"id": "R015", "query": "Est-il important d'être très régulier au sport ?", "answerable": true, "topic": "consistency"}
+{"id": "R016", "query": "C'est quoi la prise de muscle ?", "answerable": true, "topic": "muscle_gain_definition"}
+{"id": "R017", "query": "Par quoi commencer lorsqu'on est au début ?", "answerable": true, "topic": "beginner_start"}
+{"id": "R018", "query": "Ma technique doit-elle être parfaite pour progresser ?", "answerable": true, "topic": "technique_perfect"}
+{"id": "R019", "query": "Quelle quantité de protéines faut-il prendre ?", "answerable": true, "topic": "protein_amount"}
+{"id": "R020", "query": "Comment savoir si je m'entraine vraiment à l'échec ?", "answerable": true, "topic": "training_to_failure"}
+{"id": "R021", "query": "Comment choisir mes exercices ?", "answerable": true, "topic": "exercise_selection"}
+{"id": "R022", "query": "Dois-je me soucier des séries, des répétitions et des temps de repos au début ?", "answerable": true, "topic": "beginner_sets_reps_rest"}
+{"id": "R023", "query": "Pourquoi mon dos ne se développe-t-il pas alors que je l'entraîne depuis des années ?", "answerable": true, "topic": "back_not_growing"}
+{"id": "R024", "query": "Dos et dorsaux, est-ce la même chose, et quels muscles dois-je travailler pour avoir un dos à la fois large et épais ?", "answerable": true, "topic": "back_vs_lats"}
+{"id": "R025", "query": "Qu'est-ce que la ligne de force et le bras de levier, et pourquoi sont-ils décisifs pour mon dos ?", "answerable": true, "topic": "line_of_force_lever_arm"}
+{"id": "R026", "query": "Comment bien exécuter un tirage vertical ou un tirage bûcheron pour que ce soit le dos qui travaille, et pas les biceps ni les avant-bras ?", "answerable": true, "topic": "pulldown_row_execution"}
+{"id": "R027", "query": "Pourquoi faut-il travailler le dos en unilatéral (un bras à la fois) ?", "answerable": true, "topic": "unilateral_back_training"}
+{"id": "R028", "query": "Les tractions sont-elles indispensables, et comment bien les faire quand on est trop lourd ou pas assez fort ?", "answerable": true, "topic": "pull_ups"}
+{"id": "R029", "query": "Combien d'exercices et de séries faut-il pour les dorsaux, et lesquels choisir ?", "answerable": true, "topic": "lats_exercises_sets"}
+{"id": "R030", "query": "Dois-je varier les prises (pronation, supination, prise neutre) pour toucher différentes zones du dos ?", "answerable": true, "topic": "grip_variations"}
+{"id": "R031", "query": "Le soulevé de terre est-il un bon exercice pour développer le dos ?", "answerable": true, "topic": "deadlift_for_back"}
+{"id": "R032", "query": "Dois-je baisser mes charges pour que mon dos progresse, et comment l'ego freine-t-il mes gains ?", "answerable": true, "topic": "ego_lifting_load"}
+{"id": "R033", "query": "Quels sont les trois piliers d'une perte de gras réussie, et lequel faut-il mettre en premier ?", "answerable": true, "topic": "fat_loss_pillars"}
+{"id": "R034", "query": "Combien d'heures dois-je dormir pour perdre du gras et rester performant à l'entraînement ?", "answerable": true, "topic": "sleep_duration"}
+{"id": "R035", "query": "Pourquoi vaut-il mieux se réveiller sans alarme, et à quelle heure me coucher pour y arriver ?", "answerable": true, "topic": "sleep_alarm_bedtime"}
+{"id": "R036", "query": "Le cardio est-il nécessaire pour perdre du gras, et à quoi sert-il vraiment ?", "answerable": true, "topic": "cardio_for_fat_loss"}
+{"id": "R037", "query": "Combien de séances de cardio par semaine dois-je faire quand je débute, et comment augmenter progressivement ?", "answerable": true, "topic": "cardio_frequency_beginner"}
+{"id": "R038", "query": "Quel format de séances de musculation choisir pendant une perte de gras (full body, haut/bas, push/pull/jambes) ?", "answerable": true, "topic": "training_split_fat_loss"}
+{"id": "R039", "query": "Faut-il changer de programme souvent pour progresser, et au bout de combien de semaines ?", "answerable": true, "topic": "program_change_frequency"}
+{"id": "R040", "query": "Comment suivre ma progression et m'assurer de faire de la surcharge progressive ?", "answerable": true, "topic": "tracking_progressive_overload"}
+{"id": "R041", "query": "Que manger pendant une perte de gras, et faut-il une diète stricte ou flexible pour tenir sur la durée ?", "answerable": true, "topic": "fat_loss_diet_flexibility"}
+{"id": "R042", "query": "Combien de protéines et de calories dois-je viser par jour, et est-ce que le jeûne intermittent peut m'aider à gérer ma faim ?", "answerable": true, "topic": "protein_calories_fasting"}
+{"id": "R043", "query": "Est-ce qu'un physique sec est forcément un physique en meilleure forme ?", "answerable": true, "topic": "lean_vs_fit"}
+{"id": "R044", "query": "Pourquoi mes performances en musculation baissent-elles quand je perds du gras, et comment limiter cette perte de force ?", "answerable": true, "topic": "strength_loss_while_cutting"}
+{"id": "R045", "query": "Quel est le taux de masse grasse idéal pour performer à 100 % en musculation comme en cardio ?", "answerable": true, "topic": "ideal_body_fat"}
+{"id": "R046", "query": "Faut-il rester entre deux, ni très gras ni très sec, au risque d'être moyen partout ?", "answerable": true, "topic": "stay_in_between"}
+{"id": "R047", "query": "Être sec nous rend-il plus heureux, et qu'est-ce qu'une perte de gras révèle sur notre caractère ?", "answerable": true, "topic": "lean_happiness_character"}
+{"id": "R048", "query": "Comment éviter de devenir obsédé par mon reflet dans le miroir quand je suis très sec ?", "answerable": true, "topic": "mirror_obsession"}
+{"id": "R049", "query": "Est-ce vrai qu'on est fatigué, irritable et obsédé par la nourriture quand on est sec ?", "answerable": true, "topic": "lean_mood_food_obsession"}
+{"id": "R050", "query": "Comment gérer ma vie sociale (restos, vacances, repas de famille) pendant une perte de gras ?", "answerable": true, "topic": "social_life_fat_loss"}
+{"id": "R051", "query": "Comment poser des limites à mon entourage pour ne pas me sentir coupable de mes choix ?", "answerable": true, "topic": "boundaries_social_pressure"}
+{"id": "R052", "query": "Comment savoir si mon physique me convient vraiment, ou si je le subis sans savoir comment le changer ?", "answerable": true, "topic": "physique_satisfaction"}
+{"id": "R053", "query": "Est-ce possible d'améliorer sa VO2 max de 20 points en quelques mois, et par où commencer ?", "answerable": true, "topic": "vo2max_improvement"}
+{"id": "R054", "query": "Faut-il d'abord perdre du gras avant de s'occuper de son cardio ?", "answerable": true, "topic": "fat_loss_before_cardio"}
+{"id": "R055", "query": "Dans quel ordre augmenter mon entraînement en course à pied : fréquence, volume ou intensité ?", "answerable": true, "topic": "running_progression_order"}
+{"id": "R056", "query": "Combien de séances par semaine dois-je faire quand je débute, et comment monter progressivement ?", "answerable": true, "topic": "running_frequency_beginner"}
+{"id": "R057", "query": "Quelle distance faire à mes premières sorties, et comment augmenter les kilomètres sans me blesser ?", "answerable": true, "topic": "running_distance_progression"}
+{"id": "R058", "query": "Faut-il vraiment faire 80 % de footing facile et 20 % de séances intenses, ou peut-on faire presque tout en zone 2 ?", "answerable": true, "topic": "polarized_80_20_vs_zone2"}
+{"id": "R059", "query": "À quel rythme cardiaque courir en zone 2, et comment savoir si je vais assez lentement ?", "answerable": true, "topic": "zone2_heart_rate"}
+{"id": "R060", "query": "Combien de séances de fractionné par semaine, et lesquelles choisir au début ?", "answerable": true, "topic": "interval_sessions"}
+{"id": "R061", "query": "Que manger avant, pendant et après mes sorties, et ai-je besoin de gels ou de pâtes de fruits ?", "answerable": true, "topic": "running_fueling"}
+{"id": "R062", "query": "Pourquoi prendre des électrolytes quand je transpire, et comment éviter de me comparer aux autres sur les réseaux sociaux pour tenir mon programme ?", "answerable": true, "topic": "electrolytes_social_media"}
