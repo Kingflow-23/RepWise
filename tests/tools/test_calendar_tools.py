@@ -486,6 +486,7 @@ def test_google_event_uses_the_stable_key_and_a_duplicate_counts_as_created():
     created = google(handler).create_event("abc123", "t", "d", START, END)
     assert created.event_id == "abc123"
     assert created.event_url == "https://calendar.google.com/event/abc"
+    assert seen["body"]["colorId"] == "11"
     assert seen["body"]["start"]["dateTime"] == START.isoformat()
     assert (
         google(lambda _request: httpx.Response(409))
