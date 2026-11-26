@@ -85,7 +85,7 @@ flowchart LR
 | [`src/generation/`](../src/generation) | The plan pipeline, validation, and feedback adaptation (`adaptation.py`, shared by the API and the agent). |
 | [`src/rag/`](../src/rag), [`src/retrieval/`](../src/retrieval) | Query building, evidence selection, prompts; BM25, semantic, hybrid retrieval, query rewriting and the scope gate; `factory.py` builds the configured retriever. |
 | [`src/llm/`](../src/llm) | The boundary to Ollama for plan generation. |
-| [`src/ingestion/`](../src/ingestion), [`src/evaluation/`](../src/evaluation) | Corpus preparation; benchmarks, metrics and reports. |
+| [`src/ingestion/`](../src/ingestion), [`src/evaluation/`](../src/evaluation) | Corpus preparation; retrieval, generation, swap-analysis and red-team evaluation foundations. |
 | [`config/`](../config) | `config.py` (every setting, from the environment), `tools.json` (tool catalog), `places.json` (place categories), vocabularies. |
 | [`scripts/`](../scripts) | Command-line entry points: `run_agent`, `call_tool`, `mcp_smoke`, `sync_tool_catalog`, `connect_google_calendar`. |
 | [`tests/`](../tests) | One folder per layer (`agents`, `tools`, `app`, `db`, ...); `integration/` holds opt-in live tests. |

@@ -34,7 +34,7 @@ from src.schemas.models import (
 from src.tools import calendar, knowledge, places, planning, profile, training
 from src.tools.catalog import ToolSpec, generated_parts, get_tool_spec, load_catalog
 from src.tools.context import ToolContext
-from src.langfuse_tracing import tool_observation
+from src.observability.langfuse_tracing import tool_observation
 from src.tools.results import ToolFailure, failure
 
 logger = logging.getLogger(__name__)

@@ -8,7 +8,7 @@ import wave
 
 import pytest
 
-from src.speech import WhisperTranscriber, validate_recording
+from src.speech.speech import WhisperTranscriber, validate_recording
 
 
 def wav_recording(*, seconds=1, channels=1, sample_width=2):

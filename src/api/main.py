@@ -31,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 
 from config.config import AppConfig
 from ..db.repository import StudentRepository
-from ..observability import configure_logging, request_id_context
+from ..observability.observability import configure_logging, request_id_context
 from .auth import create_access_token, hash_password, read_access_token, verify_password
 from ..agents.health import HealthChecker, OllamaHealthChecker
 from ..agents.orchestrator import build_chat_model
@@ -62,7 +62,7 @@ from ..schemas.models import (
     UserProfile,
     WorkoutFeedbackRequest,
 )
-from ..speech import (
+from ..speech.speech import (
     MAX_AUDIO_BYTES,
     SpeechTranscriber,
     WhisperTranscriber,

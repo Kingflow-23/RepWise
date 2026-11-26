@@ -13,7 +13,7 @@ from typing import Protocol
 from .base import Retriever
 from ..schemas.models import RetrievedChunk
 from src.agents.metrics import record_external_call
-from src.langfuse_tracing import finish_generation, generation_observation
+from src.observability.langfuse_tracing import finish_generation, generation_observation
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ class OllamaQueryExpander:
         """Analyze a request once and cache successful structured responses.
 
         Args:
-            query: User or benchmark query to classify and rewrite.
+            query: User query to classify and rewrite.
 
         Returns:
             Validated scope, French search query, and refusal message.
@@ -277,7 +277,7 @@ class QueryExpansionRetriever:
         """Expand the request in French, then retrieve once using that query.
 
         Args:
-            query: Original user request or retrieval benchmark question.
+            query: Original user request or evaluation query.
             top_k: Maximum number of unique chunks to return.
 
         Returns:

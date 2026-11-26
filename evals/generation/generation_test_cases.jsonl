@@ -1,0 +1,15 @@
+{"id": "R001", "query": "Est ce que le superset est la meilleure manière de travailler à la salle ?", "answerable": true, "topic": "superset_effectiveness"}
+{"id": "R002", "query": "Comment repartir travailler mes groupes de muscle par semaine ?", "answerable": true, "topic": "weekly_muscle_split"}
+{"id": "R003", "query": "Quelle est le meilleur exercice pour le dos ?", "answerable": true, "topic": "best_back_exercise"}
+{"id": "R004", "query": "Qu'est ce que les pompes permettent de travailler ?", "answerable": true, "topic": "push_ups_muscles"}
+{"id": "R005", "query": "Combien de serie faut-il faire pour les séances épaules bras ?", "answerable": true, "topic": "shoulders_arms_sets"}
+{"id": "R006", "query": "Combien de serie faut-il faire pour les séances pieds ?", "answerable": true, "topic": "legs_sets"}
+{"id": "R007", "query": "Quelle exercice faut-il pour travailler les fessiers ?", "answerable": true, "topic": "glute_exercise"}
+{"id": "R008", "query": "Combien de jours faut-il que je m'entraine par semaine ?", "answerable": true, "topic": "weekly_training_frequency"}
+{"id": "R009", "query": "Est ce que c'est mieux de charger lourd et faire moins de serie, ou tu charges moyennement le poids et tu fais plus de série ?", "answerable": true, "topic": "heavy_load_vs_more_sets"}
+{"id": "R010", "query": "Pourquoi faut-il periodiser mes séances à la salle ? Quand est ce qu'il faut que j'augmente le nombre de série ? Quand est ce qu'il faut que j'augmente le nombre de répétitions ?", "answerable": true, "topic": "periodization_sets_reps"}
+{"id": "R011", "query": "Combien de temps dois-je suivre un programme avant de le changer ?", "answerable": true, "topic": "program_duration"}
+{"id": "R012", "query": "Les séries que je fais sans vraiment forcer comptent-elles ?", "answerable": true, "topic": "junk_volume"}
+{"id": "R013", "query": "Comment savoir si je fais trop de volume ?", "answerable": true, "topic": "too_much_volume"}
+{"id": "R014", "query": "Est ce quelle dois m'entrainer comme Arnold, avec 20 séries sur un muscle ?", "answerable": true, "topic": "arnold_high_volume"}
+{"id": "R015", "query": "Est-il important d'être très régulier au sport ?", "answerable": true, "topic": "consistency"}

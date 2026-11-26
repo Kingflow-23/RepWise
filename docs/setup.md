@@ -65,7 +65,6 @@ Pull the models. If you change a model in `.env`, pull that one instead.
 ```powershell
 ollama pull qwen3.5:9b   # generates plans; tool-calling model of the agents
 ollama pull qwen3.5:4b   # screens requests, rewrites queries, health check, judges
-ollama pull gemma4:12b   # benchmark comparisons only
 ```
 
 Start the API, then a UI, in separate terminals:
@@ -200,8 +199,8 @@ Settings are environment variables, loaded from `.env`.
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama address. |
 | `OLLAMA_MODEL` | `qwen3.5:9b` | Generates plans. |
 | `OLLAMA_QUERY_EXPANSION_MODEL` | `qwen3.5:4b` | Screens requests and rewrites queries. |
-| `OLLAMA_COMPARISON_MODEL` | `gemma4:12b` | Second model in benchmarks. |
-| `OLLAMA_JUDGE_MODEL` | `qwen3.5:4b` | Scores benchmark answers. |
+| `OLLAMA_COMPARISON_MODEL` | `gemma4:12b` | Future swap-analysis comparison model. |
+| `OLLAMA_JUDGE_MODEL` | `qwen3.5:4b` | Future generation and swap-analysis judge. |
 | `REPWISE_API_URL` | `http://127.0.0.1:8000` | API address used by Streamlit. |
 | `REPWISE_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. |
 | `REPWISE_LOG_DIR` | `logs` | Folder for rotating log files. |

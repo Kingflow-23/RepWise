@@ -17,7 +17,7 @@ from typing import Any, Iterator
 
 from pydantic import Field
 
-from src.langfuse_tracing import (
+from src.observability.langfuse_tracing import (
     finish_generation,
     generation_observation,
     phase_observation,

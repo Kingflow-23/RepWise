@@ -298,8 +298,8 @@ def test_query_expansion_retriever_blocks_out_of_scope_before_search():
     assert base.calls == 0
 
 
-def test_query_expansion_retriever_can_bypass_scope_gate_for_benchmarks():
-    """Keep benchmark retrieval running when the scope model falsely refuses."""
+def test_query_expansion_retriever_can_bypass_scope_gate_for_evaluation():
+    """Keep evaluation retrieval running when the scope model falsely refuses."""
     from src.retrieval.query_expansion import QueryAnalysis
 
     class FixedRetriever:

@@ -19,7 +19,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-from ..observability import configure_logging
+from ..observability.observability import configure_logging
 
 REPO = Path(__file__).resolve().parents[2]
 CORPUS = REPO / "data" / "corpus"

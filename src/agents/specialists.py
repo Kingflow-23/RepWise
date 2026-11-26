@@ -42,7 +42,7 @@ from pydantic import Field
 
 from src.agents.approvals import PendingActionResult, run_tool_with_approval
 from src.agents.metrics import ModelCall, record_call, record_failure
-from src.langfuse_tracing import (
+from src.observability.langfuse_tracing import (
     finish_generation,
     generation_observation,
     tool_request_observation,

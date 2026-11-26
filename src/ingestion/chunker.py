@@ -6,8 +6,8 @@ import logging
 from pathlib import Path
 import pandas as pd
 
-from ..body_parts import detect_body_parts
-from ..observability import configure_logging
+from .body_parts import detect_body_parts
+from ..observability.observability import configure_logging
 
 MAX_WORD_CHUNK = 450
 REPO = Path(__file__).resolve().parents[2]

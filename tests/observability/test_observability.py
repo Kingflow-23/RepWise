@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from src.observability import configure_logging, request_id_context
+from src.observability.observability import configure_logging, request_id_context
 
 
 def test_configure_logging_writes_rotating_service_log_with_request_id(

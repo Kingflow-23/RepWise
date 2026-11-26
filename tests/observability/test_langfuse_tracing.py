@@ -12,7 +12,7 @@ from src.agents.metrics import (
     collect_request_metrics,
     record_external_call,
 )
-from src.langfuse_tracing import (
+from src.observability.langfuse_tracing import (
     finish_generation,
     generation_observation,
     request_observation,

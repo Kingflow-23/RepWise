@@ -36,10 +36,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.config import AppConfig  # noqa: E402
-from config.app_config import get_api_url  # noqa: E402
-from src.integrations import google_calendar  # noqa: E402
-from src.observability import configure_logging  # noqa: E402
+from config.config import AppConfig
+from config.app_config import get_api_url
+from src.integrations import google_calendar
+from src.observability.observability import configure_logging
 
 configure_logging("streamlit")
 logger = logging.getLogger(__name__)

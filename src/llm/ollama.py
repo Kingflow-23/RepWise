@@ -7,7 +7,7 @@ from time import perf_counter
 from typing import Any, Protocol
 
 from src.agents.metrics import record_external_call
-from src.langfuse_tracing import finish_generation, generation_observation
+from src.observability.langfuse_tracing import finish_generation, generation_observation
 
 from ..schemas.models import TrainingPlan, Workout
 from .errors import classify_provider_error

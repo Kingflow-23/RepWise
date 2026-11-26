@@ -28,7 +28,7 @@ from config.config import REPOSITORY_ROOT, AppConfig
 from scripts.demo_context import demo_context
 from src.agents import approvals
 from src.agents.orchestrator import AgentResponse, build_chat_model, build_orchestrator
-from src.langfuse_tracing import flush_traces
+from src.observability.langfuse_tracing import flush_traces
 
 OUTPUT_DIR = REPOSITORY_ROOT / "outputs" / "agent_runs"
 
