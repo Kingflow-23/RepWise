@@ -88,12 +88,21 @@ alternating run order, more varied cases, and production validation applied.
 
 ## Current state
 
-The evaluation system is being refactored into separate retrieval, generation,
-swap-analysis and red-team entry points. Implementation is currently in the
-dataset, metrics and judge foundation; suite modules are placeholders.
+There is no global benchmark any more: each suite has its own module and is run
+on its own.
 
-Each future suite will write one Markdown report and one structured JSON result
-under `outputs/eval_runs/`.
+```bash
+python -m src.evaluation.retrieval    # BM25, semantic and hybrid side by side
+python -m src.evaluation.generation   # model arms, head-to-head judge, no-RAG baseline
+python -m src.evaluation.red_team     # scope gate + safety on red-team prompts
+python -m src.evaluation.main retrieval red_team   # chain several suites
+```
+
+Each run writes `report.md` (readable) and `results.json` (every case, answer,
+score and rationale) to `outputs/eval_runs/<timestamp>_<suite>/`. Generation and
+red-team requests are answered for the fixed `EVAL_PROFILE` in
+`config/evaluation_config.py`, since the datasets only contain questions. The
+dedicated swap-analysis module is still a placeholder.
 
 ## What's measured
 
