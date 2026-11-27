@@ -17,11 +17,20 @@ import logging
 from config import evaluation_config as config
 from config.config import AppConfig
 
+from ..llm.ollama import OllamaGenerator
+from ..retrieval.query_expansion import OllamaQueryExpander
 from .datasets import RedTeamCase, load_red_team_cases
-from .generation import LATENCIES, RUBRIC, answer_case, generate_answer, judge_case
+from .generation import (
+    RUBRIC,
+    answer_case,
+    generate_answer,
+    judge_case,
+    median_latencies,
+)
 from .judge import QUALITY_DIMENSIONS, OllamaQualityJudge
 from .metrics.common import Ratio
-from .report import median, ms, write_run
+from .report import ms, now, write_run
+from .retrieval import load_retriever
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +77,9 @@ def evaluate_red_team(cases: list[RedTeamCase], answer_fn, judge) -> dict:
                 unsafe += 1
                 issues.append("unsafe release: judge scored domain or profile safety 0")
 
-        result["outcome"] = "correct_scope_decision" if decision_ok else "scope_mismatch"
+        result["outcome"] = (
+            "correct_scope_decision" if decision_ok else "scope_mismatch"
+        )
         result["issues"] = issues
 
     n_in_scope = sum(case.answerable for case in cases)
@@ -88,9 +99,12 @@ def evaluate_red_team(cases: list[RedTeamCase], answer_fn, judge) -> dict:
     return {
         "metrics": metrics,
         "unsafe_release_count": unsafe,
-        "latency_ms": {
-            key: median([r.get(key) for r in case_results]) for key in LATENCIES
-        },
+        "failures": [
+            {"case_id": r["case_id"], "detail": issue}
+            for r in case_results
+            for issue in r["issues"]
+        ],
+        "latency_ms": median_latencies(case_results),
         "case_results": case_results,
     }
 
@@ -108,20 +122,15 @@ def run_red_team(
     Returns:
         The run folder.
     """
-    from ..llm.ollama import OllamaGenerator
-    from ..retrieval.query_expansion import OllamaQueryExpander
-    from ..retrieval.semantic import load_chunks
-    from .retrieval import build_retrievers
-
     settings = AppConfig.from_environment()
     model = model or settings.ollama_model
     retriever_name = retriever_name or settings.retrieval_strategy
     cases = load_red_team_cases()
-    retriever = build_retrievers([retriever_name], load_chunks(config.CHUNKS_DIR))[
-        retriever_name
-    ]
+    retriever = load_retriever(retriever_name)
     generator = OllamaGenerator(model, settings.ollama_url)
-    scope_gate = OllamaQueryExpander(settings.query_expansion_model, settings.ollama_url)
+    scope_gate = OllamaQueryExpander(
+        settings.query_expansion_model, settings.ollama_url
+    )
     judge = OllamaQualityJudge(settings.ollama_judge_model, settings.ollama_url)
 
     logger.info("Red-team evaluation started model=%s cases=%d", model, len(cases))
@@ -139,11 +148,13 @@ def run_red_team(
     payload = {
         "meta": {
             "suite": "red_team",
+            "timestamp": now(),
             "label": label,
             "model": model,
             "retriever": retriever_name,
             "scope_gate_model": settings.query_expansion_model,
             "judge_model": settings.ollama_judge_model,
+            "ollama_url": settings.ollama_url,
             "profile": config.EVAL_PROFILE,
             "n_cases": len(cases),
             "n_in_scope": sum(case.answerable for case in cases),
@@ -159,6 +170,8 @@ def render_markdown(payload: dict) -> str:
     lines = [
         "# Red-team evaluation",
         "",
+        f"- **Run:** {meta['timestamp']}"
+        + (f" · {meta['label']}" if meta["label"] else ""),
         f"- **Cases:** {meta['n_cases']} ({meta['n_in_scope']} must be answered, "
         f"{meta['n_cases'] - meta['n_in_scope']} must be refused)",
         f"- **Model:** `{meta['model']}` · **Retriever:** `{meta['retriever']}`",
@@ -189,7 +202,10 @@ def render_markdown(payload: dict) -> str:
     if not failing:
         lines.append("None.")
     else:
-        lines += ["| Case | Expected | Status | Scope | Issues |", "|---|---|---|---|---|"]
+        lines += [
+            "| Case | Expected | Status | Scope | Issues |",
+            "|---|---|---|---|---|",
+        ]
         for r in failing:
             lines.append(
                 f"| {r['case_id']} | {r['expected_scope']} | {r['status']} "
@@ -197,7 +213,16 @@ def render_markdown(payload: dict) -> str:
             )
     lines += [
         "",
-        "Answers, refusal messages, judge scores and rationales are in `results.json`.",
+        "## Interpretation",
+        "",
+        "- `N/A (0/0)` means a metric was not applicable, not a perfect score.",
+        "- The scope gate is a model: a correct refusal does not prove the answer "
+        "would have been unsafe, and a released answer is only as safe as the "
+        "judge says.",
+        "- Scores describe this fixed dataset only; no significance tests.",
+        "",
+        "Answers, refusal messages, scope decisions, judge scores, rationales and "
+        "stage latencies are in `results.json`.",
         "",
     ]
     return "\n".join(lines)

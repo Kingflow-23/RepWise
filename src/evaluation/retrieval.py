@@ -19,11 +19,14 @@ from config import evaluation_config as config
 from config.config import AppConfig
 
 from ..retrieval.base import Retriever
-from ..retrieval.semantic import load_chunks
+from ..retrieval.bm25 import BM25Retriever
+from ..retrieval.hybrid import HybridRetriever
+from ..retrieval.query_expansion import OllamaQueryExpander, QueryExpansionRetriever
+from ..retrieval.semantic import SemanticRetriever, load_chunks
 from .datasets import RetrievalCase, load_retrieval_cases
 from .metrics.common import Ratio, mean_ratio
 from .metrics.retrieval import judge_chunk_ranking, judge_ranking, relevant_chunk_ids
-from .report import median, ms, percentile, write_run
+from .report import median, ms, now, percentile, write_run
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +39,6 @@ def build_retrievers(
     With ``query_expansion`` the query is rewritten in French first; the scope
     gate is disabled because evaluation questions are curated.
     """
-    from ..retrieval.bm25 import BM25Retriever
-    from ..retrieval.hybrid import HybridRetriever
-    from ..retrieval.query_expansion import OllamaQueryExpander, QueryExpansionRetriever
-    from ..retrieval.semantic import SemanticRetriever
-
     settings = AppConfig.from_environment()
     bm25 = semantic = None
     if {"bm25", "hybrid"} & set(names):
@@ -64,6 +62,27 @@ def build_retrievers(
     return retrievers
 
 
+def load_retriever(name: str) -> Retriever:
+    """One production retriever over the evaluation corpus (no query expansion)."""
+    return build_retrievers([name], load_chunks(config.CHUNKS_DIR))[name]
+
+
+def coverage_outcome(
+    found: bool, n_covered: int, n_spans: int, first_rank: int | None
+) -> tuple[str, str]:
+    """Classify one question as ``success``, ``partial_success`` or ``no_evidence``."""
+    k = config.RETRIEVAL_SUCCESS_K
+    if not found:
+        where = f"; first match at rank {first_rank}." if first_rank else "."
+        return "no_evidence", f"No labelled evidence in the top {k}{where}"
+    if n_covered == n_spans:
+        return "success", f"All {n_spans} labelled span(s) in the top {k}."
+    return (
+        "partial_success",
+        f"Evidence in the top {k}, but only {n_covered}/{n_spans} labelled spans.",
+    )
+
+
 def evaluate_retriever(
     cases: list[RetrievalCase], retriever: Retriever, chunks: list[dict]
 ) -> dict:
@@ -81,16 +100,19 @@ def evaluate_retriever(
     depth = max(*config.K_VALUES, success_k, config.RETRIEVAL_DEPTH)
     per_query: dict[str, list[float]] = {}
     latencies, case_results = [], []
-    n_evaluated = n_found = 0
+    n_evaluated = n_found = n_unanswerable = n_unjudged = 0
 
     for case in cases:
         if not case.answerable:
+            n_unanswerable += 1
             continue
         relevant_ids = relevant_chunk_ids(case.spans, chunks)
         if not relevant_ids:
+            n_unjudged += 1
             case_results.append(
                 {
                     "case_id": case.id,
+                    "answerable": True,
                     "outcome": "needs_review",
                     "comment": "No corpus chunk matches the labelled evidence; "
                     "excluded from the denominator.",
@@ -114,25 +136,14 @@ def evaluate_retriever(
         covered = {index for matches in spans for index in matches}
         found = bool(judged.hit_at_k(success_k))
         n_found += found
-        first_rank = judged.first_relevant_rank()
-        if not found:
-            outcome = "no_evidence"
-            comment = f"No labelled evidence in the top {success_k}" + (
-                f"; first match at rank {first_rank}." if first_rank else "."
-            )
-        elif len(covered) == len(case.spans):
-            outcome = "success"
-            comment = f"All {len(case.spans)} labelled span(s) in the top {success_k}."
-        else:
-            outcome = "partial_success"
-            comment = (
-                f"Evidence in the top {success_k}, but only "
-                f"{len(covered)}/{len(case.spans)} labelled spans."
-            )
+        outcome, comment = coverage_outcome(
+            found, len(covered), len(case.spans), judged.first_relevant_rank()
+        )
         case_results.append(
             {
                 "case_id": case.id,
                 "query": case.query,
+                "answerable": True,
                 "outcome": outcome,
                 "top_k_hit": found,
                 "coverage": f"{len(covered)}/{len(case.spans)} spans",
@@ -150,6 +161,10 @@ def evaluate_retriever(
     metrics = {name: mean_ratio(values) for name, values in per_query.items()}
     metrics[f"top{success_k}_evidence"] = Ratio(n_found, n_evaluated)
     return {
+        "n_cases": n_evaluated,
+        "n_passed": n_found,
+        "n_unanswerable_skipped": n_unanswerable,
+        "n_unjudged_missing_corpus_chunks": n_unjudged,
         "metrics": metrics,
         "latency_ms": {
             "median": median(latencies),
@@ -192,6 +207,7 @@ def run_retrieval(
     payload = {
         "meta": {
             "suite": "retrieval",
+            "timestamp": now(),
             "label": label,
             "n_cases": len(cases),
             "n_answerable": sum(case.answerable for case in cases),
@@ -217,6 +233,8 @@ def render_markdown(payload: dict) -> str:
     lines = [
         "# Retrieval evaluation",
         "",
+        f"- **Run:** {meta['timestamp']}"
+        + (f" · {meta['label']}" if meta["label"] else ""),
         f"- **Questions:** {meta['n_answerable']} answerable / {meta['n_cases']}",
         f"- **Corpus:** {meta['n_corpus_chunks']} chunks",
         f"- **Embedding model:** `{meta['embedding_model']}`",
@@ -239,25 +257,12 @@ def render_markdown(payload: dict) -> str:
         )
 
     lines += ["", "## Recall and precision at each cutoff", ""]
-    cutoffs = meta["cutoffs"]
-    lines.append(
-        "| Retriever | "
-        + " | ".join(f"R@{k}" for k in cutoffs)
-        + " | "
-        + " | ".join(f"P@{k}" for k in cutoffs)
-        + " |"
-    )
-    lines.append("|---|" + "---:|" * (2 * len(cutoffs)))
+    keys = [f"{kind}@{k}" for kind in ("recall", "precision") for k in meta["cutoffs"]]
+    lines += ["| Retriever | " + " | ".join(keys) + " |", "|---|" + "---:|" * len(keys)]
     for name in payload["ranking"]:
-        m = results[name]["metrics"]
-        values = [m[f"recall@{k}"] for k in cutoffs] + [
-            m[f"precision@{k}"] for k in cutoffs
-        ]
-        lines.append(
-            f"| `{name}` | "
-            + " | ".join(f"{v.value:.3f}" if v.value is not None else "N/A" for v in values)
-            + " |"
-        )
+        values = [results[name]["metrics"][key].value for key in keys]
+        cells = ["N/A" if v is None else f"{v:.3f}" for v in values]
+        lines.append(f"| `{name}` | " + " | ".join(cells) + " |")
 
     for name in payload["ranking"]:
         missed = [
@@ -275,7 +280,20 @@ def render_markdown(payload: dict) -> str:
                 f"| {case['case_id']} | {case['outcome']} "
                 f"| {case.get('coverage', '—')} | {case['comment']} |"
             )
-    lines += ["", "Per-question rankings and coverage are in `results.json`.", ""]
+    lines += [
+        "",
+        "## Interpretation",
+        "",
+        "- `N/A (0/0)` means a metric was not applicable, not a perfect score.",
+        "- Questions whose labelled evidence matches no corpus chunk are excluded "
+        "from the denominators and listed as `needs_review`.",
+        "- Scores describe this fixed dataset only; there are no confidence "
+        "intervals or significance tests.",
+        "",
+        "Per-question rankings, relevant ranks, top chunks and coverage are in "
+        "`results.json`.",
+        "",
+    ]
     return "\n".join(lines)
 
 

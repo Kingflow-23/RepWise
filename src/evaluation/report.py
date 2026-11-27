@@ -25,6 +25,11 @@ def percentile(values: list[float], q: float) -> float | None:
     return ordered[max(0, math.ceil(q * len(ordered)) - 1)]
 
 
+def now() -> str:
+    """Run timestamp stored in every report."""
+    return datetime.now().isoformat(timespec="seconds")
+
+
 def ms(value: float | None) -> str:
     """Format a latency for Markdown tables."""
     return "—" if value is None else f"{value:.1f} ms"

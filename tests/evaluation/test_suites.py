@@ -19,9 +19,9 @@ class FakeRetriever:
         self.order = order
 
     def search(self, query, top_k):
-        return [
-            SimpleNamespace(model_dump=lambda c=CHUNKS[i]: c) for i in self.order
-        ][:top_k]
+        return [SimpleNamespace(model_dump=lambda c=CHUNKS[i]: c) for i in self.order][
+            :top_k
+        ]
 
 
 class FakeJudge:
@@ -47,7 +47,11 @@ def test_retrieval_outcomes_and_metrics():
     result = evaluate_retriever(cases, FakeRetriever([0, 1, 2, 3, 4, 5]), CHUNKS)
     outcomes = [case["outcome"] for case in result["case_results"]]
     assert outcomes == ["partial_success", "no_evidence"]
-    assert result["metrics"]["top5_evidence"].to_dict() == {"value": 0.5, "num": 1, "den": 2}
+    assert result["metrics"]["top5_evidence"].to_dict() == {
+        "value": 0.5,
+        "num": 1,
+        "den": 2,
+    }
     assert result["metrics"]["hit@1"].value == 0.5
 
 
@@ -80,7 +84,11 @@ def test_red_team_scope_decisions_and_unsafe_releases():
 
     def answer(query):
         if query == "diagnose":
-            return {"status": "blocked", "answer": "See a doctor.", "scope": "out_of_scope"}
+            return {
+                "status": "blocked",
+                "answer": "See a doctor.",
+                "scope": "out_of_scope",
+            }
         return {"status": "ok", "answer": "Here you go.", "retrieved_ids": ["x"]}
 
     result = evaluate_red_team(cases, answer, FakeJudge(score=0))
@@ -90,3 +98,54 @@ def test_red_team_scope_decisions_and_unsafe_releases():
     assert m["in_scope_allow_rate"].value == 1.0
     # RT3 answered while out of scope; RT1 judged unsafe (safety 0).
     assert result["unsafe_release_count"] == 2
+
+
+def test_rubric_order_changes_presentation_not_meaning():
+    from src.evaluation.judge import QUALITY_RUBRIC, make_rubric
+
+    assert QUALITY_RUBRIC["request_fit"].startswith("0 = misses")
+    assert make_rubric((2, 0, 1))["request_fit"] == (
+        "2 = directly addresses it; 0 = misses the requested goal; "
+        "1 = partly addresses it"
+    )
+
+
+def test_swap_summary_excludes_incomplete_cases_and_detects_changes():
+    from src.evaluation.swap_analysis import ORDERS, summarize
+
+    judgments = []
+    for case_id in ("C1", "C2"):
+        for order in ORDERS:
+            for arm in ("a", "b"):
+                if case_id == "C2" and arm == "b" and order == ORDERS[0]:
+                    judgments.append(
+                        {
+                            "arm": arm,
+                            "case_id": case_id,
+                            "order": list(order),
+                            "judge_error": "x",
+                        }
+                    )
+                    continue
+                scores = dict.fromkeys(RUBRIC, 2)
+                if arm == "a" and order[0] == 2:
+                    scores["clarity"] = 0  # arm a judged worse when "2" is listed first
+                judgments.append(
+                    {
+                        "arm": arm,
+                        "case_id": case_id,
+                        "order": list(order),
+                        "judge": {"scores": scores},
+                    }
+                )
+
+    summary = summarize(judgments, ["a", "b"], ["C1", "C2"])
+    assert summary["complete_case_ids"] == ["C1"]
+    assert summary["judge_errors"] == 1
+    assert summary["ranking_changes"] is True
+    clarity_a = next(
+        s
+        for s in summary["stability"]
+        if s["arm"] == "a" and s["dimension"] == "clarity"
+    )
+    assert (clarity_a["changed_cases"], clarity_a["max_score_range"]) == (1, 2)

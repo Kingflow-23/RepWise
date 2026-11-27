@@ -9,6 +9,8 @@ Steps:
    median generation latency.
 2. With two models, the judge also compares their answers head to head.
 3. The best RAG model answers again without retrieved evidence (baseline).
+4. Swap analysis (``swap_analysis.py``) re-scores the saved RAG answers with
+   the rubric levels in every order, to check the judge's stability.
 
 Answer quality sums the six rubric dimensions (0-2 each, evidence support
 included) over judged answers. A no-RAG answer cannot earn evidence support.
@@ -23,27 +25,37 @@ from typing import Callable
 from config import evaluation_config as config
 from config.config import AppConfig
 
+from ..llm.ollama import OllamaGenerator
+from ..rag.context import make_highlight_query, make_query, select_evidence
+from ..rag.prompt import make_benchmark_prompts
+from ..schemas.models import PlanRequest, UserProfile
 from .datasets import GenerationCase, load_generation_cases
-from .judge import QUALITY_DIMENSIONS, OllamaQualityJudge
+from .judge import QUALITY_DIMENSIONS, OllamaQualityJudge, judge_input
 from .metrics.common import Ratio
-from .report import median, ms, write_run
+from .report import median, ms, now, write_run
+from .retrieval import load_retriever
+from .swap_analysis import run_swap_analysis
 
 logger = logging.getLogger(__name__)
 
 RUBRIC = (*QUALITY_DIMENSIONS, "evidence_support")
-LATENCIES = ("total_ms", "scope_analysis_ms", "retrieval_ms", "generation_ms", "judge_ms")
+LATENCIES = (
+    "total_ms",
+    "scope_analysis_ms",
+    "retrieval_ms",
+    "generation_ms",
+    "judge_ms",
+)
 
 
 def make_request(query: str):
     """Wrap a dataset question in the production request schema."""
-    from ..schemas.models import PlanRequest, UserProfile
-
     return PlanRequest(focus=query, profile=UserProfile(**config.EVAL_PROFILE))
 
 
-def judge_input(case) -> dict:
-    """What the judge sees as the request: the question and the profile."""
-    return {"id": case.id, "request": case.query, "profile": config.EVAL_PROFILE}
+def median_latencies(case_results: list[dict]) -> dict:
+    """Median of every stage latency over the cases that measured it."""
+    return {key: median([r.get(key) for r in case_results]) for key in LATENCIES}
 
 
 def generate_answer(
@@ -64,9 +76,6 @@ def generate_answer(
         ``status`` (``ok`` or ``blocked``), ``answer``, ``evidence``,
         ``retrieved_ids``, ``scope`` and per-stage latencies in ms.
     """
-    from ..rag.context import make_highlight_query, make_query, select_evidence
-    from ..rag.prompt import make_benchmark_prompts
-
     request = make_request(query)
     search_query = make_query(request)
     out = {"status": "ok", "scope": "unchecked", "evidence": "", "retrieved_ids": []}
@@ -103,7 +112,11 @@ def answer_case(case, answer_fn: Callable[[str], dict]) -> dict:
     try:
         output = answer_fn(case.query)
     except Exception as error:  # a crash is a result of the system under test
-        output = {"status": "error", "answer": "", "error": f"{type(error).__name__}: {error}"}
+        output = {
+            "status": "error",
+            "answer": "",
+            "error": f"{type(error).__name__}: {error}",
+        }
     output["total_ms"] = (time.perf_counter() - started) * 1000
     return {"case_id": case.id, "query": case.query, "judge": None, **output}
 
@@ -113,7 +126,9 @@ def judge_case(result: dict, case, judge) -> dict | None:
     started = time.perf_counter()
     try:
         result["judge"] = judge.score(
-            judge_input(case), result["answer"], result.get("evidence", "")
+            judge_input(case.id, case.query),
+            result["answer"],
+            result.get("evidence", ""),
         )
     except Exception as error:
         result["judge_error"] = f"{type(error).__name__}: {error}"
@@ -137,7 +152,9 @@ def evaluate_arm(
         result = answer_case(case, answer_fn)
         case_results.append(result)
         if result["status"] != "ok" or not result["answer"].strip():
-            result["outcome"] = "pipeline_error" if result["status"] == "error" else "no_answer"
+            result["outcome"] = (
+                "pipeline_error" if result["status"] == "error" else "no_answer"
+            )
             continue
         generated += 1
         scores = judge_case(result, case, judge)
@@ -159,15 +176,29 @@ def evaluate_arm(
         ),
     }
     return {
+        "n_cases": len(cases),
+        "generated_answers": generated,
+        "rated_answers": rated,
         "metrics": metrics,
-        "latency_ms": {
-            key: median([r.get(key) for r in case_results]) for key in LATENCIES
-        },
+        "latency_ms": median_latencies(case_results),
+        "failures": [
+            {
+                "case_id": r["case_id"],
+                "category": r["outcome"],
+                "detail": r.get("error")
+                or r.get("judge_error")
+                or "No answer was produced.",
+            }
+            for r in case_results
+            if r["outcome"] != "judged"
+        ],
         "case_results": case_results,
     }
 
 
-def compare_arms(cases, arm_a: str, result_a: dict, arm_b: str, result_b: dict, judge) -> dict:
+def compare_arms(
+    cases, arm_a: str, result_a: dict, arm_b: str, result_b: dict, judge
+) -> dict:
     """Ask the judge which of two arms answered each case better."""
     answers_a = {r["case_id"]: r for r in result_a["case_results"]}
     answers_b = {r["case_id"]: r for r in result_b["case_results"]}
@@ -183,7 +214,7 @@ def compare_arms(cases, arm_a: str, result_a: dict, arm_b: str, result_b: dict, 
         row = {"case_id": case.id}
         try:
             verdict = judge.compare_answers(
-                judge_input(case),
+                judge_input(case.id, case.query),
                 a.get("answer", ""),
                 a.get("evidence", ""),
                 b.get("answer", ""),
@@ -204,6 +235,7 @@ def run_generation(
     *,
     retriever_name: str | None = None,
     no_rag_baseline: bool = True,
+    swap_analysis: bool = True,
     label: str = "",
 ):
     """Run the generation arms and write ``report.md`` + ``results.json``.
@@ -214,22 +246,18 @@ def run_generation(
         retriever_name: ``bm25``, ``semantic`` or ``hybrid``; defaults to the
             application's strategy.
         no_rag_baseline: Also run the best RAG model without retrieval.
+        swap_analysis: Then run the swap analysis on this run's answers
+            (it writes its own report folder).
         label: Optional suffix for the run folder.
 
     Returns:
         The run folder.
     """
-    from ..llm.ollama import OllamaGenerator
-    from ..retrieval.semantic import load_chunks
-    from .retrieval import build_retrievers
-
     settings = AppConfig.from_environment()
     models = models or [settings.ollama_model, settings.ollama_comparison_model]
     retriever_name = retriever_name or settings.retrieval_strategy
     cases = load_generation_cases()
-    retriever = build_retrievers([retriever_name], load_chunks(config.CHUNKS_DIR))[
-        retriever_name
-    ]
+    retriever = load_retriever(retriever_name)
     judge = OllamaQualityJudge(settings.ollama_judge_model, settings.ollama_url)
 
     def arm(model: str, rag: bool) -> dict:
@@ -269,12 +297,14 @@ def run_generation(
     payload = {
         "meta": {
             "suite": "generation",
+            "timestamp": now(),
             "label": label,
             "models": models,
             "retriever": retriever_name,
             "top_k": settings.top_k,
             "query_expansion": False,
             "judge_model": settings.ollama_judge_model,
+            "ollama_url": settings.ollama_url,
             "profile": config.EVAL_PROFILE,
             "case_ids": [case.id for case in cases],
             "validation": "raw model text; no production plan validation",
@@ -284,7 +314,11 @@ def run_generation(
         "arms": arms,
         "pairwise": pairwise,
     }
-    return write_run("generation", payload, render_markdown(payload), label)
+    run_dir = write_run("generation", payload, render_markdown(payload), label)
+    if swap_analysis:
+        swap_dir = run_swap_analysis(run_dir / "results.json", label=label)
+        logger.info("Swap analysis written output_dir=%s", swap_dir)
+    return run_dir
 
 
 def render_markdown(payload: dict) -> str:
@@ -294,6 +328,8 @@ def render_markdown(payload: dict) -> str:
     lines = [
         "# Generation evaluation",
         "",
+        f"- **Run:** {meta['timestamp']}"
+        + (f" · {meta['label']}" if meta["label"] else ""),
         f"- **Cases:** {n_cases} identical questions per arm",
         f"- **Models:** {', '.join(f'`{m}`' for m in meta['models'])}",
         f"- **Answer judge:** `{meta['judge_model']}`",
@@ -341,7 +377,9 @@ def render_markdown(payload: dict) -> str:
         ]
         for row in pairwise["case_results"]:
             if "judge_error" in row:
-                lines.append(f"| {row['case_id']} | judge error | — | — | {row['judge_error']} |")
+                lines.append(
+                    f"| {row['case_id']} | judge error | — | — | {row['judge_error']} |"
+                )
                 continue
             score_a, score_b = (sum(row["scores"][x].values()) for x in ("A", "B"))
             rationale = " ".join(row["rationale"].split()).replace("|", "/")
@@ -350,7 +388,10 @@ def render_markdown(payload: dict) -> str:
             )
 
     if payload["baseline"]:
-        rag, no_rag = arms[payload["ranking"][0]]["metrics"], arms[payload["baseline"]]["metrics"]
+        rag, no_rag = (
+            arms[payload["ranking"][0]]["metrics"],
+            arms[payload["baseline"]]["metrics"],
+        )
         lines += [
             "",
             "## RAG vs no RAG",
@@ -362,28 +403,30 @@ def render_markdown(payload: dict) -> str:
             "answer cannot earn evidence support, which counts toward answer quality.",
         ]
 
-    lines += [
-        "",
-        "## Failed cases",
-        "",
-    ]
-    failed = [
-        (name, r)
-        for name in order
-        for r in arms[name]["case_results"]
-        if r["outcome"] != "judged"
-    ]
-    if failed:
-        lines += ["| Arm | Case | Outcome | Detail |", "|---|---|---|---|"]
-        for name, r in failed:
-            detail = r.get("error") or r.get("judge_error") or "no answer"
-            lines.append(f"| `{name}` | {r['case_id']} | {r['outcome']} | {detail} |")
-    else:
+    lines += ["", "## Failed cases", ""]
+    failed = [(name, f) for name in order for f in arms[name]["failures"]]
+    if not failed:
         lines.append("None: every answer was generated and judged.")
+    else:
+        lines += ["| Arm | Case | Outcome | Detail |", "|---|---|---|---|"]
+        for name, f in failed:
+            lines.append(
+                f"| `{name}` | {f['case_id']} | {f['category']} | {f['detail']} |"
+            )
     lines += [
         "",
-        "Raw answers, evidence, per-dimension scores and judge rationales are in "
-        "`results.json`. This is a fixed-dataset measurement, not a significance test.",
+        "## Interpretation",
+        "",
+        "- `N/A (0/0)` means a metric was not applicable, not a perfect score.",
+        "- Answer quality averages the five general dimensions plus evidence "
+        "support over judged answers; generation rate and judge coverage show "
+        "what was left out.",
+        "- The no-RAG arm uses the best RAG model on the same cases.",
+        "- Scores describe this fixed dataset only; the ranking is descriptive, "
+        "without confidence intervals or significance tests.",
+        "",
+        "Raw answers, evidence, retrieved chunk IDs, per-dimension scores, judge "
+        "rationales, failures and stage latencies are in `results.json`.",
         "",
     ]
     return "\n".join(lines)
