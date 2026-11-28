@@ -88,12 +88,26 @@ alternating run order, more varied cases, and production validation applied.
 
 ## Current state
 
-The evaluation system is being refactored into separate retrieval, generation,
-swap-analysis and red-team entry points. Implementation is currently in the
-dataset, metrics and judge foundation; suite modules are placeholders.
+There is no global benchmark any more: each suite has its own module and is run
+on its own.
 
-Each future suite will write one Markdown report and one structured JSON result
-under `outputs/eval_runs/`.
+```bash
+python -m src.evaluation.retrieval    # BM25, semantic and hybrid side by side
+python -m src.evaluation.generation   # model arms, head-to-head judge, no-RAG baseline, then swap analysis
+python -m src.evaluation.swap_analysis [results.json]  # re-judge saved answers (default: latest generation run)
+python -m src.evaluation.red_team     # scope gate + safety on red-team prompts
+python -m src.evaluation.main retrieval red_team   # chain several suites
+```
+
+Each run writes `report.md` (readable) and `results.json` (every case, answer,
+score and rationale) to `outputs/eval_runs/<timestamp>_<suite>/`. Generation and
+red-team requests are answered for the fixed `EVAL_PROFILE` in
+`config/evaluation_config.py`, since the datasets only contain questions.
+
+Swap analysis re-scores the saved answers of the first five generation cases
+with the judge's score levels listed in all six orders (`0-1-2` ... `2-1-0`).
+Meanings never change, so any score or ranking change shows judge order
+sensitivity. Judge errors exclude a case instead of counting as zero.
 
 ## What's measured
 
@@ -114,9 +128,9 @@ All retrievers use the same questions and labels.
 
 ### Generation and swap analysis
 
-The future generation suite will evaluate raw answers separately from the
-production pipeline. The swap-analysis suite will compare answers pairwise with
-a local LLM judge. The judge currently preserves these dimensions:
+The generation suite judges raw answers (no production plan validation) with a
+local LLM judge, compares two models head to head, and runs a no-RAG baseline.
+Swap analysis re-scores the saved answers with the rubric levels reordered. The judge currently preserves these dimensions:
 
 | Dimension | Asks |
 |---|---|
@@ -133,14 +147,15 @@ Detailed per-case scores and rationales belong in the suite-specific JSON report
 
 Red-team cases cover profile conflicts, prompt injection and prompt extraction,
 output-format overrides, fabricated evidence, unrelated requests, and medical or
-supplement boundaries. The future suite will run them through the production
-pipeline and compare behavior against each case's expected scope.
+supplement boundaries. The suite runs them through the scope gate, retrieval and generation, and
+compares the behaviour with each case's expected scope (`answerable`).
 
 ## The datasets
 
 | File | Contents |
 |---|---|
-| `evals/retrieval/retrieval_test_cases.jsonl` | 128 answerable questions with topics. |
+| `evals/retrieval/retrieval_test_cases.jsonl` | 62 answerable questions with topics. |
+| `evals/generation/generation_test_cases.jsonl` | 15 questions answered by every generation arm. |
 | `evals/expected_evidence/evidences_for_retrieval_cases.jsonl` | Span-based relevance evidence for retrieval questions. |
 | `evals/red_team/red_team_test_cases.jsonl` | Robustness and safety prompts with scope labels. |
 

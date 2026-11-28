@@ -1,4 +1,4 @@
-"""Load retrieval and red-team evaluation datasets."""
+"""Load retrieval, generation and red-team evaluation datasets."""
 
 import json
 import math
@@ -13,6 +13,7 @@ RETRIEVAL_CASES = EVALS / "retrieval" / "retrieval_test_cases.jsonl"
 RELEVANCE_JUDGMENTS = (
     EVALS / "expected_evidence" / "evidences_for_retrieval_cases.jsonl"
 )
+GENERATION_CASES = EVALS / "generation" / "generation_test_cases.jsonl"
 RED_TEAM_CASES = EVALS / "red_team" / "red_team_test_cases.jsonl"
 
 
@@ -135,6 +136,31 @@ def load_retrieval_cases(
                 f"retrieval case {case.id}: unanswerable but has relevance judgments"
             )
     return list(cases.values())
+
+
+@dataclass
+class GenerationCase:
+    id: str
+    query: str
+    topic: str
+
+
+def load_generation_cases(path: Path = GENERATION_CASES) -> list[GenerationCase]:
+    """Load the questions answered by every generation arm."""
+    cases = []
+    for line_number, row in read_jsonl(path):
+        where = f"{path.name}:{line_number}"
+        _require(row, ("id", "query", "topic"), where)
+        if not all(
+            isinstance(row[key], str) and row[key].strip()
+            for key in ("id", "query", "topic")
+        ):
+            raise DatasetError(f"{where}: id, query and topic must be non-empty")
+        cases.append(GenerationCase(row["id"], row["query"], row["topic"].strip()))
+    _unique([case.id for case in cases], "generation case")
+    if not cases:
+        raise DatasetError(f"{path.name}: generation dataset must not be empty")
+    return cases
 
 
 @dataclass
