@@ -102,12 +102,14 @@ def tool_call(name: str, call_id: str | None = None, **arguments) -> AIMessage:
 class ScriptedPlanner:
     """Return prepared structured outputs in order, then raise."""
 
-    def __init__(self, plans: list):
-        """Keep the queue shared with the model."""
+    def __init__(self, plans: list, seen: list[list]):
+        """Keep the queue and record the prompt passed to structured output."""
         self.plans = plans
+        self.seen = seen
 
-    def invoke(self, _messages):
+    def invoke(self, messages):
         """Return the next plan, or raise when an exception was queued."""
+        self.seen.append(list(messages))
         item = self.plans.pop(0)
         if isinstance(item, Exception):
             raise item
@@ -127,6 +129,7 @@ class ScriptedModel:
         self.replies = list(replies)
         self.plans = list(plans)
         self.seen: list[list] = []
+        self.structured_seen: list[list] = []
         self.bound: list[list[str]] = []
 
     def bind_tools(self, tools):
@@ -136,7 +139,7 @@ class ScriptedModel:
 
     def with_structured_output(self, _schema, **_options):
         """Return the planner reading the shared plan queue."""
-        return ScriptedPlanner(self.plans)
+        return ScriptedPlanner(self.plans, self.structured_seen)
 
     def invoke(self, messages):
         """Return the next reply, or raise a queued exception."""

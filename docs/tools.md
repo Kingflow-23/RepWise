@@ -55,7 +55,7 @@ agents in brackets may also call it.
 | `get_workout` | Orchestrator | read | No | **week_number**, **workout_index**, plan_id | `WorkoutResult` | - |
 | `remember_fact` | Orchestrator | write | No | **fact** | `FactResult` | Ollama (health check) |
 | `get_workout_history` | Planning (Performance) | read | No | max_plans | `HistoryResult` | - |
-| `generate_workout_plan` | Planning | write | No: a plan that would replace the active one is saved as a draft | **focus**, workouts_per_week, extra_constraints, refinement_instructions | `GenerateWorkoutPlanResult` | Ollama, fitness corpus |
+| `generate_workout_plan` | Planning | write | No: a plan that would replace the active one is saved as a draft | **focus**, schedule_scope, workouts_per_week, extra_constraints, refinement_instructions | `GenerateWorkoutPlanResult` | Ollama, fitness corpus, optionally Google Calendar |
 | `activate_plan` | Planning | write | Always | **plan_id** | `ActivatePlanResult` | - |
 | `save_recommendation` | Planning (Performance) | write | No (it changes nothing) | **summary**, **reason**, source_ids, plan_id | `RecommendationResult` | - |
 | `save_workout_feedback` | Performance | write | When the comment may describe pain or injury | **week_number**, **workout_index**, **completion_status**, **difficulty**, comment, plan_id | `FeedbackResult` | Ollama (health check) |
@@ -97,20 +97,28 @@ one workout.
 
 - **`generate_workout_plan`**: runs the [RAG pipeline](rag_pipeline.md). It
   retrieves evidence, generates a one-week plan with the local model and validates
-  it against the profile and the evidence. It saves only a valid plan. A student's
-  first plan becomes active. If an active plan already exists, the new one is
-  saved as a **draft**, and an `activate_plan` action is proposed for approval
-  automatically. Failure statuses: `missing_profile`, `invalid_request`,
+  it against the profile and the evidence. It saves only a valid plan.
+  `schedule_scope` defaults to `"this_week"` for assistant plans; that scope
+  requires a connected calendar, filters profile weekdays to future
+  dates with enough room for the session, and reduces the workout count when
+  fewer days fit. It saves the plan as a draft and proposes activation only
+  after exact slots are prepared. A slot conflict during approval leaves the
+  plan a draft. Use `"weekly"` only for a recurring template; the first recurring
+  plan becomes active immediately, while replacing an active plan needs approval.
+  Failure statuses: `missing_profile`, `invalid_request`, `calendar_not_connected`,
+  `calendar_unavailable`,
   `out_of_scope`, `retrieval_error`, `insufficient_evidence`,
   `provider_unavailable`, `model_not_found`, `generation_timeout`,
-  `generation_error`, `plan_not_compliant`, `unavailable`
+  `generation_error`, `plan_not_compliant`, `no_available_days`, `unavailable`
   ([meanings](rag_pipeline.md)).
 - **`activate_plan`**: makes a draft the active plan and archives the previous
   one. The previous plan is kept, not deleted. If Google Calendar is connected,
   the approval itself lists and pins every chosen daytime start time on the
   workouts' planned days. No day is changed automatically, and conflicts are
-  rechecked before booking. If any workout has no free slot, the approval
-  explains why and includes no events.
+  rechecked before booking. Current-week plans cannot be activated without
+  prepared slots; if a slot becomes busy during approval, events are not
+  considered a successful activation and the plan remains a draft. Recurring
+  plans can still be activated without calendar bookings.
 - **`get_workout_history`**: logged workouts (completed, partial and missed), their
   difficulty, weights and reps, and pending recommendations. Code computes the
   summary counts, including `health_concern_reports`. A new student gets empty
@@ -146,8 +154,11 @@ returns `calendar_unavailable`, never "free".
 - **`get_calendar_busy`**: busy times, with no event titles.
 - **`propose_training_slots`**: free start times for each unbooked, unlogged
   workout, with real dates in the student's time zone (daylight saving is
-  handled). A workout is never moved to another day automatically; a day change
-  must be requested and approved separately. Two preferred workout times are never offered the same
+  handled). Past dates and workouts with saved feedback are skipped; a workout
+  already booked in RepWise is not offered again. The current week is used if a
+  planned weekday remains today or later; otherwise, the next week is used.
+  A workout is never moved to another day automatically; a day change must be
+  requested and approved separately. Two preferred workout times are never offered the same
   time. Starts and finishes are restricted to 06:00–22:00 local time, leaving an
   eight-hour overnight window for sleep. Options are
   chosen near 10:00, 14:00 and 17:00, in that preference order; when possible,
@@ -164,10 +175,15 @@ returns `calendar_unavailable`, never "free".
   `day_not_available`, `day_conflict`, `invalid_schedule`,
   `nothing_to_catch_up`, `no_day_left`. The result lists calendar events that
   now show an old time. Invalid moves, including moves onto an already-used day,
-  are rejected before an approval is created.
+  are rejected before an approval is created. This changes the plan only; it
+  does not add or move events in Google Calendar. Since slot search skips
+  feedback-logged workouts, a catch-up move for a logged missed workout does
+  not automatically produce a slot suggestion.
 - **`add_workouts_to_calendar`**: rechecks each chosen time, then creates one event
   per workout, using a stable key so a retry never duplicates it. If no times were
   supplied, code selects one preferred free time per unbooked workout, sequentially.
+  If any such workout has no free option, it creates no booking proposal rather
+  than a partial schedule; choose another day or week first.
   The full schedule is held as one approval action; if any workout has no slot on
   its planned day, no booking is proposed. Each booking has its own outcome:
   `booked`, `already_booked`, `conflict` or `failed`. Booking results include

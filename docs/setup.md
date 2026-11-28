@@ -65,7 +65,6 @@ Pull the models. If you change a model in `.env`, pull that one instead.
 ```powershell
 ollama pull qwen3.5:9b   # generates plans; tool-calling model of the agents
 ollama pull qwen3.5:4b   # screens requests, rewrites queries, health check, judges
-ollama pull gemma4:12b   # benchmark comparisons only
 ```
 
 Start the API, then a UI, in separate terminals:
@@ -78,13 +77,14 @@ python -m uvicorn src.api.main:app --reload
 python -m streamlit run .\genai_app\streamlit_app.py
 ```
 
-Open the Streamlit URL, register an account, save a profile, and request a plan.
-The Streamlit app is also a test console for the whole backend: **Assistant**
-(chat with the agents, with each request's plan, the work of each specialist, and
-Approve/Decline buttons), **Approvals** (pending and past actions), **Metrics** (time, tokens, model and
-tool calls per request, with CSV and JSON export), **Location &
-calendar** (opt-in saved location, Google Calendar connection), and **System**
-(health, the tool catalog, and an MCP host configuration for your account).
+Open the Streamlit URL, create an account, save a profile, and request a plan.
+The workspace includes **Profile**, **Create a plan**, **Saved plans**,
+**Assistant**, **Approvals**, **Progress**, **Location & calendar**, and
+**Settings**. The Assistant shows specialist results and pending actions;
+Approvals lists actions to review; Progress provides the current session's
+agent metrics; Settings includes account deletion and system diagnostics.
+See the [Streamlit user guide](user-guide.md) for weekly plan counts, workout
+logging, and calendar booking behavior.
 The database is created (or extended) automatically, and the API's interactive
 docs, including the agent and approval routes, are at
 `http://127.0.0.1:8000/docs`.
@@ -99,6 +99,32 @@ a temporary synthetic account:
 python -m scripts.run_agent            # the 5 requests of the agent sheet
 python -m scripts.run_agent --multi    # multi-agent scenarios
 ```
+
+### Optional Langfuse tracing
+
+Create a free project in [Langfuse Cloud](https://cloud.langfuse.com), then copy
+the project's secret and public keys into your **local**, ignored `.env` file.
+For the EU Cloud region, also set `LANGFUSE_BASE_URL=https://cloud.langfuse.com`;
+use the URL shown for your project if it is in another region. The variables are
+listed, commented out, in `.env.example`. Never paste project keys into source
+files or commit them.
+
+With both keys configured, RepWise creates one trace per agent request. It
+records model-generation and tool-execution observations, durations, reported
+token counts, and safe status metadata. Prompts, answers, student details, tool
+arguments, and tool results are deliberately not sent to Langfuse. The five
+agent-sheet requests run on a temporary synthetic account and flush traces at
+the end:
+
+```powershell
+python -m scripts.run_agent
+```
+
+Open the traces in the Langfuse project and record the per-request counts and
+any trace issue in [TRACES.md](../TRACES.md). Token counts depend on whether
+the local Ollama model reports usage; unavailable counts are marked as such.
+Tracing is disabled when neither key is set, and a one-key configuration is an
+error rather than a silently incomplete setup.
 
 The MCP server is a separate, optional process for MCP hosts. It needs a token
 from `/api/v1/auth/login`; see [The MCP server](mcp.md):
@@ -143,6 +169,11 @@ Then start the API and Streamlit app as described above. Sign in to RepWise,
 open **Location & calendar**, click **Connect Google Calendar**, and approve
 access in Google’s browser page. RepWise reads busy/free times only, not event
 names or details. It creates calendar events only after you approve a booking.
+Calendar slot suggestions skip logged or already-booked workouts and dates
+that have passed. Plan generation itself creates a weekly template; it does
+not adjust the requested workout count to the number of days remaining this
+week. See the [user guide](user-guide.md#connect-and-book-google-calendar)
+for the complete behavior.
 
 This button uses Google’s **Desktop app** flow for a local Streamlit setup. It
 is not suitable for a remotely hosted, multi-user service; that requires a
@@ -168,8 +199,8 @@ Settings are environment variables, loaded from `.env`.
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama address. |
 | `OLLAMA_MODEL` | `qwen3.5:9b` | Generates plans. |
 | `OLLAMA_QUERY_EXPANSION_MODEL` | `qwen3.5:4b` | Screens requests and rewrites queries. |
-| `OLLAMA_COMPARISON_MODEL` | `gemma4:12b` | Second model in benchmarks. |
-| `OLLAMA_JUDGE_MODEL` | `qwen3.5:4b` | Scores benchmark answers. |
+| `OLLAMA_COMPARISON_MODEL` | `gemma4:12b` | Future swap-analysis comparison model. |
+| `OLLAMA_JUDGE_MODEL` | `qwen3.5:4b` | Future generation and swap-analysis judge. |
 | `REPWISE_API_URL` | `http://127.0.0.1:8000` | API address used by Streamlit. |
 | `REPWISE_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. |
 | `REPWISE_LOG_DIR` | `logs` | Folder for rotating log files. |

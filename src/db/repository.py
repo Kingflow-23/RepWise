@@ -307,6 +307,23 @@ class StudentRepository:
             ).fetchone()
         return {"user_id": row[0], "full_name": row[1]} if row else None
 
+    def delete_user(self, user_id: str) -> bool:
+        """Permanently delete an account and its owned records.
+
+        Foreign-key cascades remove the profile, plans, workout history,
+        approvals, saved location, and associated memory.
+
+        Args:
+            user_id: Internal account ID to delete.
+
+        Returns:
+            ``True`` if an account was deleted, otherwise ``False``.
+        """
+        with self._connect() as connection:
+            cursor = connection.execute("DELETE FROM users WHERE user_id=?", (user_id,))
+        logger.info("Database account deleted found=%s", cursor.rowcount == 1)
+        return cursor.rowcount == 1
+
     def get_account_by_name(self, full_name: str) -> tuple[str, str, str] | None:
         """Look up the account fields needed for login.
 

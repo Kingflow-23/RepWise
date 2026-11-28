@@ -10,12 +10,23 @@ evaluations read the same numbers.
 
 from __future__ import annotations
 
+import contextvars
+from contextlib import contextmanager
 from time import perf_counter
-from typing import Any
+from typing import Any, Iterator
 
 from pydantic import Field
 
+from src.observability.langfuse_tracing import (
+    finish_generation,
+    generation_observation,
+    phase_observation,
+)
 from src.schemas.models import Model
+
+active_recorder: contextvars.ContextVar["Recorder | None"] = contextvars.ContextVar(
+    "repwise_active_recorder", default=None
+)
 
 
 class ModelCall(Model):
@@ -109,8 +120,9 @@ class Recorder:
     add to it, and :meth:`build` turns it into :class:`RequestMetrics`.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, model: str = "unknown") -> None:
         """Start empty."""
+        self.model = model
         self.phases: list[Phase] = []
         self.model_calls: list[ModelCall] = []
 
@@ -133,12 +145,14 @@ class Recorder:
             """Run the node and record how long it took."""
             label = name(state) if callable(name) else name
             started = perf_counter()
-            try:
-                return node(state)
-            finally:
-                self.phases.append(
-                    Phase(name=label, seconds=round(perf_counter() - started, 3))
-                )
+            with phase_observation(label) as observation:
+                try:
+                    return node(state)
+                finally:
+                    seconds = round(perf_counter() - started, 3)
+                    self.phases.append(Phase(name=label, seconds=seconds))
+                    if observation is not None:
+                        observation.update(metadata={"duration_seconds": seconds})
 
         return run
 
@@ -157,9 +171,23 @@ class Recorder:
             ValueError: If the model's answer could not be parsed.
         """
         started = perf_counter()
-        result = runnable.invoke(messages)
-        raw = result.get("raw") if isinstance(result, dict) else None
-        self.model_calls.append(record_call(purpose, started, raw))
+        with generation_observation(purpose, self.model) as observation:
+            try:
+                result = runnable.invoke(messages)
+            except Exception as error:
+                call = record_failure(purpose, started)
+                self.model_calls.append(call)
+                finish_generation(observation, started, error=error)
+                raise
+            raw = result.get("raw") if isinstance(result, dict) else None
+            call = record_call(purpose, started, raw)
+            self.model_calls.append(call)
+            finish_generation(
+                observation,
+                started,
+                call.input_tokens,
+                call.output_tokens,
+            )
         if not isinstance(result, dict):
             return result
         if result.get("parsed") is None:
@@ -192,3 +220,37 @@ class Recorder:
             input_tokens=sum(c.input_tokens or 0 for c in calls),
             output_tokens=sum(c.output_tokens or 0 for c in calls),
         )
+
+
+def record_external_call(
+    purpose: str,
+    started: float,
+    input_tokens: int | None,
+    output_tokens: int | None,
+) -> None:
+    """Include a non-LangChain model call in the active request's metrics."""
+    recorder = active_recorder.get()
+    if recorder is not None:
+        recorder.model_calls.append(
+            ModelCall(
+                purpose=purpose,
+                seconds=round(perf_counter() - started, 3),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+        )
+
+
+def record_failure(purpose: str, started: float) -> ModelCall:
+    """Record a failed model invocation whose token usage is unavailable."""
+    return ModelCall(purpose=purpose, seconds=round(perf_counter() - started, 3))
+
+
+@contextmanager
+def collect_request_metrics(recorder: Recorder) -> Iterator[None]:
+    """Make nested model calls contribute to the active request's metrics."""
+    token = active_recorder.set(recorder)
+    try:
+        yield
+    finally:
+        active_recorder.reset(token)

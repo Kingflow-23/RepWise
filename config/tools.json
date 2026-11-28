@@ -136,7 +136,8 @@
         "orchestrator"
       ],
       "access": "write",
-      "approval": "never",
+      "approval": "always",
+      "approval_reason": "This saves the exact fact shown in the action arguments for future conversations. Approve only if you explicitly asked RepWise to remember it.",
       "external_services": [
         "ollama"
       ],
@@ -203,7 +204,7 @@
     },
     {
       "name": "generate_workout_plan",
-      "description": "Generate a validated, evidence-based one-week workout plan from the student's profile and this request, using the RAG pipeline. When the student already has an active plan, the new plan is saved as a draft and activating it needs approval.",
+      "description": "Generate a validated, evidence-based workout plan from the student's profile and this request. This-week plans require a connected calendar and stay in draft until the exact available slots are approved and booked. When the student already has an active plan, replacement also needs approval.",
       "agents": [
         "planning"
       ],
@@ -211,7 +212,8 @@
       "approval": "never",
       "external_services": [
         "ollama",
-        "fitness_corpus"
+        "fitness_corpus",
+        "google_calendar"
       ],
       "failure_codes": [
         "missing_profile",
@@ -224,6 +226,9 @@
         "generation_timeout",
         "generation_error",
         "plan_not_compliant",
+        "no_available_days",
+        "calendar_not_connected",
+        "calendar_unavailable",
         "unavailable"
       ],
       "input_schema": {
@@ -285,6 +290,16 @@
             ],
             "default": null,
             "title": "Refinement Instructions"
+          },
+          "schedule_scope": {
+            "default": "this_week",
+            "description": "Use recurring profile weekdays, or constrain sessions to free dates in the current calendar week.",
+            "enum": [
+              "weekly",
+              "this_week"
+            ],
+            "title": "Schedule Scope",
+            "type": "string"
           }
         },
         "required": [
@@ -300,17 +315,20 @@
     },
     {
       "name": "activate_plan",
-      "description": "Make a draft plan the student's active plan. Before approval, code prepares exact free times on each planned workout day and lists them in the approval. The same approval archives the previous plan and books those events; if any workout has no slot, it explains why and books none. Never changes workout days.",
+      "description": "Make a draft plan active after approval. Current-week plans require exact available calendar slots in the approval and remain drafts if a slot is unavailable. Other drafts can be activated without calendar bookings. Never changes workout days.",
       "agents": [
         "planning"
       ],
       "access": "write",
       "approval": "always",
-      "approval_reason": "The new plan was saved as a draft. Approve to activate it and archive your current plan.",
+      "approval_reason": "The plan is a draft. Approve to activate it; this may replace your current plan.",
       "failure_codes": [
         "plan_not_found",
         "student_not_found",
         "invalid_request",
+        "no_workouts_to_book",
+        "calendar_not_connected",
+        "calendar_unavailable",
         "storage_error"
       ],
       "input_schema": {
@@ -341,6 +359,39 @@
               "start"
             ],
             "title": "Booking",
+            "type": "object"
+          },
+          "SlotChoice": {
+            "additionalProperties": false,
+            "description": "A proposed exact time for one workout, including a display label.",
+            "properties": {
+              "week_number": {
+                "minimum": 1,
+                "title": "Week Number",
+                "type": "integer"
+              },
+              "workout_index": {
+                "minimum": 0,
+                "title": "Workout Index",
+                "type": "integer"
+              },
+              "start": {
+                "format": "date-time",
+                "title": "Start",
+                "type": "string"
+              },
+              "label": {
+                "title": "Label",
+                "type": "string"
+              }
+            },
+            "required": [
+              "week_number",
+              "workout_index",
+              "start",
+              "label"
+            ],
+            "title": "SlotChoice",
             "type": "object"
           }
         },
@@ -386,6 +437,15 @@
             "default": null,
             "description": "Internal: code sets any calendar limitation before approval.",
             "title": "Calendar Message"
+          },
+          "slot_choices": {
+            "description": "Available exact times shown to the student for choosing.",
+            "items": {
+              "$ref": "#/$defs/SlotChoice"
+            },
+            "maxItems": 63,
+            "title": "Slot Choices",
+            "type": "array"
           }
         },
         "required": [
@@ -1018,6 +1078,39 @@
             ],
             "title": "Booking",
             "type": "object"
+          },
+          "SlotChoice": {
+            "additionalProperties": false,
+            "description": "A proposed exact time for one workout, including a display label.",
+            "properties": {
+              "week_number": {
+                "minimum": 1,
+                "title": "Week Number",
+                "type": "integer"
+              },
+              "workout_index": {
+                "minimum": 0,
+                "title": "Workout Index",
+                "type": "integer"
+              },
+              "start": {
+                "format": "date-time",
+                "title": "Start",
+                "type": "string"
+              },
+              "label": {
+                "title": "Label",
+                "type": "string"
+              }
+            },
+            "required": [
+              "week_number",
+              "workout_index",
+              "start",
+              "label"
+            ],
+            "title": "SlotChoice",
+            "type": "object"
           }
         },
         "additionalProperties": false,
@@ -1044,6 +1137,15 @@
             "default": null,
             "description": "Omit for the current plan.",
             "title": "Plan Id"
+          },
+          "slot_choices": {
+            "description": "Available exact times shown to the student for choosing.",
+            "items": {
+              "$ref": "#/$defs/SlotChoice"
+            },
+            "maxItems": 63,
+            "title": "Slot Choices",
+            "type": "array"
           }
         },
         "title": "BookingArguments",

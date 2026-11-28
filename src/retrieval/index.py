@@ -6,7 +6,7 @@ import argparse
 import logging
 from pathlib import Path
 
-from ..observability import configure_logging
+from ..observability.observability import configure_logging
 from .semantic import DEFAULT_MODEL, build_index
 
 logger = logging.getLogger(__name__)

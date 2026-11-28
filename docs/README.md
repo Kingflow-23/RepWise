@@ -2,11 +2,13 @@
 
 Each topic has one home. Start with the question you have:
 
-For the verified development state and next-agent context, read the
-[handoff of 21 November 2026](HANDOFF_2026-11-21.md).
+For current capabilities and known limitations, see
+[implementation status](status.md).
 
 | I want to... | Read |
 |---|---|
+| Use the Streamlit app, create a weekly plan, log workouts, or book a calendar event | [Streamlit user guide](user-guide.md) |
+| Try the experimental Vite/Three.js web frontend | [Web frontend guide](../app/README.md) |
 | Install and run RepWise, or look up a setting | [Setup and configuration](setup.md) |
 | Understand how the system fits together, or change the code | [Architecture](architecture.md) |
 | Understand the six agents, Plan-and-Execute, memory and approvals | [The agents](agents.md) |

@@ -59,6 +59,20 @@ class SharedLocation(Model):
     longitude: float = Field(ge=-180, le=180)
 
 
+class SlotSelection(Model):
+    """One exact proposed slot selected by the student."""
+
+    week_number: int = Field(ge=1)
+    workout_index: int = Field(ge=0)
+    start: str = Field(min_length=1)
+
+
+class ApprovalRequest(Model):
+    """Optional student choices for a pending action."""
+
+    selections: list[SlotSelection] = Field(default_factory=list)
+
+
 class AgentRequest(Model):
     """One message to the assistant.
 
@@ -210,7 +224,10 @@ def build_agent_router(
         "/agent/actions/{action_id}/approve", response_model=approvals.ActionDecision
     )
     def approve_action(
-        student_id: str, action_id: str, user_id: str = Depends(require_account)
+        student_id: str,
+        action_id: str,
+        request: ApprovalRequest | None = None,
+        user_id: str = Depends(require_account),
     ) -> approvals.ActionDecision:
         """Run one pending action the student approved.
 
@@ -220,7 +237,12 @@ def build_agent_router(
         """
         check_owner(student_id, user_id)
         try:
-            return approvals.approve(make_context(student_id), action_id)
+            selections = (
+                [selection.model_dump(mode="json") for selection in request.selections]
+                if request is not None
+                else None
+            )
+            return approvals.approve(make_context(student_id), action_id, selections)
         except approvals.ApprovalError as error:
             raise HTTPException(
                 APPROVAL_ERROR_STATUS[error.code], error.message

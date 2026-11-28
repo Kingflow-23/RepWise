@@ -46,6 +46,13 @@ adds a focus, a workout count (by default up to three, limited by available days
 extra constraints, and optionally up to 500 characters on what to change. Each
 request produces exactly one week.
 
+The workout count describes the weekly plan template, not the number of sessions
+that can still fit between today and the end of the current week. For example,
+with four available days the default is three workouts; requesting four generates
+four workouts even if the request is made midweek. Calendar slot search separately
+skips past dates and finds times for remaining eligible workouts. See the
+[Streamlit user guide](user-guide.md#connect-and-book-google-calendar).
+
 ## 2. Screening
 
 Before searching, the query-analysis model decides whether this is general
@@ -95,7 +102,7 @@ first and last passage IDs, so they stay stable until chunk boundaries change.
 ## 4. Writing the plan
 
 The prompt combines the fixed system instruction in
-`prompts/system_prompt_v1.txt`, the request, every retrieved chunk in full, and the
+`prompts/system_prompt.txt`, the request, every retrieved chunk in full, and the
 output schema. The instruction treats transcripts and earlier plans as reference
 data that can't change the model's orders, and requires English plan text even when
 the request or sources are in another language. Returning students also get a

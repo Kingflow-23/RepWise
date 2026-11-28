@@ -6,6 +6,9 @@ import logging
 from time import perf_counter
 from typing import Any, Protocol
 
+from src.agents.metrics import record_external_call
+from src.observability.langfuse_tracing import finish_generation, generation_observation
+
 from ..schemas.models import TrainingPlan, Workout
 from .errors import classify_provider_error
 
@@ -80,11 +83,28 @@ class OllamaGenerator:
         logger.info("Ollama generation started model=%s", self.model)
         self._last_raw_output = None
         try:
-            content, prompt_eval_tokens = self._generate_content(
-                system_prompt,
-                user_prompt,
-                response_schema or TrainingPlan.model_json_schema(),
-            )
+            with generation_observation(
+                "training plan generation", self.model
+            ) as observation:
+                try:
+                    content, prompt_eval_tokens, eval_tokens = self._generate_content(
+                        system_prompt,
+                        user_prompt,
+                        response_schema or TrainingPlan.model_json_schema(),
+                    )
+                except Exception as error:
+                    finish_generation(observation, started, error=error)
+                    record_external_call(
+                        "training plan generation", started, None, None
+                    )
+                    raise
+                finish_generation(observation, started, prompt_eval_tokens, eval_tokens)
+                record_external_call(
+                    "training plan generation",
+                    started,
+                    prompt_eval_tokens,
+                    eval_tokens,
+                )
             self._last_raw_output = content
             if isinstance(prompt_eval_tokens, bool) or not isinstance(
                 prompt_eval_tokens, int
@@ -118,38 +138,53 @@ class OllamaGenerator:
         """Return the model's raw benchmark answer without schema validation."""
         started = perf_counter()
         logger.info("Ollama raw benchmark generation started model=%s", self.model)
-        try:
-            from ollama import Client
+        with generation_observation("benchmark generation", self.model) as observation:
+            try:
+                from ollama import Client
 
-            client = Client(host=self.base_url, timeout=300)
-            response = client.chat(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                options={"temperature": 0.2, "num_ctx": 32_768},
-                think=False,
-            )
-            content = (
-                response["message"]["content"]
-                if isinstance(response, dict)
-                else response.message.content
-            )
-            if not isinstance(content, str) or not content.strip():
-                raise ValueError("Ollama returned an empty answer.")
-        except Exception as error:
-            logger.error(
-                "Ollama raw benchmark generation failed model=%s "
-                "error_type=%s elapsed_ms=%.1f",
-                self.model,
-                type(error).__name__,
-                (perf_counter() - started) * 1000,
-            )
-            raise RuntimeError(
-                f"Ollama could not generate a benchmark answer with {self.model!r}: "
-                f"{error}"
-            ) from error
+                client = Client(host=self.base_url, timeout=300)
+                response = client.chat(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    options={"temperature": 0.2, "num_ctx": 32_768},
+                    think=False,
+                )
+                content = (
+                    response["message"]["content"]
+                    if isinstance(response, dict)
+                    else response.message.content
+                )
+                if not isinstance(content, str) or not content.strip():
+                    raise ValueError("Ollama returned an empty answer.")
+                finish_generation(
+                    observation,
+                    started,
+                    _response_count(response, "prompt_eval_count"),
+                    _response_count(response, "eval_count"),
+                )
+                record_external_call(
+                    "benchmark generation",
+                    started,
+                    _response_count(response, "prompt_eval_count"),
+                    _response_count(response, "eval_count"),
+                )
+            except Exception as error:
+                finish_generation(observation, started, error=error)
+                record_external_call("benchmark generation", started, None, None)
+                logger.error(
+                    "Ollama raw benchmark generation failed model=%s "
+                    "error_type=%s elapsed_ms=%.1f",
+                    self.model,
+                    type(error).__name__,
+                    (perf_counter() - started) * 1000,
+                )
+                raise RuntimeError(
+                    f"Ollama could not generate a benchmark answer with {self.model!r}: "
+                    f"{error}"
+                ) from error
         logger.info(
             "Ollama raw benchmark answer returned model=%s chars=%s elapsed_ms=%.1f",
             self.model,
@@ -168,11 +203,23 @@ class OllamaGenerator:
         started = perf_counter()
         logger.info("Ollama workout adaptation started model=%s", self.model)
         try:
-            content, _ = self._generate_content(
-                system_prompt,
-                user_prompt,
-                response_schema or Workout.model_json_schema(),
-            )
+            with generation_observation(
+                "workout adaptation", self.model
+            ) as observation:
+                try:
+                    content, prompt_tokens, output_tokens = self._generate_content(
+                        system_prompt,
+                        user_prompt,
+                        response_schema or Workout.model_json_schema(),
+                    )
+                except Exception as error:
+                    finish_generation(observation, started, error=error)
+                    record_external_call("workout adaptation", started, None, None)
+                    raise
+                finish_generation(observation, started, prompt_tokens, output_tokens)
+                record_external_call(
+                    "workout adaptation", started, prompt_tokens, output_tokens
+                )
             workout = Workout.model_validate_json(content)
             logger.info(
                 "Ollama workout adaptation returned valid JSON model=%s elapsed_ms=%.1f",
@@ -197,7 +244,7 @@ class OllamaGenerator:
         system_prompt: str,
         user_prompt: str,
         response_schema: dict[str, Any],
-    ) -> tuple[str, int | None]:
+    ) -> tuple[str, int | None, int | None]:
         """Request structured JSON while retaining provider token diagnostics."""
         from ollama import Client
 
@@ -212,14 +259,21 @@ class OllamaGenerator:
             options={"temperature": 0.2, "num_ctx": 32_768},
             think=False,
         )
-        prompt_eval_tokens = (
-            response.get("prompt_eval_count")
-            if isinstance(response, dict)
-            else getattr(response, "prompt_eval_count", None)
-        )
+        prompt_eval_tokens = _response_count(response, "prompt_eval_count")
+        eval_tokens = _response_count(response, "eval_count")
         content = (
             response["message"]["content"]
             if isinstance(response, dict)
             else response.message.content
         )
-        return content, prompt_eval_tokens
+        return content, prompt_eval_tokens, eval_tokens
+
+
+def _response_count(response: Any, name: str) -> int | None:
+    """Return a valid Ollama token count, excluding booleans and other values."""
+    value = (
+        response.get(name)
+        if isinstance(response, dict)
+        else getattr(response, name, None)
+    )
+    return value if isinstance(value, int) and not isinstance(value, bool) else None

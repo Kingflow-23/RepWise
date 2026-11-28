@@ -48,6 +48,8 @@ logger = logging.getLogger(__name__)
 # Candidate start times are this far apart, and each workout gets this many options.
 SLOT_STEP_MINUTES = 30
 OPTIONS_PER_WORKOUT = 3
+# Simple, realistic padding for travel, changing, and showering around a workout.
+WORKOUT_BUFFER_MINUTES = 30
 TRAINING_DAY_START = time(6, 0)
 TRAINING_DAY_END = time(22, 0)
 PREFERRED_DAY_START = time(9, 0)
@@ -176,6 +178,15 @@ class BusyResult(Model):
     busy: list[BusyPeriod]
 
 
+def workout_reserved_period(start: datetime, minutes: int) -> BusyPeriod:
+    """Reserve time for the workout plus travel, changeover, and shower buffers."""
+    buffer = timedelta(minutes=WORKOUT_BUFFER_MINUTES)
+    return BusyPeriod(
+        start=start - buffer,
+        end=start + timedelta(minutes=minutes) + buffer,
+    )
+
+
 class SlotsResult(Model):
     """Output of ``propose_training_slots``. Nothing has been booked."""
 
@@ -186,12 +197,28 @@ class SlotsResult(Model):
     workouts: list[WorkoutSlots]
 
 
+class WeekAvailability(Model):
+    """Profile weekdays that still have enough room during the current week."""
+
+    week_start: date
+    available_days: list[str]
+
+
 class Booking(Model):
     """One exact workout start time pinned into an approval action."""
 
     week_number: int = Field(ge=1)
     workout_index: int = Field(ge=0)
     start: datetime
+
+
+class SlotChoice(Model):
+    """A proposed exact time for one workout, including a display label."""
+
+    week_number: int = Field(ge=1)
+    workout_index: int = Field(ge=0)
+    start: datetime
+    label: str
 
 
 class CalendarSource(Model):
@@ -257,18 +284,19 @@ def monday_of(day: date) -> date:
 
 
 def default_week_start(plan_days: list[str], today: date) -> date:
-    """Choose which week to schedule: this one, unless a workout day has passed.
+    """Choose the week containing the remaining workouts.
 
     Args:
         plan_days: Weekday names used by the plan.
         today: Today's date in the student's time zone.
 
     Returns:
-        The Monday of this week, or of next week when a planned day is past.
+        The Monday of this week when at least one planned day remains,
+        or the Monday of next week when every planned day has passed.
     """
     known = [n for n in (weekday_number(day) for day in plan_days) if n is not None]
     this_monday = monday_of(today)
-    if known and min(known) < today.weekday():
+    if known and max(known) < today.weekday():
         return this_monday + timedelta(days=7)
     return this_monday
 
@@ -299,7 +327,7 @@ def free_start_times(
     earliest: time,
     latest: time,
 ) -> list[datetime]:
-    """List start times on one day when the whole workout is free and in the future.
+    """List start times with a 30-minute gap before and after the workout.
 
     Args:
         day: The date to check.
@@ -317,14 +345,63 @@ def free_start_times(
     latest = min(latest, TRAINING_DAY_END)
     start = datetime.combine(day, earliest, zone)
     last_end = datetime.combine(day, latest, zone)
-    length, step = timedelta(minutes=minutes), timedelta(minutes=SLOT_STEP_MINUTES)
+    length = timedelta(minutes=minutes)
+    buffer = timedelta(minutes=WORKOUT_BUFFER_MINUTES)
+    step = timedelta(minutes=SLOT_STEP_MINUTES)
     starts = []
     while start + length <= last_end:
-        overlaps = any(start < p.end and start + length > p.start for p in busy)
+        reserved_start = start - buffer
+        reserved_end = start + length + buffer
+        overlaps = any(reserved_start < p.end and reserved_end > p.start for p in busy)
         if start > now and not overlaps:
             starts.append(start)
         start += step
     return starts
+
+
+def available_days_this_week(
+    context: ToolContext, profile_days: list[str], minutes: int
+) -> WeekAvailability | ToolFailure:
+    """Filter profile weekdays to future dates with enough free calendar time.
+
+    A missing or unavailable external calendar is a failure, never an
+    assumption that the student is free.
+    """
+    if context.calendar is None:
+        return failure("calendar_not_connected", NOT_CONNECTED_MESSAGE)
+    zone = ZoneInfo(context.timezone)
+    local_now = context.clock().astimezone(zone)
+    week_start = monday_of(local_now.date())
+    range_start = datetime.combine(week_start, time.min, zone)
+    try:
+        busy = list(
+            context.calendar.busy_periods(range_start, range_start + timedelta(days=7))
+        )
+    except CalendarError as error:
+        logger.warning("Calendar read failed: %s", error)
+        return failure("calendar_unavailable", str(error))
+
+    available = []
+    for day in profile_days:
+        workout_date = date_of_workout(week_start, 1, day)
+        if workout_date is None or workout_date < local_now.date():
+            continue
+        if not free_start_times(
+            workout_date,
+            minutes,
+            busy,
+            zone,
+            local_now,
+            TRAINING_DAY_START,
+            TRAINING_DAY_END,
+        ):
+            continue
+        available.append(day)
+
+    return WeekAvailability(
+        week_start=week_start,
+        available_days=available,
+    )
 
 
 def spread_options(starts: list[datetime]) -> list[datetime]:
@@ -489,6 +566,8 @@ def propose_training_slots(
                 continue
             minutes = workout.estimated_minutes
             planned_date = date_of_workout(first_monday, week.number, workout.day)
+            if planned_date and planned_date < local_now.date():
+                continue
             starts = (
                 free_start_times(
                     planned_date, minutes, busy, zone, local_now, earliest, latest
@@ -506,7 +585,7 @@ def propose_training_slots(
                 for start in spread_options(starts)
             ]
             if options:
-                busy.append(BusyPeriod(start=options[0].start, end=options[0].end))
+                busy.append(workout_reserved_period(options[0].start, minutes))
             results.append(
                 WorkoutSlots(
                     plan_id=record["id"],
@@ -519,7 +598,10 @@ def propose_training_slots(
                     note=(
                         None
                         if options
-                        else "No free time that week fits this workout on its planned day."
+                        else (
+                            "No free time that week fits this workout on its "
+                            "planned day with travel and shower buffers."
+                        )
                     ),
                 )
             )
@@ -533,7 +615,10 @@ def propose_training_slots(
 
 @report_storage_errors
 def add_workouts_to_calendar(
-    context: ToolContext, bookings: list[Booking], plan_id: str | None = None
+    context: ToolContext,
+    bookings: list[Booking],
+    plan_id: str | None = None,
+    slot_choices: list[SlotChoice] | None = None,
 ) -> BookingResult | ToolFailure:
     """Add approved daytime times to the external calendar, rechecking each one first.
 
@@ -652,14 +737,18 @@ def add_workouts_to_calendar(
                 detail="This time has passed.",
             )
         try:
-            if context.calendar.busy_periods(start, end):
+            reserved = workout_reserved_period(start, workout.estimated_minutes)
+            if context.calendar.busy_periods(reserved.start, reserved.end):
                 return BookingOutcome(
                     **position,
                     status="conflict",
                     start=start,
                     end=end,
                     workout=workout_details(workout),
-                    detail="The calendar is busy at this time.",
+                    detail=(
+                        "The calendar is busy at this time or within the "
+                        "30-minute gap before or after the workout."
+                    ),
                 )
             created = context.calendar.create_event(
                 event_key(

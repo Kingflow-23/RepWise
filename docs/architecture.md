@@ -62,6 +62,10 @@ flowchart LR
   after an authenticated approval.
 - **Safety fails closed.** The health check treats an unanswered check as a
   possible concern, and then nothing is adapted automatically.
+- **Account deletion is account-scoped.** `DELETE /api/v1/auth/me` uses the
+  authenticated identity, cascades through the account's SQLite records, and
+  removes its local Google Calendar credential. It cannot remove events from
+  the external Google Calendar.
 - **Evaluation reuses production code.** Benchmarks call the real retrievers and
   pipeline.
 - **Citations aren't proof.** A source ID shows that a passage was retrieved, not
@@ -81,7 +85,7 @@ flowchart LR
 | [`src/generation/`](../src/generation) | The plan pipeline, validation, and feedback adaptation (`adaptation.py`, shared by the API and the agent). |
 | [`src/rag/`](../src/rag), [`src/retrieval/`](../src/retrieval) | Query building, evidence selection, prompts; BM25, semantic, hybrid retrieval, query rewriting and the scope gate; `factory.py` builds the configured retriever. |
 | [`src/llm/`](../src/llm) | The boundary to Ollama for plan generation. |
-| [`src/ingestion/`](../src/ingestion), [`src/evaluation/`](../src/evaluation) | Corpus preparation; benchmarks, metrics and reports. |
+| [`src/ingestion/`](../src/ingestion), [`src/evaluation/`](../src/evaluation) | Corpus preparation; retrieval, generation, swap-analysis and red-team evaluation foundations. |
 | [`config/`](../config) | `config.py` (every setting, from the environment), `tools.json` (tool catalog), `places.json` (place categories), vocabularies. |
 | [`scripts/`](../scripts) | Command-line entry points: `run_agent`, `call_tool`, `mcp_smoke`, `sync_tool_catalog`, `connect_google_calendar`. |
 | [`tests/`](../tests) | One folder per layer (`agents`, `tools`, `app`, `db`, ...); `integration/` holds opt-in live tests. |
@@ -140,6 +144,11 @@ All state is in one SQLite file (`REPWISE_DATABASE_PATH`); see
 [API and database](api.md#data-model). Plans have a status of `active`, `draft`
 or `archived`. New tables and columns are added automatically when the API or the
 MCP server starts, so older databases keep working.
+
+Deleting an account removes its persistent RepWise data through SQLite foreign-key
+cascades. The per-account Google OAuth token file is stored outside SQLite and is
+removed by the authenticated account-deletion route. Events already created in
+Google Calendar remain external and are not deleted.
 
 ## Changing the code
 

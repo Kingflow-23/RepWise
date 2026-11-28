@@ -8,7 +8,9 @@ from config.config import AppConfig
 from src.api.main import create_app
 from src.api.auth import create_access_token, hash_password
 from src.db.repository import StudentRepository
+from src.integrations.google_calendar import token_path
 from src.retrieval.base import MissingRetriever
+from src.schemas.models import UserProfile
 
 
 @pytest.fixture
@@ -61,6 +63,46 @@ def test_current_account_rejects_expired_and_unknown_accounts(account_api):
             "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
         )
         assert response.status_code == 401
+
+
+def test_current_account_can_delete_itself_and_local_calendar_credentials(tmp_path):
+    secret = "test-secret-with-at-least-32-bytes-for-hmac"
+    repository = StudentRepository(tmp_path / "delete-account.sqlite3")
+    repository.initialize()
+    user_id = repository.create_user("Alex Test", hash_password("TestPassword123!"))
+    repository.save_profile(
+        user_id,
+        UserProfile(
+            experience="beginner",
+            goal="general strength",
+            available_days=["Monday"],
+            session_minutes=30,
+        ),
+    )
+    config = AppConfig(
+        database_path=repository.database_path,
+        auth_secret=secret,
+        google_directory=str(tmp_path / "google"),
+    )
+    client = TestClient(
+        create_app(
+            config,
+            repository=repository,
+            retriever=MissingRetriever("Not needed for account deletion"),
+        )
+    )
+    credentials = token_path(config, user_id)
+    credentials.parent.mkdir(parents=True)
+    credentials.write_text("test-only token", encoding="utf-8")
+    headers = {"Authorization": f"Bearer {create_access_token(user_id, secret)}"}
+
+    response = client.delete("/api/v1/auth/me", headers=headers)
+
+    assert response.status_code == 204
+    assert repository.get_account_identity(user_id) is None
+    assert repository.get_profile(user_id) is None
+    assert not credentials.exists()
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 401
 
 
 def test_passwords_are_hashed_and_tokens_expire():

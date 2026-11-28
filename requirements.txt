@@ -20,6 +20,7 @@ av>=11,<17
 # Multi-agent orchestration (LangGraph) and the local Ollama chat model
 langgraph>=1.2,<2
 langchain-ollama>=1.1,<2
+langfuse>=3,<6
 # Calendar sign-in, and time zones on Windows
 google-auth-oauthlib>=1.2,<2
 tzdata

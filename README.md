@@ -11,7 +11,11 @@ let you ask for more:
 - "I missed two workouts; organise the rest of my week."
 - "How much rest between sets do the documents recommend?"
 
-Any change to your plan or your calendar waits for your explicit approval.
+Assistant-proposed changes to your plan and calendar bookings wait for your
+explicit approval. The **Create a plan** page is a direct user action: its new
+plan becomes active immediately and archives the previous active plan. When the
+Assistant proposes a replacement plan, it is saved as a draft and waits for
+approval.
 
 It is a learning prototype for general fitness planning, not a medical or
 coaching service. It does not diagnose injuries or guarantee that a plan is safe.
@@ -69,6 +73,11 @@ python -m scripts.run_agent                           # the agents, on a demo ac
 python -m pytest -q                                   # tests (no Ollama needed)
 ```
 
+For the Streamlit workflow—including workout logging, calendar booking, and
+account deletion—see the [user guide](docs/user-guide.md).
+An additional, still-incomplete [Vite/Three.js web frontend](app/README.md)
+supports sign-in, profiles, plan generation, and read-only draft previews.
+
 The MCP server (`python -m src.mcp_server.server`) is optional. It serves the same tools to an
 MCP host; see [the MCP guide](docs/mcp.md).
 
@@ -80,6 +89,7 @@ The [documentation hub](docs/README.md) has one guide per topic:
 - [the agents](docs/agents.md), with Plan-and-Execute, memory and approvals
 - [the tools](docs/tools.md)
 - [the API](docs/api.md)
+- [using the Streamlit app](docs/user-guide.md)
 - [the RAG pipeline](docs/rag_pipeline.md)
 - [evaluation](docs/evaluation.md)
 - [implementation status](docs/status.md)

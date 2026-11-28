@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from ..body_parts import detect_body_parts
+from ..ingestion.body_parts import detect_body_parts
 from ..schemas.models import PlanRequest, RetrievedChunk, Source
 
 HIGHLIGHT_STOP_WORDS = {

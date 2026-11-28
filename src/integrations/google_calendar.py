@@ -149,6 +149,7 @@ class GoogleCalendar:
                 "id": key,
                 "summary": title,
                 "description": description,
+                "colorId": "11",
                 "start": {"dateTime": start.isoformat()},
                 "end": {"dateTime": end.isoformat()},
             },

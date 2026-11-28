@@ -46,7 +46,8 @@ def test_tools_run_for_the_bound_account_and_writes_wait_for_approval(demo):
                 "organize_schedule",
                 {
                     "moves": [
-                        {"week_number": 1, "workout_index": 0, "new_day": "Friday"}
+                        {"week_number": 1, "workout_index": 0, "new_day": "Friday"},
+                        {"week_number": 1, "workout_index": 2, "new_day": "Monday"},
                     ]
                 },
             )

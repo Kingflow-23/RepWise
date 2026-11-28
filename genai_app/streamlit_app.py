@@ -36,14 +36,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.config import AppConfig  # noqa: E402
-from config.app_config import get_api_url  # noqa: E402
-from src.integrations import google_calendar  # noqa: E402
-from src.observability import configure_logging  # noqa: E402
+from config.config import AppConfig
+from config.app_config import get_api_url
+from src.integrations import google_calendar
+from src.observability.observability import configure_logging
 
 configure_logging("streamlit")
 logger = logging.getLogger(__name__)
-st.set_page_config(page_title="RepWise", page_icon="🏋️", layout="wide")
+st.set_page_config(
+    page_title="RepWise",
+    page_icon=":material/fitness_center:",
+    layout="wide",
+)
 
 API_BASE = get_api_url()
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -118,6 +122,7 @@ SESSION_KEYS_PER_ACCOUNT = (
     "agent-use-fallback-location",
     "saved_location",
     "request_log",
+    "delete-account-confirmation",
 )
 
 _CURRENT_LOCATION_COMPONENT = st.components.v2.component(
@@ -742,10 +747,30 @@ def sign_out() -> None:
         st.session_state.pop(key, None)
 
 
+def delete_account() -> None:
+    """Delete the signed-in account after an explicit typed confirmation."""
+    if st.session_state.get("delete-account-confirmation") != "DELETE":
+        st.session_state.account_deletion_error = 'Type "DELETE" exactly to confirm.'
+        return
+    try:
+        api_request("DELETE", "/api/v1/auth/me")
+    except ApiError as error:
+        st.session_state.account_deletion_error = (
+            f"Your account was not deleted: {error}"
+        )
+    else:
+        sign_out()
+        st.session_state.account_deleted_notice = True
+
+
 # --- Assistant and approvals ------------------------------------------------
 
 
-def decide_action(action_id: str, decision: str) -> None:
+def decide_action(
+    action_id: str,
+    decision: str,
+    selections: list[dict[str, Any]] | None = None,
+) -> None:
     """Approve or decline one pending action and remember the outcome.
 
     Args:
@@ -754,9 +779,15 @@ def decide_action(action_id: str, decision: str) -> None:
     """
     student_id = st.session_state.get("user_id")
     try:
+        kwargs = (
+            {"json": {"selections": selections}}
+            if decision == "approve" and selections
+            else {}
+        )
         result = api_request(
             "POST",
             f"/api/v1/students/{student_id}/agent/actions/{action_id}/{decision}",
+            **kwargs,
         )
     except ApiError as error:
         reasons = {
@@ -875,6 +906,34 @@ def show_action(action: dict[str, Any], key_prefix: str) -> None:
             }:
                 st.json(decided["result"], expanded=False)
             return
+        selections = None
+        slot_choices = (action.get("arguments") or {}).get("slot_choices") or []
+        if slot_choices and action.get("tool_name") in {
+            "add_workouts_to_calendar",
+            "activate_plan",
+        }:
+            st.write("Choose one time for each workout:")
+            grouped: dict[tuple[int, int], list[dict[str, Any]]] = {}
+            for choice in slot_choices:
+                position = (choice["week_number"], choice["workout_index"])
+                grouped.setdefault(position, []).append(choice)
+            selections = []
+            for position, choices in grouped.items():
+                labels = [choice["label"] for choice in choices]
+                selected_label = st.radio(
+                    f"Week {position[0]}, workout {position[1] + 1}",
+                    labels,
+                    key=f"slot-{key_prefix}-{action_id}-{position[0]}-{position[1]}",
+                    horizontal=False,
+                )
+                selected = choices[labels.index(selected_label)]
+                selections.append(
+                    {
+                        "week_number": selected["week_number"],
+                        "workout_index": selected["workout_index"],
+                        "start": selected["start"],
+                    }
+                )
         approve, decline = st.columns(2)
         approve.button(
             "Approve",
@@ -883,7 +942,7 @@ def show_action(action: dict[str, Any], key_prefix: str) -> None:
             icon=":material/check:",
             width="stretch",
             on_click=decide_action,
-            args=(action_id, "approve"),
+            args=(action_id, "approve", selections),
         )
         decline.button(
             "Decline",
@@ -1235,75 +1294,56 @@ def load_tool_catalog() -> list[dict[str, Any]]:
 
 # --- Page --------------------------------------------------------------------
 
-st.markdown(
-    """
-<style>
-.block-container {padding-top: 1.6rem; max-width: 1250px;}
-.rw-hero {padding: 1.4rem 1.6rem; border-radius: 18px; color: white;
-  background: linear-gradient(120deg, #0f766e 0%, #155e75 55%, #1e3a8a 100%);
-  box-shadow: 0 8px 24px rgba(15, 118, 110, .25); margin-bottom: 1rem;}
-.rw-hero h1 {margin: 0; font-size: 2.1rem; color: white;}
-.rw-hero p {margin: .35rem 0 0; opacity: .92; font-size: 1.02rem;}
-.rw-agents {display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .9rem;}
-.rw-agents span {background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.28);
-  padding: .25rem .65rem; border-radius: 999px; font-size: .85rem;}
-[data-testid="stMetric"] {background: rgba(15,118,110,.07); padding: .8rem 1rem; border-radius: 14px;
-  border: 1px solid rgba(15,118,110,.18);}
-</style>
-""",
-    unsafe_allow_html=True,
+if st.session_state.pop("account_deleted_notice", False):
+    st.success(
+        "Your RepWise account and saved data have been deleted. "
+        "Events already created in Google Calendar remain there."
+    )
+
+st.title("RepWise", icon=":material/fitness_center:")
+st.write(
+    "Build a training routine that fits your life. Review every plan and "
+    "calendar change before it takes effect."
 )
-st.markdown(
-    """
-<div class="rw-hero">
-  <h1>🏋️ RepWise</h1>
-  <p>Evidence-grounded training plans and a multi-agent assistant that never changes
-  your plan or calendar without your approval.</p>
-  <div class="rw-agents">
-    <span>🧭 Orchestrator</span><span>🗓️ Planning</span><span>📈 Performance</span>
-    <span>⏰ Schedule</span><span>📍 Location</span><span>📚 Knowledge</span>
-  </div>
-</div>
-""",
-    unsafe_allow_html=True,
+st.caption(
+    "Evidence-informed plans · Personal workout tracking · Your choices stay in your hands"
 )
 
 with st.sidebar:
-    st.header("Account")
+    st.header("Your account")
     if st.session_state.get("full_name"):
         st.success(f"Signed in as **{st.session_state.full_name}**")
         st.button("Sign out", width="stretch", on_click=sign_out)
-    account_name = st.text_input(
-        "Full name", value=st.session_state.get("full_name", "")
-    )
-    account_password = st.text_input("Password", type="password")
-    sign_in, register = st.columns(2)
-    if sign_in.button("Sign in", width="stretch"):
-        try:
-            token = api_request(
-                "POST",
-                "/api/v1/auth/login",
-                json={"full_name": account_name, "password": account_password},
-            )
-            st.session_state.access_token = token["access_token"]
-            store_account(token)
-            logger.info("User signed in through Streamlit")
-            st.success("Signed in.")
-        except ApiError as error:
-            st.error(str(error))
-    if register.button("Create account", width="stretch"):
-        try:
-            token = api_request(
-                "POST",
-                "/api/v1/auth/register",
-                json={"full_name": account_name, "password": account_password},
-            )
-            st.session_state.access_token = token["access_token"]
-            store_account(token)
-            logger.info("Account registered through Streamlit")
-            st.success("Account created and signed in.")
-        except ApiError as error:
-            st.error(str(error))
+    else:
+        account_name = st.text_input("Full name")
+        account_password = st.text_input("Password", type="password")
+        sign_in, register = st.columns(2)
+        if sign_in.button("Sign in", width="stretch"):
+            try:
+                token = api_request(
+                    "POST",
+                    "/api/v1/auth/login",
+                    json={"full_name": account_name, "password": account_password},
+                )
+                st.session_state.access_token = token["access_token"]
+                store_account(token)
+                logger.info("User signed in through Streamlit")
+                st.success("Signed in.")
+            except ApiError as error:
+                st.error(str(error))
+        if register.button("Create account", width="stretch"):
+            try:
+                token = api_request(
+                    "POST",
+                    "/api/v1/auth/register",
+                    json={"full_name": account_name, "password": account_password},
+                )
+                st.session_state.access_token = token["access_token"]
+                store_account(token)
+                logger.info("Account registered through Streamlit")
+                st.success("Account created and signed in.")
+            except ApiError as error:
+                st.error(str(error))
 
     st.header("Backend")
     api_base = st.text_input(
@@ -1346,7 +1386,10 @@ with st.sidebar:
 signed_in = bool(st.session_state.get("user_id"))
 if signed_in:
     history_count = len(st.session_state.get("plan_history", []))
-    pending_count = len(st.session_state.get("agent_actions", []))
+    pending_count = sum(
+        action.get("status", "pending") == "pending"
+        for action in st.session_state.get("agent_actions", [])
+    )
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Account", st.session_state.get("full_name", ""))
     m2.metric("Saved plans", history_count)
@@ -1361,17 +1404,17 @@ if signed_in:
     approvals_tab,
     metrics_tab,
     location_tab,
-    system_tab,
+    settings_tab,
 ) = st.tabs(
     [
-        "👤 Profile",
-        "🗓️ Generate a plan",
-        "📚 Saved plans",
-        "🤖 Assistant",
-        "✅ Approvals",
-        "📊 Metrics",
-        "📍 Location & calendar",
-        "⚙️ System",
+        ":material/person: Profile",
+        ":material/calendar_add_on: Create a plan",
+        ":material/folder_open: Saved plans",
+        ":material/chat: Assistant",
+        ":material/task_alt: Approvals",
+        ":material/monitoring: Progress",
+        ":material/location_on: Location & calendar",
+        ":material/settings: Settings",
     ]
 )
 
@@ -1819,14 +1862,20 @@ with approvals_tab:
     else:
         show_action_notice()
         refresh, history = st.columns(2)
-        if refresh.button(
-            "Load pending actions", width="stretch", icon=":material/refresh:"
-        ):
-            load_actions("pending")
-        if history.button(
-            "Show all decisions", width="stretch", icon=":material/history:"
-        ):
-            load_actions("all")
+        refresh.button(
+            "Load pending actions",
+            width="stretch",
+            icon=":material/refresh:",
+            on_click=load_actions,
+            args=("pending",),
+        )
+        history.button(
+            "Show all decisions",
+            width="stretch",
+            icon=":material/history:",
+            on_click=load_actions,
+            args=("all",),
+        )
         actions = st.session_state.get("agent_actions")
         if actions is None:
             st.caption("Click **Load pending actions** to fetch them.")
@@ -2039,8 +2088,42 @@ with location_tab:
                     "remote or public hosting needs a web OAuth flow."
                 )
 
-with system_tab:
-    st.subheader("⚙️ System")
+with settings_tab:
+    st.header("Settings", icon=":material/settings:")
+    st.subheader("Your account")
+    if signed_in:
+        st.write(
+            f"Signed in as **{st.session_state.get('full_name', 'RepWise user')}**."
+        )
+        st.caption(
+            "Your profile, plans, workout history, approvals, and saved location "
+            "belong to this account."
+        )
+        with st.expander("Delete account permanently", icon=":material/delete:"):
+            st.warning(
+                "This permanently deletes your RepWise account and saved data. "
+                "Your Google Calendar connection will be removed, but events "
+                "already created in Google Calendar will remain there.",
+                title="This cannot be undone",
+            )
+            with st.form("delete_account_confirmation"):
+                confirmation = st.text_input(
+                    'Type "DELETE" to confirm',
+                    key="delete-account-confirmation",
+                )
+                st.form_submit_button(
+                    "Permanently delete account",
+                    key="delete-account-submit",
+                    type="primary",
+                    on_click=delete_account,
+                )
+            deletion_error = st.session_state.pop("account_deletion_error", None)
+            if deletion_error:
+                st.error(deletion_error)
+    else:
+        st.info("Sign in to manage or delete your account.")
+
+    st.subheader("System")
     health = st.session_state.get("health")
     if health:
         h1, h2, h3 = st.columns(3)

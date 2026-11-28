@@ -12,6 +12,8 @@ from typing import Protocol
 
 from .base import Retriever
 from ..schemas.models import RetrievedChunk
+from src.agents.metrics import record_external_call
+from src.observability.langfuse_tracing import finish_generation, generation_observation
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +120,7 @@ class OllamaQueryExpander:
         """Analyze a request once and cache successful structured responses.
 
         Args:
-            query: User or benchmark query to classify and rewrite.
+            query: User query to classify and rewrite.
 
         Returns:
             Validated scope, French search query, and refusal message.
@@ -128,44 +130,61 @@ class OllamaQueryExpander:
             ValueError: If its response is empty, malformed, or inconsistent.
         """
         started = perf_counter()
-        try:
-            if self._client is None:
-                from ollama import Client
+        with generation_observation(
+            "retrieval query analysis", self.model
+        ) as observation:
+            try:
+                if self._client is None:
+                    from ollama import Client
 
-                self._client = Client(host=self.base_url, timeout=60)
-            response = self._client.chat(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": QUERY_EXPANSION_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Search request:\n{query}"},
-                ],
-                format={
-                    "type": "object",
-                    "properties": {
-                        "scope": {
-                            "type": "string",
-                            "enum": ["in_scope", "out_of_scope", "unclear"],
+                    self._client = Client(host=self.base_url, timeout=60)
+                response = self._client.chat(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": QUERY_EXPANSION_SYSTEM_PROMPT},
+                        {"role": "user", "content": f"Search request:\n{query}"},
+                    ],
+                    format={
+                        "type": "object",
+                        "properties": {
+                            "scope": {
+                                "type": "string",
+                                "enum": ["in_scope", "out_of_scope", "unclear"],
+                            },
+                            "search_query": {"type": "string"},
+                            "user_message": {"type": "string"},
                         },
-                        "search_query": {"type": "string"},
-                        "user_message": {"type": "string"},
+                        "required": ["scope", "search_query", "user_message"],
+                        "additionalProperties": False,
                     },
-                    "required": ["scope", "search_query", "user_message"],
-                    "additionalProperties": False,
-                },
-                options={"temperature": 0, "num_ctx": 2048, "num_predict": 180},
-                think=False,
-            )
-        except Exception as error:
-            logger.error(
-                "Query scope analysis failed model=%s error_type=%s elapsed_ms=%.1f",
-                self.model,
-                type(error).__name__,
-                (perf_counter() - started) * 1000,
-            )
-            raise RuntimeError(
-                "Could not analyze the request scope and retrieval query with the "
-                f"configured local Ollama model {self.model!r}: {error}"
-            ) from error
+                    options={"temperature": 0, "num_ctx": 2048, "num_predict": 180},
+                    think=False,
+                )
+                finish_generation(
+                    observation,
+                    started,
+                    _response_count(response, "prompt_eval_count"),
+                    _response_count(response, "eval_count"),
+                )
+                record_external_call(
+                    "retrieval query analysis",
+                    started,
+                    _response_count(response, "prompt_eval_count"),
+                    _response_count(response, "eval_count"),
+                )
+            except Exception as error:
+                finish_generation(observation, started, error=error)
+                record_external_call("retrieval query analysis", started, None, None)
+                logger.error(
+                    "Query scope analysis failed model=%s error_type=%s elapsed_ms=%.1f",
+                    self.model,
+                    type(error).__name__,
+                    (perf_counter() - started) * 1000,
+                )
+                raise RuntimeError(
+                    "Could not analyze the request scope and retrieval query with the "
+                    f"configured local Ollama model {self.model!r}: {error}"
+                ) from error
 
         content = (
             response["message"]["content"]
@@ -218,6 +237,16 @@ class OllamaQueryExpander:
         return QueryAnalysis(scope, search_query, user_message.strip())
 
 
+def _response_count(response: object, name: str) -> int | None:
+    """Return a valid Ollama token count, excluding booleans and other values."""
+    value = (
+        response.get(name)
+        if isinstance(response, dict)
+        else getattr(response, name, None)
+    )
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 class QueryExpansionRetriever:
     """Rewrite a query once, then delegate one search to the configured retriever."""
 
@@ -248,7 +277,7 @@ class QueryExpansionRetriever:
         """Expand the request in French, then retrieve once using that query.
 
         Args:
-            query: Original user request or retrieval benchmark question.
+            query: Original user request or evaluation query.
             top_k: Maximum number of unique chunks to return.
 
         Returns:

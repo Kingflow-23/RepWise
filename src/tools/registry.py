@@ -17,6 +17,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, time, timedelta
+from time import perf_counter
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -24,15 +25,16 @@ from pydantic import Field, ValidationError, model_validator
 
 from src.agents import memory
 from src.schemas.models import (
+    AgentPlanOptions,
     CompletionStatus,
     Model,
-    PlanOptions,
     TrainingPlan,
     WorkoutDifficulty,
 )
 from src.tools import calendar, knowledge, places, planning, profile, training
 from src.tools.catalog import ToolSpec, generated_parts, get_tool_spec, load_catalog
 from src.tools.context import ToolContext
+from src.observability.langfuse_tracing import tool_observation
 from src.tools.results import ToolFailure, failure
 
 logger = logging.getLogger(__name__)
@@ -86,7 +88,7 @@ class HistoryArguments(Model):
     max_plans: int = Field(default=5, ge=1, le=20, description="How many recent plans.")
 
 
-class PlanArguments(PlanOptions):
+class PlanArguments(AgentPlanOptions):
     """Options for a new one-week plan (the profile is read from the database)."""
 
 
@@ -108,6 +110,11 @@ class ActivatePlanArguments(Model):
     calendar_message: str | None = Field(
         default=None,
         description="Internal: code sets any calendar limitation before approval.",
+    )
+    slot_choices: list[calendar.SlotChoice] = Field(
+        default_factory=list,
+        max_length=63,
+        description="Available exact times shown to the student for choosing.",
     )
 
 
@@ -257,6 +264,11 @@ class BookingArguments(Model):
         ),
     )
     plan_id: str | None = Field(default=None, description="Omit for the current plan.")
+    slot_choices: list[calendar.SlotChoice] = Field(
+        default_factory=list,
+        max_length=63,
+        description="Available exact times shown to the student for choosing.",
+    )
 
 
 def preferred_bookings(slots: calendar.SlotsResult) -> list[calendar.Booking]:
@@ -268,6 +280,20 @@ def preferred_bookings(slots: calendar.SlotsResult) -> list[calendar.Booking]:
             start=workout.options[0].start,
         )
         for workout in slots.workouts
+    ]
+
+
+def slot_choices(slots: calendar.SlotsResult) -> list[calendar.SlotChoice]:
+    """Expose every proposed workout time as a student-selectable choice."""
+    return [
+        calendar.SlotChoice(
+            week_number=workout.week_number,
+            workout_index=workout.workout_index,
+            start=slot.start,
+            label=slot.label,
+        )
+        for workout in slots.workouts
+        for slot in workout.options
     ]
 
 
@@ -293,7 +319,11 @@ def prepare_bookings(
             f"{descriptions}. Choose another day or week first.",
         )
     bookings = preferred_bookings(slots)
-    return BookingArguments(bookings=bookings, plan_id=slots.plan_id)
+    return BookingArguments(
+        bookings=bookings,
+        plan_id=slots.plan_id,
+        slot_choices=slot_choices(slots),
+    )
 
 
 def describe_bookings(context: ToolContext, arguments: BookingArguments) -> str:
@@ -325,7 +355,18 @@ def prepare_activation(
     context: ToolContext, arguments: ActivatePlanArguments
 ) -> ActivatePlanArguments | ToolFailure:
     """Pin exact calendar times into the activation action before approval."""
+    record = profile.resolve_plan(context, arguments.plan_id)
+    if isinstance(record, ToolFailure):
+        return record
+    requested_week = record["request"].get("schedule_week_start")
+    week_start = date.fromisoformat(str(requested_week)) if requested_week else None
+    requires_bookings = week_start is not None
     if context.calendar is None:
+        if requires_bookings:
+            return failure(
+                "calendar_not_connected",
+                "Connect a calendar before preparing this week's plan activation.",
+            )
         return arguments.model_copy(
             update={
                 "bookings": [],
@@ -333,8 +374,12 @@ def prepare_activation(
                 "calendar_message": "No calendar is connected.",
             }
         )
-    slots = calendar.propose_training_slots(context, plan_id=arguments.plan_id)
+    slots = calendar.propose_training_slots(
+        context, week_start=week_start, plan_id=arguments.plan_id
+    )
     if isinstance(slots, ToolFailure):
+        if requires_bookings:
+            return slots
         if slots.code == "calendar_unavailable":
             return arguments.model_copy(
                 update={
@@ -362,6 +407,8 @@ def prepare_activation(
             if missing
             else "There are no unbooked workouts to add."
         )
+        if requires_bookings:
+            return failure("no_workouts_to_book", message)
         return arguments.model_copy(
             update={
                 "bookings": [],
@@ -375,6 +422,7 @@ def prepare_activation(
             "bookings": bookings,
             "calendar_status": "scheduled",
             "calendar_message": None,
+            "slot_choices": slot_choices(slots),
         }
     )
 
@@ -711,6 +759,24 @@ def execute_tool(
         The tool's result model, or a :class:`ToolFailure` for invalid
         arguments or an unexpected crash (which is logged in full).
     """
+    started = perf_counter()
+    with tool_observation(name) as observation:
+        result = _execute_tool(context, name, arguments)
+        if observation is not None:
+            observation.update(
+                metadata={
+                    "duration_ms": round((perf_counter() - started) * 1000),
+                    "ok": not isinstance(result, ToolFailure),
+                    "code": getattr(result, "code", None),
+                }
+            )
+    return result
+
+
+def _execute_tool(
+    context: ToolContext, name: str, arguments: Model | dict | None
+) -> Model:
+    """Validate and dispatch one tool without starting another trace span."""
     try:
         validated = (
             arguments

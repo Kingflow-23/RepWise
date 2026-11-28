@@ -31,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 
 from config.config import AppConfig
 from ..db.repository import StudentRepository
-from ..observability import configure_logging, request_id_context
+from ..observability.observability import configure_logging, request_id_context
 from .auth import create_access_token, hash_password, read_access_token, verify_password
 from ..agents.health import HealthChecker, OllamaHealthChecker
 from ..agents.orchestrator import build_chat_model
@@ -41,7 +41,7 @@ from ..generation.adaptation import (
     adapt_after_feedback,
 )
 from ..generation.pipeline import PlanPipeline
-from ..integrations.google_calendar import load_google_calendar
+from ..integrations.google_calendar import load_google_calendar, token_path
 from ..integrations.photon import PhotonClient
 from ..llm.ollama import OllamaGenerator, PlanGenerator
 from ..retrieval.base import MissingRetriever, Retriever
@@ -62,7 +62,7 @@ from ..schemas.models import (
     UserProfile,
     WorkoutFeedbackRequest,
 )
-from ..speech import (
+from ..speech.speech import (
     MAX_AUDIO_BYTES,
     SpeechTranscriber,
     WhisperTranscriber,
@@ -457,6 +457,24 @@ def create_app(
                 status_code=401, detail="Account is no longer available"
             )
         return AccountIdentity.model_validate(account)
+
+    @app.delete("/api/v1/auth/me", status_code=204)
+    def delete_current_account(user_id: str = Depends(require_account)) -> Response:
+        """Delete the authenticated account and its RepWise-owned data."""
+        if repository.get_account_identity(user_id) is None:
+            raise HTTPException(
+                status_code=401, detail="Account is no longer available"
+            )
+
+        calendar_token = token_path(config, user_id)
+        if calendar_token.exists():
+            calendar_token.unlink()
+        if not repository.delete_user(user_id):
+            raise HTTPException(
+                status_code=401, detail="Account is no longer available"
+            )
+        logger.info("Authenticated account deleted")
+        return Response(status_code=204)
 
     @app.get("/api/v1/health")
     def health() -> dict[str, object]:

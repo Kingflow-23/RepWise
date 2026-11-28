@@ -28,6 +28,7 @@ from config.config import REPOSITORY_ROOT, AppConfig
 from scripts.demo_context import demo_context
 from src.agents import approvals
 from src.agents.orchestrator import AgentResponse, build_chat_model, build_orchestrator
+from src.observability.langfuse_tracing import flush_traces
 
 OUTPUT_DIR = REPOSITORY_ROOT / "outputs" / "agent_runs"
 
@@ -124,6 +125,32 @@ def transcript_entry(
         f"Time: {response.seconds:.0f} s. Replans: {response.replans}. "
         f"Result: **{'PASS' if not problems else 'FAIL: ' + '; '.join(problems)}**",
         "",
+        "Telemetry:",
+        "",
+    ]
+    metrics = response.metrics
+    if metrics is not None:
+        token_total = (
+            f"{metrics.input_tokens + metrics.output_tokens}"
+            if all(
+                call.input_tokens is not None and call.output_tokens is not None
+                for call in metrics.model_calls
+            )
+            else "unavailable"
+        )
+        lines += [
+            f"- Model calls: {len(metrics.model_calls)}; tool calls: {metrics.tool_calls}; "
+            f"tokens: {token_total}; wall time: {metrics.total_seconds:.3f} s.",
+            "- Model-call detail:",
+            *[
+                f"  - `{call.purpose}`: {call.seconds:.3f} s; "
+                f"input={call.input_tokens if call.input_tokens is not None else 'unavailable'}, "
+                f"output={call.output_tokens if call.output_tokens is not None else 'unavailable'}"
+                for call in metrics.model_calls
+            ],
+        ]
+    lines += [
+        "",
         "Plan:",
         "",
     ]
@@ -163,11 +190,38 @@ def main() -> int:
     llm = build_chat_model(config)
     entries, passed = [], 0
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
-        context, _plan_id = demo_context(config, Path(directory) / "agent.sqlite3")
+        context, _ = demo_context(config, Path(directory) / "agent.sqlite3")
         orchestrator = build_orchestrator(context, llm)
         for number, case in enumerate(cases, start=1):
             print(f"\n[{number}/{len(cases)}] {case['request']}", flush=True)
             response = orchestrator.ask(case["request"], f"case-{number}")
+            metrics = response.metrics
+            if metrics is not None:
+                token_total = (
+                    str(metrics.input_tokens + metrics.output_tokens)
+                    if all(
+                        call.input_tokens is not None and call.output_tokens is not None
+                        for call in metrics.model_calls
+                    )
+                    else "unavailable"
+                )
+                print(
+                    f"  telemetry: {len(metrics.model_calls)} model calls, "
+                    f"{metrics.tool_calls} tool calls, {token_total} tokens, "
+                    f"{metrics.total_seconds:.3f} s total"
+                )
+                for call in metrics.model_calls:
+                    print(
+                        f"    model {call.purpose}: {call.seconds:.3f} s, "
+                        f"input={call.input_tokens if call.input_tokens is not None else 'unavailable'}, "
+                        f"output={call.output_tokens if call.output_tokens is not None else 'unavailable'}"
+                    )
+                for report in response.reports:
+                    for tool in report.tools_used:
+                        print(
+                            f"    tool {tool['name']}: {tool['ms']} ms, "
+                            f"{'ok' if tool['ok'] else 'failed'}"
+                        )
             for step in response.steps:
                 print(f"  [{step.agent}] {step.task} -> {step.status}")
             print(f"  answered in {response.seconds:.0f} s:\n{response.answer}")
@@ -179,6 +233,7 @@ def main() -> int:
             print("  PASS" if not problems else f"  FAIL: {'; '.join(problems)}")
             passed += not problems
             entries.append(transcript_entry(number, case, response, problems))
+    flush_traces()
 
     name = "multi_agent_scenarios.md" if args.multi else "agent_sheet_requests.md"
     header = [

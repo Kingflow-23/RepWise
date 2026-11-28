@@ -1,4 +1,4 @@
-"""Local LLM judge for unvalidated benchmark model answers."""
+"""Local LLM judge for generation and swap-analysis answers."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ class OllamaQualityJudge:
     """Score raw generated answers without parsing them as production plans."""
 
     def __init__(self, model: str, base_url: str = "http://localhost:11434"):
-        """Configure the local Ollama model used for benchmark judging.
+        """Configure the local Ollama model used for answer judging.
 
         Args:
             model: Ollama model tag used to score candidate answers.
@@ -66,8 +66,6 @@ class OllamaQualityJudge:
         case: dict[str, Any],
         answer: str,
         evidence: str,
-        *,
-        rag_enabled: bool,
     ) -> dict[str, Any]:
         """Return validated rubric scores and a concise overall rationale."""
         from ollama import Client
@@ -131,13 +129,13 @@ class OllamaQualityJudge:
             )
         except Exception as error:
             logger.error(
-                "Benchmark judge failed model=%s error_type=%s elapsed_ms=%.1f",
+                "Answer judge failed model=%s error_type=%s elapsed_ms=%.1f",
                 self.model,
                 type(error).__name__,
                 (perf_counter() - started) * 1000,
             )
             raise RuntimeError(
-                f"Benchmark judge {self.model!r} could not score the answer: {error}"
+                f"Answer judge {self.model!r} could not score the answer: {error}"
             ) from error
 
         content = (
@@ -148,7 +146,7 @@ class OllamaQualityJudge:
         try:
             result = json.loads(content)
         except (TypeError, json.JSONDecodeError) as error:
-            raise ValueError("Benchmark judge returned invalid JSON.") from error
+            raise ValueError("Answer judge returned invalid JSON.") from error
         scores = result.get("scores") if isinstance(result, dict) else None
         if (
             not isinstance(result, dict)
@@ -157,16 +155,16 @@ class OllamaQualityJudge:
             or set(scores) != set(dimensions)
             or not isinstance(result["rationale"], str)
         ):
-            raise ValueError("Benchmark judge returned an invalid response shape.")
+            raise ValueError("Answer judge returned an invalid response shape.")
         for key, value in scores.items():
             if (
                 isinstance(value, bool)
                 or not isinstance(value, int)
                 or value not in (0, 1, 2)
             ):
-                raise ValueError(f"Benchmark judge score {key!r} must be 0, 1, or 2.")
+                raise ValueError(f"Answer judge score {key!r} must be 0, 1, or 2.")
         logger.info(
-            "Benchmark answer judged judge=%s elapsed_ms=%.1f",
+            "Answer judged judge=%s elapsed_ms=%.1f",
             self.model,
             (perf_counter() - started) * 1000,
         )
@@ -258,13 +256,13 @@ class OllamaQualityJudge:
             )
         except Exception as error:
             logger.error(
-                "Benchmark pairwise judge failed model=%s error_type=%s elapsed_ms=%.1f",
+                "Pairwise judge failed model=%s error_type=%s elapsed_ms=%.1f",
                 self.model,
                 type(error).__name__,
                 (perf_counter() - started) * 1000,
             )
             raise RuntimeError(
-                f"Benchmark pairwise judge {self.model!r} could not compare answers: {error}"
+                f"Pairwise judge {self.model!r} could not compare answers: {error}"
             ) from error
 
         content = (
@@ -275,9 +273,7 @@ class OllamaQualityJudge:
         try:
             result = json.loads(content)
         except (TypeError, json.JSONDecodeError) as error:
-            raise ValueError(
-                "Benchmark pairwise judge returned invalid JSON."
-            ) from error
+            raise ValueError("Pairwise judge returned invalid JSON.") from error
         if (
             not isinstance(result, dict)
             or set(result) != {"scores", "winner", "rationale"}
@@ -287,15 +283,11 @@ class OllamaQualityJudge:
             or result["winner"] not in {"A", "B", "tie"}
             or not isinstance(result["rationale"], str)
         ):
-            raise ValueError(
-                "Benchmark pairwise judge returned an invalid response shape."
-            )
+            raise ValueError("Pairwise judge returned an invalid response shape.")
         for label in ("A", "B"):
             scores = result["scores"][label]
             if not isinstance(scores, dict) or set(scores) != set(dimensions):
-                raise ValueError(
-                    f"Benchmark pairwise judge returned invalid scores for {label}."
-                )
+                raise ValueError(f"Pairwise judge returned invalid scores for {label}.")
             for name, value in scores.items():
                 if (
                     isinstance(value, bool)
@@ -303,12 +295,12 @@ class OllamaQualityJudge:
                     or value not in (0, 1, 2)
                 ):
                     raise ValueError(
-                        f"Benchmark pairwise judge score {label}.{name} must be 0, 1, or 2."
+                        f"Pairwise judge score {label}.{name} must be 0, 1, or 2."
                     )
         if not result["rationale"].strip():
-            raise ValueError("Benchmark pairwise judge returned an empty rationale.")
+            raise ValueError("Pairwise judge returned an empty rationale.")
         logger.info(
-            "Benchmark answers compared judge=%s elapsed_ms=%.1f",
+            "Answers compared judge=%s elapsed_ms=%.1f",
             self.model,
             (perf_counter() - started) * 1000,
         )

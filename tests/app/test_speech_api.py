@@ -11,7 +11,7 @@ from config.config import AppConfig
 from src.api.auth import create_access_token
 from src.api.main import create_app
 from src.retrieval.base import MissingRetriever
-from src.speech import MAX_AUDIO_BYTES
+from src.speech.speech import MAX_AUDIO_BYTES
 
 
 def recording():

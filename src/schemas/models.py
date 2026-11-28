@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
@@ -89,6 +90,18 @@ class PlanOptions(Model):
     refinement_instructions: str | None = Field(default=None, max_length=500)
 
 
+class AgentPlanOptions(PlanOptions):
+    """Plan options exposed to the planning agent, including date scope."""
+
+    schedule_scope: Literal["weekly", "this_week"] = Field(
+        default="this_week",
+        description=(
+            "Use recurring profile weekdays, or constrain sessions to free dates "
+            "in the current calendar week."
+        ),
+    )
+
+
 class PlanRequest(PlanOptions):
     """Complete input to generation, combining request options and a saved profile.
 
@@ -98,6 +111,10 @@ class PlanRequest(PlanOptions):
 
     weeks: int = Field(default=1, ge=1, le=12)
     profile: UserProfile
+    schedule_week_start: date | None = Field(
+        default=None,
+        description="Monday of the calendar week checked before generating this plan.",
+    )
 
     @model_validator(mode="after")
     def weekly_workouts_fit_available_days(self) -> "PlanRequest":

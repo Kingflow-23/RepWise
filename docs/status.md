@@ -1,7 +1,7 @@
 # Implementation status
 
 What works now, what depends on outside services or credentials, and what is
-left for the web frontend (`app/`). Last verified on 2026-11-07.
+left for the web frontend (`app/`). Last verified on 2026-11-23.
 
 ## Implemented and verified
 
@@ -21,8 +21,10 @@ left for the web frontend (`app/`). Last verified on 2026-11-07.
 | Catch-up after missed workouts decided by code, exact moves shown in the approval | Done | `tests/tools/test_training_tools.py`, `tests/agents/test_approvals.py`, live multi-agent run |
 | Key facts (available days vs workout days) and places list written by code | Done | `tests/agents/test_orchestrator.py`, live runs |
 | Calendar tools (Google adapter, internal booking record, slots with time zones) | Done | Mocked tests, including daylight saving |
+| Midweek calendar scheduling: skip past workout dates, keep remaining current-week workouts, use next week after all planned days pass | Done | `tests/tools/test_calendar_tools.py` |
 | Existing RAG, generation and evaluation behaviour | Preserved | Full suite |
-| Streamlit test console (`genai_app/`): profile, plans, feedback, assistant chat with plan timeline, approvals inbox, per-request metrics (phases, model calls, tokens, tool latency) and session export, saved location, calendar, tool catalog, MCP host config | Done | `tests/app/test_streamlit_app.py`, `tests/app/test_streamlit_agents.py`; driven against a real API |
+| Streamlit app (`genai_app/`): profile, plans, feedback, assistant, approvals, progress metrics, saved location, Calendar, system settings, refreshed native theme and account deletion | Done | `tests/app/test_streamlit_app.py`, `tests/app/test_streamlit_agents.py`, `tests/app/test_auth.py` |
+| Vite/Three.js web app (`app/`): sign-in, profile setup, plan generation, active program, read-only draft previews | Partial | `app/tests/`; `npm --prefix app test`, `npm --prefix app run build` |
 
 ## Depends on external services or credentials
 
@@ -34,18 +36,28 @@ left for the web frontend (`app/`). Last verified on 2026-11-07.
 | Nearby places | Internet access to Photon (`REPWISE_PHOTON_URL`). The public server rate-limits bursts of requests. | `places_unavailable` |
 | MCP server | A login token (`REPWISE_MCP_ACCESS_TOKEN`) and the API's secret | The server refuses to start. |
 
-## Deferred to the web frontend phase
+Account deletion removes the user's RepWise records and local Google Calendar
+credentials. Events previously created in Google Calendar remain there and must
+be deleted separately in Google Calendar if desired.
 
-The web frontend (`app/`) distinguishes the active program from drafts, with
-read-only draft previews. The remaining features below already work in Streamlit:
+## Web frontend still in progress
+
+The Vite/Three.js frontend in `app/` is an additional client, not the full
+RepWise experience. It supports account sign-in, profile setup, direct plan
+generation, the active program, and read-only draft previews. It does not yet
+provide:
 
 - a chat view calling `POST /agent/requests`;
 - approve and decline buttons for `pending_actions`;
 - a list of pending actions after a reload;
 - a location-sharing permission prompt, and the opt-in saved location (`/location`);
-- approving or declining draft activation from the web frontend.
+- workout feedback, calendar booking, or account-deletion controls.
 
-See [the approval contract](agents.md#contract-for-the-frontend).
+The agent, approval, feedback, location, calendar, and account-deletion
+workflows are available in the Streamlit app and/or authenticated API. Draft
+activation remains approval-gated; the web frontend has no activation shortcut.
+See [the approval contract](agents.md#contract-for-the-frontend) and the
+[web frontend guide](../app/README.md).
 
 ## Known limitations
 

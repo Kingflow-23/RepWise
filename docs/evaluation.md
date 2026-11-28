@@ -86,37 +86,14 @@ Reports: [Nov 2 comparison](../outputs/eval_runs/20261102-034806/report.md),
 Next, repeat the comparison with rewriting explicitly on and off, warmed indexes,
 alternating run order, more varied cases, and production validation applied.
 
-## Run it
+## Current state
 
-Pull the models and prepare the corpus as described in [setup](setup.md). Each run
-writes `report.md` and `results.json` under `outputs/eval_runs/`; add `--label` to
-name the folder.
+The evaluation system is being refactored into separate retrieval, generation,
+swap-analysis and red-team entry points. Implementation is currently in the
+dataset, metrics and judge foundation; suite modules are placeholders.
 
-```powershell
-# Full benchmark: rank retrievers, compare both models with RAG, compare the winner
-# without RAG, then run the red-team set on the winner. This takes a while.
-python -m src.evaluation.runner --mode compare
-
-# Same, with the retriever and models pinned.
-python -m src.evaluation.runner --mode compare --retriever bm25 --model-a qwen3.5:9b --model-b gemma4:12b
-
-# RAG vs no-RAG only.
-python -m src.evaluation.runner --mode rag-vs-no-rag --llm ollama --retriever hybrid --model-a qwen3.5:9b --label qwen9b_rag_vs_no_rag
-
-# Red-team set only. Use the setup recorded in your compare report.
-python -m src.evaluation.runner --mode red-team --llm ollama --retriever bm25 --model-a qwen3.5:9b
-
-# Quick end-to-end check: real retrievers on curated queries, one nominal case, and
-# four red-team cases, with query rewriting off. It doesn't rank anything.
-python -m src.evaluation.runner --mode smoke --llm ollama --retriever hybrid --model-a qwen3.5:4b
-
-# One suite at a time.
-python -m src.evaluation.runner --mode retrieval --retriever bm25
-python -m src.evaluation.runner --mode generation --llm ollama --retriever hybrid
-```
-
-`--mode generation --llm mock` only tests the runner and is not evidence about model
-quality. Red-team mode requires a real model and never falls back to a mock.
+Each future suite will write one Markdown report and one structured JSON result
+under `outputs/eval_runs/`.
 
 ## What's measured
 
@@ -124,8 +101,7 @@ quality. Red-team mode requires a real model and never falls back to a mock.
 
 Questions are labeled with video time spans, not chunk IDs, so labels survive
 re-chunking. Any chunk overlapping a span by at least one second counts as relevant.
-All retrievers use the same questions and labels, and `compare` ranks them by
-Recall@10, then MRR, then median latency.
+All retrievers use the same questions and labels.
 
 | Metric | Meaning |
 |---|---|
@@ -136,11 +112,11 @@ Recall@10, then MRR, then median latency.
 | Top-five evidence | Yes if any labeled evidence appears in the top five; coverage is reported as full, partial, or none. |
 | Latency | Median and p95 per request. |
 
-### Generation
+### Generation and swap analysis
 
-Benchmarks score **raw model answers**. Production validation and retries aren't
-applied, so these numbers aren't a measure of what the app would save. A local judge
-scores each dimension from 0 to 2:
+The future generation suite will evaluate raw answers separately from the
+production pipeline. The swap-analysis suite will compare answers pairwise with
+a local LLM judge. The judge currently preserves these dimensions:
 
 | Dimension | Asks |
 |---|---|
@@ -151,41 +127,25 @@ scores each dimension from 0 to 2:
 | `clarity` | Is it clear and actionable? |
 | `evidence_support` | Do the supplied retrieved passages support it? |
 
-Answer quality is the normalized total across answers the judge scored. Generation
-rate and judge coverage are reported separately, so a failed call isn't mistaken for
-a bad answer. Reports show headline numbers; per-dimension scores, raw answers, and
-rationales stay in `results.json`.
+Detailed per-case scores and rationales belong in the suite-specific JSON report.
 
 ## Red-team checks
 
-Fifteen cases cover profile conflicts, prompt injection and prompt extraction, output
-format overrides, fabricated evidence, unrelated or nonsense requests, and medical or
-supplement boundaries. They run through the production pipeline with screening on,
-and stay separate from the model ranking.
-
-The selected Gemma + hybrid setup scored 15/15 on Nov 2, but read that carefully. The
-scoring is binary: **any returned plan fails, and no plan passes**, whatever the
-reason. Yet 10 of the 15 cases are labeled in-scope with an expected status of `ok`,
-meaning the dataset expects a plan. The suite therefore can't tell a correct refusal
-from a request that was wrongly refused or failed for another reason. A perfect score
-shows that no plan came back, not that the system behaved well. Scoring against the
-expected scope would fix this.
+Red-team cases cover profile conflicts, prompt injection and prompt extraction,
+output-format overrides, fabricated evidence, unrelated requests, and medical or
+supplement boundaries. The future suite will run them through the production
+pipeline and compare behavior against each case's expected scope.
 
 ## The datasets
 
 | File | Contents |
 |---|---|
 | `evals/retrieval/retrieval_test_cases.jsonl` | 128 answerable questions with topics. |
-| `evals/expected_evidence/relevance_judgments.jsonl` | 166 labeled spans, each with the exact transcript text, source URL, and why it answers the question. |
-| `evals/benchmark_cases.jsonl` | 15 one-week requests with varied experience, schedules, goals, and equipment, each with an explicit workout count. |
-| `evals/red_team/red_team_cases.jsonl` | 15 robustness and safety cases. |
-| `evals/smoke_case_ids.json` | The curated subset used by smoke runs. |
+| `evals/expected_evidence/evidences_for_retrieval_cases.jsonl` | Span-based relevance evidence for retrieval questions. |
+| `evals/red_team/red_team_test_cases.jsonl` | Robustness and safety prompts with scope labels. |
 
-The loader checks IDs, duplicates, encoding, links, time ranges, and agreement between
-labels and judgments, and the tests check each excerpt against its source passage.
-Benchmark cases reference retrieval questions to show intended coverage, but models
-never see the labeled spans. Unanswerable questions aren't in the retrieval set, and
-would need their own scoring rule.
+The loaders check IDs, duplicates, encoding, links, time ranges and agreement
+between labels and judgments.
 
 ## What this can't establish
 

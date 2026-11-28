@@ -8,7 +8,7 @@ import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
-LEXICON_PATH = Path(__file__).resolve().parents[1] / "config" / "body_part_lexicon.json"
+LEXICON_PATH = Path(__file__).resolve().parents[2] / "config" / "body_part_lexicon.json"
 
 
 def _fold_accents(text: str) -> str:

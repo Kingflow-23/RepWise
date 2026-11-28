@@ -96,8 +96,8 @@ class AppConfig:
         agent_model: Tool-calling model used by the orchestrator and specialists.
         query_expansion_model: Small model for scope analysis and French rewrites.
         health_check_model: Small model that spots pain or injury mentions.
-        ollama_comparison_model: Second model used in controlled comparisons.
-        ollama_judge_model: Local model used to judge benchmark answers.
+        ollama_comparison_model: Future model used in swap analysis.
+        ollama_judge_model: Local model used for generation and swap-analysis judging.
         ollama_url: Ollama service base URL.
         top_k: Minimum retrieval count configured for the application.
         chunk_file: Optional single chunk file override.

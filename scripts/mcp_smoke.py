@@ -43,7 +43,7 @@ def server_environment(folder: Path) -> dict[str, str]:
         Environment variables for ``server.py``.
     """
     database = folder / "mcp.sqlite3"
-    student_id, _plan_id = seed_demo_account(database)
+    student_id, _ = seed_demo_account(database)
     secret = secrets.token_hex(32)
     return {
         **os.environ,
@@ -93,7 +93,8 @@ async def check_server(environment: dict[str, str]) -> list[str]:
                 "organize_schedule",
                 {
                     "moves": [
-                        {"week_number": 1, "workout_index": 0, "new_day": "Friday"}
+                        {"week_number": 1, "workout_index": 0, "new_day": "Friday"},
+                        {"week_number": 1, "workout_index": 2, "new_day": "Monday"},
                     ]
                 },
             )

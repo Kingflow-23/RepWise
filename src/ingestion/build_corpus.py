@@ -96,7 +96,7 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
-from src.observability import configure_logging
+from src.observability.observability import configure_logging
 
 REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / "data"

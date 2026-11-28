@@ -44,7 +44,7 @@ from src.api.auth import read_access_token
 from src.db.repository import StudentRepository
 from src.integrations.google_calendar import load_google_calendar
 from src.integrations.photon import PhotonClient
-from src.observability import configure_logging
+from src.observability.observability import configure_logging
 from src.retrieval.factory import build_plan_pipeline
 from src.tools.catalog import ToolSpec, load_catalog
 from src.tools.context import ToolContext
