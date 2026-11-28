@@ -98,6 +98,8 @@ export async function request(path, { method = 'GET', body, token, signal, timeo
         : 'Sign-in is unavailable right now. Please try again in a moment.';
     throw new ApiError(message, response.status);
   }
+  // 204 No Content (for example DELETE /location) is a success without a body.
+  if (response.status === 204) return null;
   if (payload === null && method === 'GET' && path.endsWith('/plans/current') && response.status === 200
       && response.headers.get('content-type')?.includes('application/json')) {
     // Only a successfully decoded JSON null means there is no active plan.

@@ -3,6 +3,7 @@ import {
   agentRequestBody, answerParagraphs, decisionErrorMessage, decisionPath, expiryText,
   readAgentResponse, readDecision, readPendingActions,
 } from './agent-data.js';
+import { browserPosition, geolocationErrorMessage, sharedLocation } from './location-data.js';
 import './assistant.css';
 
 // Longer than the server's 420 s request budget, so the server always answers first.
@@ -25,6 +26,7 @@ export function initializeAssistant(plans) {
   const send = document.getElementById('assistant-send');
   const stopButton = document.getElementById('assistant-stop');
   const newButton = document.getElementById('assistant-new');
+  const share = document.getElementById('assistant-share-location');
   const queue = document.getElementById('assistant-queue');
   const queueList = document.getElementById('assistant-queue-list');
   const queueStatus = document.getElementById('assistant-queue-status');
@@ -49,7 +51,7 @@ export function initializeAssistant(plans) {
   function setBusy(value) {
     busy = value;
     form.setAttribute('aria-busy', String(value));
-    input.disabled = value; send.disabled = value;
+    input.disabled = value; send.disabled = value; share.disabled = value;
     send.querySelector('span').textContent = value ? 'Working on it…' : 'Send';
     stopButton.hidden = !value;
     newButton.hidden = value || !log.childElementCount;
@@ -196,6 +198,19 @@ export function initializeAssistant(plans) {
     catch (failure) { showError(failure.message); return; }
     const current = ++revision;
     const userId = account.user_id;
+    if (share.checked) {
+      // Asked only now, for this message; the position is never saved.
+      busy = true; send.disabled = true; status.hidden = false;
+      status.textContent = 'Finding your position…';
+      try { body.location = sharedLocation(await browserPosition()); }
+      catch (failure) {
+        if (current !== revision) return;
+        busy = false; send.disabled = false; status.hidden = true;
+        showError(failure instanceof Error ? failure.message : geolocationErrorMessage(failure));
+        return;
+      }
+      if (current !== revision) return;
+    }
     pending = new AbortController();
     const controller = pending;
     timeout = setTimeout(() => controller.abort(new DOMException('Assistant timed out', 'TimeoutError')), AGENT_TIMEOUT_MS);
@@ -215,6 +230,7 @@ export function initializeAssistant(plans) {
       conversationId = result.conversationId || conversationId;
       addAnswer(result);
       input.value = '';
+      share.checked = false; // sharing is per message, never sticky
       if (result.changedPlans) plans.refresh();
       loadQueue();
     } catch (failure) {

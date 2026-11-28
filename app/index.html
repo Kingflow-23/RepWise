@@ -114,6 +114,7 @@
           <ol class="assistant-log" id="assistant-log" aria-live="polite" aria-label="Conversation"></ol>
           <form id="assistant-form" method="post" action="/api/v1/students/me/agent/requests">
             <div class="auth-field"><label for="assistant-message">Your message</label><textarea id="assistant-message" name="message" maxlength="1000" rows="3" required placeholder="I missed Monday’s workout. Can you reorganise the rest of my week?" aria-describedby="assistant-message-hint"></textarea><span class="field-hint" id="assistant-message-hint">Up to 1000 characters. Answers can take one to two minutes.</span></div>
+            <label class="assistant-share"><input type="checkbox" id="assistant-share-location" /> <span>Share my current location with this message <small>(for nearby gyms and shops; used once, not stored)</small></span></label>
             <p class="auth-error" id="assistant-error" role="alert" tabindex="-1" hidden></p>
             <p class="generation-status" id="assistant-status" role="status" hidden></p>
             <div class="assistant-actions">
@@ -122,6 +123,21 @@
               <button class="primary-button" id="assistant-send" type="submit"><span>Send</span><span data-icon="arrow-right"></span></button>
             </div>
           </form>
+          <details class="assistant-place" id="assistant-place">
+            <summary>Your saved location <span id="assistant-place-summary">Not saved</span></summary>
+            <p class="assistant-place-intro">Optional. When you save a place, RepWise keeps it to search for gyms and shops near you until you forget it. Place names are looked up with the Photon map service. Only places in metropolitan France are supported.</p>
+            <p class="assistant-place-current" id="assistant-place-current" hidden></p>
+            <form id="assistant-place-form">
+              <div class="auth-field"><label for="assistant-place-label">Town, postcode or address</label><input id="assistant-place-label" type="text" minlength="2" maxlength="120" autocomplete="address-level2" placeholder="Lyon 69003" /></div>
+              <div class="assistant-place-actions">
+                <button class="text-button" id="assistant-place-forget" type="button" hidden>Forget my location</button>
+                <button class="text-button" id="assistant-place-here" type="button">Save my current position instead</button>
+                <button class="assistant-approve" id="assistant-place-save" type="submit">Save this place</button>
+              </div>
+              <p class="auth-error" id="assistant-place-error" role="alert" tabindex="-1" hidden></p>
+              <p id="assistant-place-status" role="status"></p>
+            </form>
+          </details>
         </section>
         <section class="draft-plans" id="draft-plans" aria-labelledby="draft-plans-title" hidden>
           <p class="eyebrow">PROPOSALS TO REVIEW</p><h2 id="draft-plans-title">Recent draft plans</h2>

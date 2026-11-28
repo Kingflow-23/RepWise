@@ -5,12 +5,14 @@ import { initializeProfile } from './profile.js';
 import { initializePlan } from './plan.js';
 import { initializeGeneration } from './generation.js';
 import { initializeAssistant } from './assistant.js';
+import { initializePlace } from './place.js';
 
 mountIcons();
 initializeProfile();
 const plans = initializePlan();
 initializeGeneration(plans);
 initializeAssistant(plans);
+initializePlace();
 initializeLogin();
 const lastDialogTrigger = new Map();
 document.querySelectorAll('[data-open]').forEach((button) => {
