@@ -6,6 +6,7 @@ import { initializePlan } from './plan.js';
 import { initializeGeneration } from './generation.js';
 import { initializeAssistant } from './assistant.js';
 import { initializePlace } from './place.js';
+import { initializeTrainingLog } from './performance.js';
 
 mountIcons();
 initializeProfile();
@@ -13,6 +14,7 @@ const plans = initializePlan();
 initializeGeneration(plans);
 initializeAssistant(plans);
 initializePlace();
+initializeTrainingLog();
 initializeLogin();
 const lastDialogTrigger = new Map();
 document.querySelectorAll('[data-open]').forEach((button) => {

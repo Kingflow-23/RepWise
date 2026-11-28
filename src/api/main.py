@@ -72,6 +72,7 @@ from ..tools.calendar import CalendarProvider
 from ..tools.context import Location, ToolContext
 from ..tools.planning import generate_workout_plan
 from .agent_routes import build_agent_router
+from .training_routes import build_training_router
 from .diagnostics import health_report, list_ollama_models
 
 logger = logging.getLogger(__name__)
@@ -814,6 +815,13 @@ def create_app(
             make_context=make_context,
             make_llm=make_llm,
             checkpointer=InMemorySaver(),
+        )
+    )
+    app.include_router(
+        build_training_router(
+            require_account=require_account,
+            check_owner=check_owner,
+            make_context=make_context,
         )
     )
     return app

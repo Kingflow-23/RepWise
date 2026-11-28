@@ -1,10 +1,12 @@
 /** The browser uses same-origin /api routes; Vite forwards them to FastAPI locally. */
 export class ApiError extends Error {
-  constructor(message, status = 0, outcome = null) {
+  constructor(message, status = 0, outcome = null, detail = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.outcome = outcome;
+    // The API's structured detail, for callers that show their own message.
+    this.detail = detail;
   }
 }
 
@@ -96,7 +98,8 @@ export async function request(path, { method = 'GET', body, token, signal, timeo
       : response.status === 422
         ? 'Check your account name and password, then try again.'
         : 'Sign-in is unavailable right now. Please try again in a moment.';
-    throw new ApiError(message, response.status);
+    const detail = payload?.detail && typeof payload.detail === 'object' && !Array.isArray(payload.detail) ? payload.detail : null;
+    throw new ApiError(message, response.status, null, detail);
   }
   // 204 No Content (for example DELETE /location) is a success without a body.
   if (response.status === 204) return null;

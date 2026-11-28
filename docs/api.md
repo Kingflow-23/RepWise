@@ -39,6 +39,8 @@ All paths start with `/api/v1`, and `{student}` stands for `students/{student_id
 | `PUT` | `/{student}/plans/{plan_id}` | Yes | Replace a saved plan's content. |
 | `DELETE` | `/{student}/plans/{plan_id}` | Yes | Delete a saved plan. |
 | `POST` | `/{student}/plans/{plan_id}/weeks/{week_number}/workouts/{workout_index}/feedback` | Yes | Log feedback; may adapt the next workout. |
+| `GET`, `POST` | `/{student}/plans/{plan_id}/weeks/{week_number}/workouts/{workout_index}/performance` | Yes | Read or save sets, reps and weights per exercise (same rules as the agents' `log_workout_performance`: an unknown exercise is 422 and saves nothing; saving an exercise again replaces it). |
+| `GET` | `/{student}/history?max_plans=5` | Yes | Logged workouts with feedback and performance, and summary counts (as `get_workout_history`). |
 | `POST` | `/speech/transcribe` | Yes | Turn a recording into text. Never creates a plan. |
 | `POST` | `/{student}/agent/requests` | Yes | Ask the multi-agent assistant. Returns the answer, the executed plan and pending actions. |
 | `GET` | `/{student}/agent/actions` | Yes | List actions (`?status=pending` by default; `all`, `executed`, `failed`, `declined`, `expired`). |

@@ -1,5 +1,6 @@
 import { authenticatedRequest, onSessionChange } from './auth.js';
 import { activePlan, draftPlans, savedDate, sourceLink } from './plan-data.js';
+import { performancePanel } from './performance.js';
 import './plan.css';
 
 function element(tag, text, className) {
@@ -84,6 +85,12 @@ export function initializePlan() {
       exercises.append(item);
     });
     detail.append(exercises);
+    // Only the active program can be logged; draft previews stay read-only.
+    if (record.status === 'active' && account) {
+      detail.append(performancePanel({
+        userId: account.user_id, planId: record.id, weekNumber: week.number, workoutIndex: index, exercises: entry.exercises,
+      }));
+    }
   }
 
   function render(record, preview = false) {
@@ -161,6 +168,7 @@ export function initializePlan() {
       if (record) render(record);
       else { title.textContent = 'No active program yet'; description.textContent = 'Create a program to get started. Draft plans appear separately below and are not active.'; }
       refresh.textContent = 'Refresh programs';
+      document.dispatchEvent(new CustomEvent('repwise:plans-loaded'));
     } catch (failure) {
       if (current !== revision) return;
       clear();
